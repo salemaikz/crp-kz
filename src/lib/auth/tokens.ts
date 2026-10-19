@@ -61,10 +61,12 @@ export async function issueToken(
 }
 
 /**
- * Атомарно израсходовать токен: UPDATE … WHERE used_at IS NULL AND expires_at > now RETURNING.
- * Затем под FOR UPDATE сверяется email аккаунта с тем, что был при выдаче. null — токен
- * неизвестен, использован, истёк, другого вида или адрес аккаунта сменился.
- * Вызывать в транзакции: при null вызывающий откатывает или завершает её, ничего не меняя.
+ * Атомарно израсходовать токен. Порядок блокировок тот же, что у issueToken: сначала строка
+ * пользователя (владелец токена, по token_hash) FOR UPDATE, затем UPDATE auth_tokens
+ * … WHERE used_at IS NULL AND expires_at > now AND email = адрес аккаунта RETURNING. Обратный порядок
+ * при параллельных выдаче и расходе давал взаимоблокировку. Адрес аккаунта сверяется с адресом при выдаче
+ * в самом UPDATE: при расхождении токен не расходуется. null — токен неизвестен, использован, истёк,
+ * другого вида или адрес аккаунта сменился. Вызывать в транзакции.
  */
 export async function consumeToken(
   sql: Sql,
@@ -74,13 +76,17 @@ export async function consumeToken(
 ): Promise<{ userId: string; email: string } | null> {
   if (!isTokenShape(raw)) return null;
   const t = nowMs ?? now();
-  const [tok] = await sql<{ userId: string; email: string }>`
+  const hash = hashToken(raw);
+  const [owner] = await sql<{ id: string; email: string }>`
+    SELECT u.id, u.email FROM users u
+    JOIN auth_tokens a ON a.user_id = u.id
+    WHERE a.token_hash = ${hash} AND a.kind = ${kind}
+    FOR UPDATE OF u`;
+  if (!owner) return null;
+  const rows = await sql<{ id: string }>`
     UPDATE auth_tokens SET used_at = ${t}
-    WHERE token_hash = ${hashToken(raw)} AND kind = ${kind} AND used_at IS NULL AND expires_at > ${t}
-    RETURNING user_id, email`;
-  if (!tok) return null;
-  const [user] = await sql<{ id: string; email: string }>`
-    SELECT id, email FROM users WHERE id = ${tok.userId} FOR UPDATE`;
-  if (!user || user.email !== tok.email) return null;
-  return { userId: user.id, email: user.email };
+    WHERE token_hash = ${hash} AND kind = ${kind} AND used_at IS NULL AND expires_at > ${t}
+      AND user_id = ${owner.id} AND email = ${owner.email}
+    RETURNING id`;
+  return rows.length ? { userId: owner.id, email: owner.email } : null;
 }
