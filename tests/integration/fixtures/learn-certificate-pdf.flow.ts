@@ -175,3 +175,80 @@ test('неизвестная локаль в адресе не ломает ма
   assert.equal(res.status, 303);
   assert.ok(res.headers.get('location')!.startsWith('/ru/login?next='));
 });
+
+/** Новый владелец сертификата: у лимита 10 запросов в минуту на пользователя, общий владелец уже исчерпан. */
+async function freshOwner(id: string): Promise<{ id: string }> {
+  await db.sql`INSERT INTO users (id, email, name, created_at) VALUES (${id}, ${`${id}@crp-pdf.invalid`}, 'Нав Тест', 1)`;
+  await db.sql`INSERT INTO certificates (id, number, user_id, course_id, holder_name, locale, issued_at)
+    VALUES (${`c-${id}`}, ${`CRP-2026-${id.toUpperCase()}`}, ${id}, 'pdf-c1', 'Нав Тест', 'ru', 1760000000000)`;
+  return { id };
+}
+
+const NAV = { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
+
+test('навигация браузера: нет сертификата, чужой, черновик, нет курса — 303 на /{locale}/learn', async () => {
+  const cases: [string, string][] = [
+    ['pdf-other', PDF_COURSE_SLUG],
+    ['pdf-draft-owner', 'pdf-draft'],
+    ['pdf-nocourse-owner', 'net-takogo-kursa'],
+  ];
+  for (const [user, slug] of cases) {
+    current = user === 'pdf-other' ? { id: user } : await freshOwner(user);
+    for (const locale of ['ru', 'kz']) {
+      const res = await call(locale, slug, NAV);
+      assert.equal(res.status, 303, `${user} ${slug}`);
+      assert.equal(res.headers.get('location'), `/${locale}/learn`);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+  }
+});
+
+test('навигация: флаг выключен — по-прежнему 404, а не редирект', async () => {
+  process.env.FEATURE_CERT_PDF = '0';
+  current = { id: 'pdf-owner' };
+  assert.equal((await call('ru', PDF_COURSE_SLUG, NAV)).status, 404);
+});
+
+test('503 (адрес сайта не настроен): навигация — 303 на страницу сертификата с ?pdf=unavailable, иначе прежний 503', async () => {
+  const keepSite = process.env.NEXT_PUBLIC_SITE_URL;
+  process.env.NEXT_PUBLIC_SITE_URL = 'ftp://invalid';
+  try {
+    current = await freshOwner('pdf-nav503');
+    for (const locale of ['ru', 'kz']) {
+      const res = await call(locale, PDF_COURSE_SLUG, NAV);
+      assert.equal(res.status, 303);
+      assert.equal(res.headers.get('location'), `/${locale}/learn/${PDF_COURSE_SLUG}/certificate?pdf=unavailable`);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+    const plain = await call();
+    assert.equal(plain.status, 503);
+    assert.equal(await plain.text(), 'Service unavailable');
+    assert.match(plain.headers.get('content-type')!, /^text\/plain/);
+  } finally {
+    if (keepSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = keepSite;
+  }
+});
+
+test('500 (ошибка рендера): навигация — 303 на страницу сертификата с ?pdf=unavailable, иначе прежний 500', async () => {
+  current = await freshOwner('pdf-nav500');
+  renderFails = true;
+  const spy = mock.method(console, 'error', () => {});
+  try {
+    const nav = await call('kz', PDF_COURSE_SLUG, NAV);
+    assert.equal(nav.status, 303);
+    assert.equal(nav.headers.get('location'), `/kz/learn/${PDF_COURSE_SLUG}/certificate?pdf=unavailable`);
+    const plain = await call();
+    assert.equal(plain.status, 500);
+    assert.equal(await plain.text(), 'Internal error');
+  } finally {
+    spy.mock.restore();
+  }
+});
+
+test('навигация: успешный запрос остаётся 200 с PDF', async () => {
+  current = await freshOwner('pdf-nav200');
+  const res = await call('ru', PDF_COURSE_SLUG, NAV);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/pdf');
+});

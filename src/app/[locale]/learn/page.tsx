@@ -10,7 +10,9 @@ import { formatDate } from '@/lib/format';
 import { isFeatureActive } from '@/lib/features';
 import { routing } from '@/lib/i18n/routing';
 import { listCertificates, listLearnerCourses, type LearnerCourse } from '@/lib/learn/data';
+import { planCertificatePdf } from '@/lib/learn/pdf/plan';
 import { coursePath } from '@/lib/learn/server';
+import type { CertificateListItem } from '@/lib/learn/types';
 import '@/components/learn/learn.css';
 
 type Props = { params: Promise<{ locale: string }> };
@@ -35,6 +37,12 @@ function byPriority(a: LearnerCourse, b: LearnerCourse): number {
   if (da !== db) return da < db ? -1 : 1;
   if (a.progress.done !== b.progress.done) return b.progress.done - a.progress.done;
   return a.enrollment.createdAt - b.enrollment.createdAt;
+}
+
+/** Те же условия, что на странице сертификата: курс опубликован и PDF помещается на лист (planCertificatePdf). */
+function pdfOffered(c: CertificateListItem): boolean {
+  if (c.courseStatus !== 'published') return false;
+  return planCertificatePdf({ holderName: c.holderName, courseTitle: loc(c.courseTitle, c.locale) }).ok;
 }
 
 export default async function LearnPage({ params }: Props) {
@@ -123,7 +131,7 @@ export default async function LearnPage({ params }: Props) {
                         <p className="meta num lrn-nowrap">{t('certificateNumber', { number: c.number })}</p>
                         <div className="lrn-cert-item__links">
                           <TextLink href={`${coursePath(c.courseSlug)}/certificate`}>{t('certificateOpen')}</TextLink>
-                          {pdfActive && (
+                          {pdfActive && pdfOffered(c) && (
                             <CertificatePdfLink variant="text" href={`/${locale}${coursePath(c.courseSlug)}/certificate/pdf`}>
                               {t('certificatePdf')}
                             </CertificatePdfLink>

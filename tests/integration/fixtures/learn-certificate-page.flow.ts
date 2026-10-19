@@ -69,10 +69,10 @@ test.afterEach(() => {
   }
 });
 
-async function html(user: string, slug: string): Promise<string> {
+async function html(user: string, slug: string, search: { pdf?: string } = {}): Promise<string> {
   process.env.DEMO_MODE = '1';
   current = { id: user };
-  return renderToStaticMarkup(await CertificatePage({ params: Promise.resolve({ locale: 'ru', slug }) }));
+  return renderToStaticMarkup(await CertificatePage({ params: Promise.resolve({ locale: 'ru', slug }), searchParams: Promise.resolve(search) }));
 }
 
 test('CERT_PDF включён, текст пригоден: ссылка на PDF, печати и пояснения нет', async () => {
@@ -108,4 +108,13 @@ test('CERT_PDF выключен: печать без пояснения про P
   assert.ok(out.includes('print-certificate'));
   assert.ok(!out.includes('pdfUnavailable'));
   assert.ok(out.includes('learn.certificate.printHint'));
+});
+
+test('?pdf=unavailable: PDF не предлагается снова, есть печать и пояснение', async () => {
+  process.env.FEATURE_CERT_PDF = '1';
+  const out = await html('pdf-ru', PDF_COURSE_SLUG, { pdf: 'unavailable' });
+  assert.ok(!out.includes('download-certificate-pdf'));
+  assert.ok(!out.includes('/certificate/pdf'));
+  assert.ok(out.includes('print-certificate'));
+  assert.ok(out.includes('certificate-pdf-unavailable'));
 });

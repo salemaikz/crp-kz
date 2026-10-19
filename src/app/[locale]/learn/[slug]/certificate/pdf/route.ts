@@ -23,6 +23,12 @@ const text = (body: string, status: number, extra: Record<string, string> = {}) 
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', ...extra },
   });
 
+/** Навигация браузера (ссылка «Скачать PDF»): Accept содержит text/html. fetch и curl шлют иной Accept. */
+const isNavigation = (request: Request) => (request.headers.get('accept') ?? '').toLowerCase().includes('text/html');
+
+const redirect303 = (location: string) =>
+  new Response(null, { status: 303, headers: { Location: location, 'Cache-Control': 'no-store' } });
+
 /** If-None-Match: список ETag или «*»; сравнение слабое (без префикса W/). */
 function etagMatches(header: string | null, etag: string): boolean {
   if (!header) return false;
@@ -53,15 +59,23 @@ export async function GET(request: Request, { params }: Ctx) {
     return text(t('pdfTooMany'), 429, { 'Retry-After': String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))) });
   }
 
+  const nav = isNavigation(request);
+  // ?pdf=unavailable: страница не предлагает PDF повторно и показывает пояснение
+  const unavailableHref = `/${locale}${coursePath(slug)}/certificate?pdf=unavailable`;
+
   // 4. сертификат только свой; «нет курса» и «нет сертификата» неотличимы
   let input;
   try {
     input = await loadCertificatePdfInput(user.id, slug);
   } catch (e) {
-    if (e instanceof PdfConfigError) return text('Service unavailable', 503);
+    if (e instanceof PdfConfigError) {
+      // навигация: вместо английского text/plain — страница сертификата с печатью браузером
+      return nav ? redirect303(unavailableHref) : text('Service unavailable', 503);
+    }
     throw e;
   }
-  if (!input) return text('Not found', 404);
+  // навигация: нет сертификата, чужой, черновик — к списку обучения
+  if (!input) return nav ? redirect303(`/${locale}/learn`) : text('Not found', 404);
 
   // 4а. PDF недоступен (пустое имя или курс, обрезанные буквы, не влезает по высоте): то же правило,
   // что на странице. Отправляем на HTML-страницу сертификата (та же локаль, что в адресе)
@@ -97,6 +111,6 @@ export async function GET(request: Request, { params }: Ctx) {
     });
   } catch {
     console.error(`certificate pdf: render failed, number=${input.number}`);
-    return text('Internal error', 500);
+    return nav ? redirect303(unavailableHref) : text('Internal error', 500);
   }
 }

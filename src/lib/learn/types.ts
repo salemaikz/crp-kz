@@ -96,7 +96,7 @@ export type CertificateRow = {
   issuedAt: number;
 };
 
-export type CertificateListItem = CertificateRow & { courseSlug: string; courseTitle: L10n };
+export type CertificateListItem = CertificateRow & { courseSlug: string; courseTitle: L10n; courseStatus: 'draft' | 'published' };
 
 /** Публичная запись для проверки: без email и id пользователя. */
 export type PublicCertificate = {

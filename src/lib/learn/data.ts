@@ -147,7 +147,7 @@ export async function listCertificates(userId: string, sql?: Sql): Promise<Certi
   const s = await q(sql);
   return s<CertificateListItem>`
     SELECT ce.id, ce.number, ce.user_id, ce.course_id, ce.holder_name, ce.locale, ce.issued_at,
-           c.slug AS course_slug, c.title AS course_title
+           c.slug AS course_slug, c.title AS course_title, c.status AS course_status
     FROM certificates ce JOIN courses c ON c.id = ce.course_id
     WHERE ce.user_id = ${userId}
     ORDER BY ce.issued_at DESC, ce.id`;

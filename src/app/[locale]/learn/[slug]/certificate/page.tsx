@@ -20,7 +20,10 @@ import { certificateVerifyUrl, qrDataUri } from '@/lib/learn/qr';
 import { coursePath, getCourseAccess, routeParam } from '@/lib/learn/server';
 import '@/components/learn/learn.css';
 
-type Props = { params: Promise<{ locale: string; slug: string }> };
+type Props = {
+  params: Promise<{ locale: string; slug: string }>;
+  searchParams: Promise<{ pdf?: string | string[] }>;
+};
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: raw } = await params;
@@ -32,8 +35,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /** Размер и поля листа для печати: A4 альбомный без полей. @page — глобальное правило, поэтому только на этой странице. */
 const PRINT_PAGE_CSS = '@page { size: A4 landscape; margin: 0; }';
 
-export default async function CertificatePage({ params }: Props) {
+export default async function CertificatePage({ params, searchParams }: Props) {
   const { locale: raw, slug: rawSlug } = await params;
+  // маршрут PDF вернул 503/500 на навигации: PDF не предлагаем, показываем пояснение и печать
+  const pdfFailed = (await searchParams).pdf === 'unavailable';
   const locale = hasLocale(routing.locales, raw) ? raw : routing.defaultLocale;
   setRequestLocale(locale);
   const slug = routeParam(rawSlug);
@@ -73,7 +78,8 @@ export default async function CertificatePage({ params }: Props) {
   // то же правило «PDF недоступен», что и в маршруте: тогда печать браузером (его шрифты покажут имя целиком)
   const certTitle = loc(course.title, certificate.locale);
   const pdfFlag = isFeatureActive('CERT_PDF');
-  const pdfActive = pdfFlag && planCertificatePdf({ holderName: certificate.holderName, courseTitle: certTitle }).ok;
+  const pdfActive =
+    pdfFlag && !pdfFailed && planCertificatePdf({ holderName: certificate.holderName, courseTitle: certTitle }).ok;
   const pdfUnavailable = pdfFlag && !pdfActive;
   const pdfHref = `/${locale}${coursePath(slug)}/certificate/pdf`;
 
