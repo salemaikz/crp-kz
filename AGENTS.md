@@ -75,7 +75,7 @@ Codex и людей. Специфика Claude Code — в `CLAUDE.md`.
 - **Conventional commits**, тема по-русски: `feat(courses): …`, `fix(payments): …`,
   `docs(brand): …`. Скоуп — домен: `courses`, `lessons`, `quiz`, `access`,
   `payments`, `orgs`, `auth`, `certs`, `admin`, `brand`, `agents`, `infra`,
-  `lms` (ТЗ и план), `handoff`.
+  `lms` (ТЗ и план), `mail`, `legal`, `files`, `ops`, `handoff`.
 - Тело коммита — *зачем* и компромиссы, а не пересказ диффа.
 - Никогда: `--no-verify`, `push --force` в чужую ветку, переписывание истории `main`.
 
