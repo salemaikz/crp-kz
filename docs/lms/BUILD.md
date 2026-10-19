@@ -92,11 +92,13 @@ export function now(): number;               // Date.now()
 
 **Подготовка БД.** `prepareDb(db, { autoMigrate?, seed? })` в `src/lib/db/index.ts`:
 миграции (`migrate`) или только проверка `assertMigrated`, затем сид. Авто-миграция —
-`autoMigrateEnabled()`: `DB_MIGRATE_ON_START=1` — да, `0` — нет, иначе да в демо и
-разработке, в production — нет (D-026). Скрипты и CLI открывают БД через `prepareDb()`,
-а не `migrate()` напрямую, по шаблону: `openDriver()` → `prepareDb(db, { seed: false })` →
-работа → `db.close()`. `migrate()` напрямую — только `db-migrate`, `db-seed`, снимок демо и
-тестовая БД.
+`autoMigrateEnabled()`: `DB_MIGRATE_ON_START=1` — да, `0` — нет, иначе да в демо и при
+`NODE_ENV` development/test; в production и у крона/CLI без `NODE_ENV` с `DATABASE_URL` — нет
+(D-026). `migrate()` сначала только читает состояние: если накатывать нечего, DDL и блокировки
+нет. Скрипты и CLI открывают БД через `openScriptDb()` (`src/lib/db/index.ts`): драйвер →
+отказ для PGlite в памяти (база исчезла бы после выхода) → `prepareDb(db, { seed: false })` →
+`setDb`; возвращает функцию закрытия. `migrate()` напрямую — только `db-migrate`, `db-seed`,
+снимок демо и тестовая БД. Ключи advisory-блокировок — только в `src/lib/db/locks.ts`.
 
 **Миграции.**
 - Файлы `migrations/YYYY-MM-DD-<slug>.sql`, строго идемпотентные
