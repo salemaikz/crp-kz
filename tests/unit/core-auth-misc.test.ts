@@ -10,7 +10,7 @@ import {
 } from '../../src/lib/auth/rateLimit';
 import { assertDbConfigured, isDemo, sessionSecret } from '../../src/lib/env';
 
-const ENV_KEYS = ['DATABASE_URL', 'SESSION_SECRET', 'DEMO_MODE', 'NODE_ENV'] as const;
+const ENV_KEYS = ['DATABASE_URL', 'SESSION_SECRET', 'DEMO_MODE', 'NODE_ENV', 'VERCEL'] as const;
 const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 function setEnv(k: (typeof ENV_KEYS)[number], v: string | undefined) {
   // NODE_ENV в типах Next — readonly; в тестах переключаем его через индекс
@@ -39,6 +39,7 @@ test('env: демо без DATABASE_URL, секрет обязателен вн�
 });
 
 test('env: демо только явно; production без DATABASE_URL и DEMO_MODE — отказ при инициализации БД', () => {
+  delete process.env.VERCEL;
   delete process.env.DATABASE_URL;
   delete process.env.DEMO_MODE;
   delete process.env.SESSION_SECRET;
@@ -60,6 +61,21 @@ test('env: демо только явно; production без DATABASE_URL и DEM
   delete process.env.DATABASE_URL;
   assert.doesNotThrow(() => assertDbConfigured());
   assert.equal(isDemo(), true);
+});
+
+test('env: на Vercel без DATABASE_URL демо включается само, с DATABASE_URL — нет', () => {
+  delete process.env.DATABASE_URL;
+  delete process.env.DEMO_MODE;
+  delete process.env.SESSION_SECRET;
+  setEnv('NODE_ENV', 'production');
+  process.env.VERCEL = '1';
+  assert.equal(isDemo(), true);
+  assert.doesNotThrow(() => assertDbConfigured());
+  assert.ok(sessionSecret().length >= 32);
+  process.env.DATABASE_URL = 'postgres://example/db';
+  assert.equal(isDemo(), false);
+  assert.throws(() => sessionSecret(), /SESSION_SECRET/);
+  delete process.env.VERCEL;
 });
 
 test('env: короткий SESSION_SECRET — ошибка и в демо', () => {

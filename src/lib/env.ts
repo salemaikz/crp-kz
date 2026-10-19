@@ -11,12 +11,24 @@ function env(name: string): string | undefined {
 
 /**
  * Демо-режим (PGlite или Postgres с демо-данными, кнопки демо-входа, плашка «Демо-версия»).
- * Включается только явно: DEMO_MODE=1, либо локальная разработка/тесты без DATABASE_URL
- * (NODE_ENV не production). В production без DATABASE_URL и без DEMO_MODE=1 приложение
+ * Включается только явно: DEMO_MODE=1, локальная разработка/тесты без DATABASE_URL
+ * (NODE_ENV не production) или превью на Vercel без DATABASE_URL (VERCEL=1).
+ * В production на своём сервере без DATABASE_URL и без DEMO_MODE=1 приложение
  * не стартует (getDb бросает ошибку, см. assertDbConfigured) — «тихого» демо в проде нет.
  */
 export function isDemo(): boolean {
-  return env('DEMO_MODE') === '1' || (!env('DATABASE_URL') && process.env.NODE_ENV !== 'production');
+  if (env('DEMO_MODE') === '1') return true;
+  if (env('DATABASE_URL')) return false;
+  return process.env.NODE_ENV !== 'production' || isVercelPreviewHost();
+}
+
+/**
+ * Vercel используется только для демо-превью (D-015, D-016): прод — сервер ЦРП в РК
+ * с DATABASE_URL. Поэтому на Vercel без DATABASE_URL демо включается само — импорт
+ * репозитория в Vercel работает без ручной настройки переменных.
+ */
+function isVercelPreviewHost(): boolean {
+  return process.env.VERCEL === '1';
 }
 
 /**
@@ -25,7 +37,7 @@ export function isDemo(): boolean {
  */
 export function assertDbConfigured(): void {
   if (env('DATABASE_URL')) return;
-  if (process.env.NODE_ENV === 'production' && env('DEMO_MODE') !== '1') {
+  if (process.env.NODE_ENV === 'production' && !isDemo()) {
     throw new Error(
       'DATABASE_URL is not set in production. Set DATABASE_URL, or set DEMO_MODE=1 explicitly ' +
         'for a demo preview with in-memory demo data (no real personal data).',
