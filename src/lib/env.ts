@@ -87,8 +87,8 @@ export function siteUrl(e: Env = process.env): string {
 /**
  * Публичный адрес пригоден для ссылок в письмах и QR. Вне демо — задан явно (NEXT_PUBLIC_SITE_URL),
  * корректный URL и только https:// (D-025): ссылка на localhost в письме — ошибка конфигурации.
- * В демо всегда true: на Netlify/Vercel задан только DEMO_MODE, адрес берётся из системных
- * переменных хостинга (см. siteUrl); явный адрес, если он есть, должен быть корректным http(s).
+ * В демо true, если явного адреса нет или он корректный http(s): на Netlify/Vercel задан только
+ * DEMO_MODE, адрес берётся из системных переменных хостинга (см. siteUrl).
  */
 export function siteUrlConfigured(e: Env = process.env): boolean {
   const explicit = read(e, 'NEXT_PUBLIC_SITE_URL');

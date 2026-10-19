@@ -440,8 +440,10 @@ nginx"`. OCSP stapling не настраиваем: Let's Encrypt закрыл O
 7. **Статика.** `rsync -a releases/$id/.next/static/ shared/static/_next/static/`, без
    `--delete`.
 8. **Бэкап перед миграциями.** `NODE_ENV=production node --env-file=$configDir/migrate.env
-   --import tsx scripts/db-migrate.ts --status`. Код выхода 3 означает, что есть ненакатанные
-   миграции: тогда `sudo -u postgres /usr/local/lib/crp/backup.sh --label pre-deploy-$id`.
+   --import tsx scripts/db-migrate.ts --status`. Код 0 — бэкап не нужен; 3 — есть ненакатанные
+   миграции: тогда `sudo -u postgres /usr/local/lib/crp/backup.sh --label pre-deploy-$id`; любой
+   другой код — стоп, прод не тронут. Код разбирать явно (`rc=0; … || rc=$?`), а не через `set -e`:
+   иначе код 3 оборвёт скрипт до бэкапа.
 9. **Миграции.** `… scripts/db-migrate.ts` от `crp_owner`: одна транзакция, advisory-блокировка,
    `lock_timeout` из `MIGRATE_LOCK_TIMEOUT_MS` (по умолчанию 5000). Ошибка → стоп. Транзакция
    откатилась, прод работает на старом релизе со старой схемой.
