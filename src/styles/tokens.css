@@ -13,6 +13,8 @@
   --ink-2: #4a4f59;
   --ink-3: #6b707a;
   --line: #dcded8;
+  /* рамка полей ввода: 3,2:1 к белому (WCAG 1.4.11), как в QA-правках редизайна */
+  --line-strong: #8c919a;
   --red: #e31e24;
   --red-ink: #c4161c;
   --red-tint: #fdeceb;
@@ -40,6 +42,17 @@
   --header-h: 72px;
   --shadow: 0 1px 2px rgb(20 22 27 / 6%), 0 8px 28px rgb(20 22 27 / 7%);
   --shadow-red: 0 8px 22px rgb(227 30 36 / 28%);
+  --shadow-lg: 0 1px 2px rgb(20 22 27 / 6%), 0 24px 60px rgb(20 22 27 / 12%);
+  --shadow-float: 0 30px 80px rgb(0 0 0 / 35%);
+  --ring-focus: 0 0 0 3px rgb(227 30 36 / 35%);
+  /* шапка: тёмная полупрозрачная, как в редизайне v2 */
+  --header-bg: rgb(11 15 23 / 86%);
+  --hero-bg:
+    radial-gradient(55% 65% at 74% 48%, rgb(227 30 36 / 24%), transparent 70%),
+    radial-gradient(40% 50% at 10% 100%, rgb(43 76 196 / 12%), transparent 70%),
+    linear-gradient(180deg, var(--deep), var(--night));
+  --section-y: clamp(72px, 9vw, 128px);
+  --section-y-tight: clamp(48px, 6vw, 80px);
 }
 
 /* Tailwind 4: утилиты bg-board, text-ink, bg-red, font-display … (inline — ссылки на переменные) */
@@ -50,6 +63,7 @@
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-red: var(--red);
   --color-red-ink: var(--red-ink);
   --color-red-tint: var(--red-tint);

@@ -1,0 +1,52 @@
+import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { hasLocale } from 'next-intl';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { getCurrentUser } from '@/lib/auth';
+import { safeNext } from '@/lib/auth/safeNext';
+import { Link } from '@/lib/i18n/navigation';
+import { routing } from '@/lib/i18n/routing';
+import { AuthShell } from '@/components/layout/AuthShell';
+import { Mark } from '@/components/ui';
+import { RegisterForm } from './RegisterForm';
+
+type Props = {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> {
+  const { locale: raw } = await params;
+  const locale = hasLocale(routing.locales, raw) ? raw : routing.defaultLocale;
+  const t = await getTranslations({ locale, namespace: 'auth.register' });
+  return { title: t('metaTitle') };
+}
+
+export default async function RegisterPage({ params, searchParams }: Props) {
+  const { locale: raw } = await params;
+  const locale = hasLocale(routing.locales, raw) ? raw : routing.defaultLocale;
+  setRequestLocale(locale);
+
+  const sp = await searchParams;
+  const next = safeNext(sp.next) ?? undefined;
+  if (await getCurrentUser()) redirect(next ?? `/${locale}/learn`);
+  const t = await getTranslations('auth');
+
+  return (
+    <AuthShell
+      eyebrow={t('register.eyebrow')}
+      title={t.rich('register.title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
+      lead={t('register.lead')}
+      cardTitle={t('register.formTitle')}
+      cardLead={t('register.formLead')}
+    >
+      <RegisterForm next={next} />
+      <p className="auth__switch">
+        {t('register.haveAccount')}{' '}
+        <Link href={next ? { pathname: '/login', query: { next } } : '/login'} className="text-link">
+          {t('register.toLogin')}
+        </Link>
+      </p>
+    </AuthShell>
+  );
+}
