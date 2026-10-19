@@ -3,6 +3,7 @@
 import { newId, now, type Sql } from '../db';
 import { jsonParam } from '../db/core';
 import type { Locale } from '../content/types';
+import { MAIL_RECIPIENT_LOCK_CLASS } from '../db/locks';
 import { MAIL_AUTH_RECIPIENT_HOURLY, mailAuthHourlyCap, mailTransportName } from './config';
 import { MAIL_CATEGORY, MAIL_TEMPLATES, type EnqueueInput, type EnqueueResult, type MailStatus, type MailTemplate } from './types';
 
@@ -31,11 +32,36 @@ export function normalizeRecipient(email: string): string {
 }
 
 /**
+ * Лимиты писем с ссылками: 5 в час на получателя и общий предохранитель. Берёт advisory-блокировку
+ * на адрес до конца транзакции. Вызывается и из enqueueMail, и из issueToken (до гашения прежних
+ * ссылок: при отказе у пользователя остаётся рабочая ссылка). Возвращает причину отказа или null.
+ * Общий предохранитель мягкий: при гонке может быть превышен на число одновременных транзакций.
+ */
+export async function checkAuthMailCaps(sql: Sql, toRaw: string, nowMs: number): Promise<'recipient_cap' | 'global_cap' | null> {
+  const to = normalizeRecipient(toRaw);
+  // двухключевая блокировка: класс из locks.ts, не пересекается с однопараметровыми ключами
+  await sql`SELECT pg_advisory_xact_lock(${MAIL_RECIPIENT_LOCK_CLASS}::int, hashtext(${`mail:${to}`}))`;
+  const since = nowMs - HOUR_MS;
+  const [mine] = await sql<{ n: number }>`
+    SELECT count(*) AS n FROM mail_outbox
+    WHERE category = 'auth' AND to_email = ${to} AND created_at > ${since}`;
+  if ((mine?.n ?? 0) >= MAIL_AUTH_RECIPIENT_HOURLY) return 'recipient_cap';
+  const [all] = await sql<{ n: number }>`
+    SELECT count(*) AS n FROM mail_outbox WHERE category = 'auth' AND created_at > ${since}`;
+  if ((all?.n ?? 0) >= mailAuthHourlyCap()) {
+    // без адреса и текста: в лог идёт только факт срабатывания
+    console.error('mail: сработал общий предохранитель писем с ссылками, письмо не поставлено');
+    return 'global_cap';
+  }
+  return null;
+}
+
+/**
  * Поставить письмо в очередь. Вызывать внутри транзакции действия, которое письмо вызвало.
  * Статус: транспорт outbox — 'held', иначе 'queued'. Для 'auth' действуют лимит получателя
- * (5 в час) и общий предохранитель (mailAuthHourlyCap() в час); оба считаются по самой таблице,
- * поэтому работают на всех экземплярах. Лимит получателя сериализован advisory-блокировкой на адрес;
- * общий предохранитель мягкий: при гонке может быть превышен на число одновременных транзакций.
+ * (5 в час) и общий предохранитель (mailAuthHourlyCap() в час), см. checkAuthMailCaps; оба считаются
+ * по самой таблице, поэтому работают на всех экземплярах.
+ * Для писем со ссылкой токен выдают через issueToken, он сам проверяет лимиты до гашения прежних ссылок.
  */
 export async function enqueueMail<T extends MailTemplate>(sql: Sql, input: EnqueueInput<T>): Promise<EnqueueResult> {
   if (!MAIL_TEMPLATES.includes(input.template)) throw new Error('mail: неизвестный шаблон');
@@ -48,19 +74,8 @@ export async function enqueueMail<T extends MailTemplate>(sql: Sql, input: Enque
   const category = MAIL_CATEGORY[input.template];
 
   if (category === 'auth') {
-    await sql`SELECT pg_advisory_xact_lock(hashtext(${`mail:${to}`}))`;
-    const since = t - HOUR_MS;
-    const [mine] = await sql<{ n: number }>`
-      SELECT count(*) AS n FROM mail_outbox
-      WHERE category = 'auth' AND to_email = ${to} AND created_at > ${since}`;
-    if ((mine?.n ?? 0) >= MAIL_AUTH_RECIPIENT_HOURLY) return { queued: false, reason: 'recipient_cap' };
-    const [all] = await sql<{ n: number }>`
-      SELECT count(*) AS n FROM mail_outbox WHERE category = 'auth' AND created_at > ${since}`;
-    if ((all?.n ?? 0) >= mailAuthHourlyCap()) {
-      // без адреса и текста: в лог идёт только факт срабатывания
-      console.error('mail: сработал общий предохранитель писем с ссылками, письмо не поставлено');
-      return { queued: false, reason: 'global_cap' };
-    }
+    const reason = await checkAuthMailCaps(sql, to, t);
+    if (reason) return { queued: false, reason };
   }
 
   const status: 'held' | 'queued' = mailTransportName() === 'outbox' ? 'held' : 'queued';

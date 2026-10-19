@@ -33,7 +33,8 @@ export async function openLatestMailLink(
 
     const href = await page.getByTestId('mail-demo-link').getAttribute('href');
     if (!href) throw new Error('В письме нет демо-ссылки');
-    const url = new URL(href);
+    // ссылка относительная (с хостом тоже работает): открывать нужно относительно baseURL
+    const url = new URL(href, 'http://localhost');
     return `${url.pathname}${url.search}${url.hash}`;
   } finally {
     await context.close();

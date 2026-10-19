@@ -9,6 +9,12 @@ import { formatDate } from '@/lib/format';
 import { getMailView, mailPagesActive } from '@/lib/mail';
 import { adminPage } from '../../_shared';
 
+/** Путь, запрос и фрагмент без хоста. */
+function relativeLink(link: string): string {
+  const u = new URL(link);
+  return `${u.pathname}${u.search}${u.hash}`;
+}
+
 type Props = { params: Promise<{ locale: string; id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -102,7 +108,8 @@ export default async function AdminMailLetterPage({ params }: Props) {
               {t('demoLink')}
             </h2>
           </header>
-          <a className="adm-mail-link" href={mail.demoLink} data-testid="mail-demo-link">
+          {/* ссылка относительная: в превью и на других экземплярах демо открывается текущий хост, а не адрес сайта */}
+          <a className="adm-mail-link" href={relativeLink(mail.demoLink)} data-testid="mail-demo-link">
             {mail.demoLink}
           </a>
         </Card>

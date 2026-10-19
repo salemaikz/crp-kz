@@ -62,7 +62,8 @@ export async function listMail(
   // значения вне списков игнорируются: фильтр не доходит до SQL в виде произвольной строки
   const status = q.status && MAIL_STATUSES.includes(q.status) ? q.status : null;
   const template = q.template && MAIL_TEMPLATES.includes(q.template) ? q.template : null;
-  const page = Math.max(1, Math.floor(q.page ?? 1));
+  // нецелое и огромное число (NaN, 1e300) не доходит до OFFSET
+  const page = Number.isSafeInteger(q.page) && (q.page as number) >= 1 ? Math.min(q.page as number, 1e6) : 1;
 
   const [count] = await db.sql<{ n: number }>`
     SELECT count(*) AS n FROM mail_outbox

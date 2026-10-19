@@ -3,7 +3,7 @@
 // У токена 256 бит энтропии, поэтому медленный хеш и соль не нужны, а поиск идёт по UNIQUE token_hash.
 import { createHash, randomBytes } from 'node:crypto';
 import { newId, now, type Sql } from '../db';
-import { cancelSecrets } from '../mail/outbox';
+import { cancelSecrets, checkAuthMailCaps, normalizeRecipient } from '../mail/outbox';
 
 export type TokenKind = 'password_reset' | 'email_verify';
 
@@ -30,15 +30,24 @@ export function isTokenShape(raw: unknown): raw is string {
 }
 
 /**
- * Выдать токен. Сначала гасит неиспользованные токены этого вида у пользователя (used_at = now)
- * и снимает с отправки их письма, затем вставляет новый. Вызывать в транзакции вместе с enqueueMail.
- * email — адрес аккаунта на момент выдачи: если он сменится, ссылка перестанет работать.
+ * Выдать токен. Вызывать в транзакции вместе с enqueueMail.
+ * Порядок: блокировка строки пользователя (выдачи одного пользователя идут по очереди, иначе при
+ * READ COMMITTED параллельные выдачи не видят токены друг друга и остаются живыми несколько ссылок),
+ * проверка лимитов писем, гашение неиспользованных токенов этого вида и снятие их писем, вставка нового.
+ * В auth_tokens пишется email из users, а не переданный: иначе другой регистр сломал бы consumeToken.
+ * input.email сверяется с аккаунтом (без учёта регистра); расхождение — ошибка вызывающего.
+ * null — сработал лимит писем (recipient_cap или global_cap): ничего не изменено, прежняя ссылка жива,
+ * вызывающий ничего не отправляет и отвечает так же, как при успехе.
  */
 export async function issueToken(
   sql: Sql,
   input: { userId: string; email: string; kind: TokenKind; nowMs?: number },
-): Promise<{ raw: string; expiresAt: number }> {
+): Promise<{ raw: string; expiresAt: number } | null> {
   const t = input.nowMs ?? now();
+  const [user] = await sql<{ email: string }>`SELECT email FROM users WHERE id = ${input.userId} FOR UPDATE`;
+  if (!user) throw new Error('tokens: пользователь не найден');
+  if (normalizeRecipient(user.email) !== normalizeRecipient(input.email)) throw new Error('tokens: адрес не совпадает с аккаунтом');
+  if (await checkAuthMailCaps(sql, user.email, t)) return null;
   await sql`
     UPDATE auth_tokens SET used_at = ${t}
     WHERE user_id = ${input.userId} AND kind = ${input.kind} AND used_at IS NULL`;
@@ -47,7 +56,7 @@ export async function issueToken(
   const expiresAt = t + TOKEN_TTL_MS[input.kind];
   await sql`
     INSERT INTO auth_tokens (id, user_id, kind, token_hash, email, expires_at, created_at)
-    VALUES (${newId()}, ${input.userId}, ${input.kind}, ${hash}, ${input.email}, ${expiresAt}, ${t})`;
+    VALUES (${newId()}, ${input.userId}, ${input.kind}, ${hash}, ${user.email}, ${expiresAt}, ${t})`;
   return { raw, expiresAt };
 }
 

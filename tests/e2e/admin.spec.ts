@@ -24,7 +24,7 @@ test('гость и не-админ не видят админку', async ({ pa
   await expect(page.getByRole('heading', { name: 'Такой страницы нет' })).toBeVisible();
 });
 
-test('письма: пункт меню, режим демо, письмо открывается', async ({ page }) => {
+test('письма: пункт меню, режим демо, фильтр, 404', async ({ page }) => {
   await loginAsAdmin(page);
   await expect(page.getByTestId('admin-nav-mail')).toHaveText('Письма');
   await page.getByTestId('admin-nav-mail').click();

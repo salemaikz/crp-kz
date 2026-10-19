@@ -27,6 +27,7 @@ async function issueWithMail(userId: string, kind: 'password_reset' | 'email_ver
   return db.tx(async (sql) => {
     const email = `${userId}@x.kz`;
     const secret = await issueToken(sql, { userId, email, kind, nowMs });
+    assert.ok(secret, 'лимит не должен срабатывать');
     const res = await enqueueMail(sql, { template: kind, locale: 'ru', to: email, userId, params: { name: 'Имя' }, secret, nowMs });
     assert.ok(res.queued);
     return { secret, mailId: res.queued ? res.id : '' };
@@ -34,7 +35,9 @@ async function issueWithMail(userId: string, kind: 'password_reset' | 'email_ver
 }
 
 test('выдача: в БД только хеш, срок по виду токена', async () => {
-  const { raw, expiresAt } = await db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'u1@x.kz', kind: 'password_reset', nowMs: T0 }));
+  const issued = await db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'u1@x.kz', kind: 'password_reset', nowMs: T0 }));
+  assert.ok(issued);
+  const { raw, expiresAt } = issued;
   assert.equal(expiresAt, T0 + TOKEN_TTL_MS.password_reset);
   const rows = await db.sql<{ tokenHash: string; expiresAt: number; usedAt: number | null; email: string }>`SELECT * FROM auth_tokens`;
   assert.equal(rows.length, 1);
@@ -43,7 +46,7 @@ test('выдача: в БД только хеш, срок по виду токе
   assert.equal(rows[0]?.usedAt, null);
 
   const v = await db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'u1@x.kz', kind: 'email_verify', nowMs: T0 }));
-  assert.equal(v.expiresAt, T0 + TOKEN_TTL_MS.email_verify);
+  assert.equal(v?.expiresAt, T0 + TOKEN_TTL_MS.email_verify);
 });
 
 test('новая выдача гасит прежний токен и отменяет его письмо', async () => {
@@ -98,4 +101,32 @@ test('гонка: один токен расходуется ровно один
   const { secret } = await issueWithMail('u1', 'password_reset');
   const results = await Promise.all(Array.from({ length: 6 }, () => db.tx((sql) => consumeToken(sql, secret.raw, 'password_reset', T0 + 5))));
   assert.equal(results.filter((r) => r !== null).length, 1);
+});
+
+test('адрес в токене берётся из users, расхождение вне регистра — ошибка', async () => {
+  await db.sql`UPDATE users SET email = 'Mixed@x.kz' WHERE id = 'u1'`;
+  const issued = await db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'mixed@X.kz', kind: 'password_reset', nowMs: T0 }));
+  assert.ok(issued);
+  assert.deepEqual(await db.tx((sql) => consumeToken(sql, issued.raw, 'password_reset', T0 + 1)), { userId: 'u1', email: 'Mixed@x.kz' });
+  await assert.rejects(db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'other@x.kz', kind: 'password_reset', nowMs: T0 })));
+});
+
+test('гонка выдачи: после N параллельных выдач жив ровно один токен', async () => {
+  await issueWithMail('u1', 'password_reset');
+  await Promise.all(Array.from({ length: 4 }, (_, i) => db.tx(async (sql) => {
+    const secret = await issueToken(sql, { userId: 'u1', email: 'u1@x.kz', kind: 'password_reset', nowMs: T0 + 10 + i });
+    if (secret) await enqueueMail(sql, { template: 'password_reset', locale: 'ru', to: 'u1@x.kz', userId: 'u1', params: { name: 'Имя' }, secret, nowMs: T0 + 10 + i });
+  })));
+  const [live] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM auth_tokens WHERE user_id = 'u1' AND used_at IS NULL`;
+  assert.equal(live?.n, 1);
+});
+
+test('лимит писем: отказ не гасит прежнюю ссылку', async () => {
+  const issued: Awaited<ReturnType<typeof issueWithMail>>[] = [];
+  for (let i = 0; i < 5; i++) issued.push(await issueWithMail('u1', 'password_reset', T0 + i));
+  const sixth = await db.tx((sql) => issueToken(sql, { userId: 'u1', email: 'u1@x.kz', kind: 'password_reset', nowMs: T0 + 10 }));
+  assert.equal(sixth, null);
+  const [orphans] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM auth_tokens WHERE user_id = 'u1'`;
+  assert.equal(orphans?.n, 5, 'новый токен не создан');
+  assert.ok(await db.tx((sql) => consumeToken(sql, issued[4]!.secret.raw, 'password_reset', T0 + 11)), 'пятая ссылка рабочая');
 });

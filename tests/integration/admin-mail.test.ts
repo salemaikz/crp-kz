@@ -88,6 +88,7 @@ test('постраничность: 50 на страницу', async () => {
   assert.equal(p2.rows.length, 5);
   assert.equal(p1.rows[0]?.id, `p${String(MAIL_PAGE_SIZE + 4).padStart(3, '0')}`);
   assert.deepEqual((await listMail(admin, { page: -3 })).rows.length, MAIL_PAGE_SIZE);
+  for (const bad of [Number.NaN, 1e300, Infinity, 1.5]) await listMail(admin, { page: bad });
 });
 
 test('просмотр: тема и текст без ссылки с токеном; в демо ссылка отдельным полем', async () => {
