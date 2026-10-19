@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { SEED_COURSES } from '../../src/lib/db/seed/content';
 import type { QuizBlock } from '../../src/lib/content/types';
+import { pdfText, unicodeInPdf } from '../helpers/pdf-text';
 
 // Основной сценарий слушателя: демо-клиент → «Моё обучение» → «Целина» → урок → тест → «Урок пройден».
 // Правильные ответы берём из демо-контента сида — в браузере их до сдачи нет.
@@ -174,7 +175,9 @@ test('сертификат: «Скачать PDF» — ссылка на фай�
   for await (const c of stream) chunks.push(c as Buffer);
   const bytes = Buffer.concat(chunks);
   expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
-  expect(bytes.toString('latin1')).not.toContain('@crp.demo');
+  // текст в PDF сжат и записан номерами глифов, поэтому ищем по таблицам ToUnicode: «@» в документе нет
+  expect(unicodeInPdf(bytes).has(0x40)).toBe(false);
+  expect(pdfText(bytes)).not.toContain('@crp.demo');
 
   // повторный запрос с ETag — 304 без нового файла
   const first = await page.request.get(pdfHref);
@@ -199,4 +202,10 @@ test('сертификат: «Скачать PDF» — ссылка на фай�
   await expect(gp).toHaveURL(/\/ru\/login\?next=/);
   expect(decodeURIComponent(new URL(gp.url()).searchParams.get('next') as string)).toMatch(/\/ru\/learn\/[^/]+\/certificate$/);
   await guest.close();
+
+  // сессия кончилась, пока страница сертификата открыта: клик по ссылке ведёт на вход,
+  // а не сохраняет страницу входа как файл
+  await page.context().clearCookies();
+  await link.click();
+  await expect(page).toHaveURL(/\/ru\/login\?next=/);
 });

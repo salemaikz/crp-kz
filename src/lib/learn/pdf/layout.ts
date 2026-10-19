@@ -17,6 +17,20 @@ export function courseFontSize(title: string): number {
   return 25;
 }
 
+/**
+ * Уменьшает размер, чтобы самое длинное неразрывное место (слово или часть после дефиса) влезло в
+ * maxWidth pt. Ширина оценивается с запасом: 0,72 em на знак (заглавные Geologica Bold шире строчных).
+ * Нужно именно неразрывным строкам: перенос идёт только по пробелам и после дефиса.
+ */
+export function fitFontSize(size: number, text: string, maxWidth: number): number {
+  const longest = text
+    .split(/\s+/)
+    .flatMap((w) => w.split(/(?<=-)/))
+    .reduce((m, w) => Math.max(m, Array.from(w).length), 0);
+  if (longest === 0) return size;
+  return Math.min(size, Math.floor((maxWidth / 0.72 / longest) * 10) / 10);
+}
+
 const MAX_TEXT = 200;
 
 /** Управляющие C0/C1 и разделители строк и абзацев (U+2028, U+2029): заменяются пробелом. */
@@ -39,12 +53,15 @@ function isInvisible(c: number): boolean {
  * Строка для PDF: убирает управляющие символы C0/C1 (переводы строк и табы становятся пробелом),
  * символы направления письма и невидимые символы нулевой ширины, схлопывает пробелы и обрезает
  * до 200 символов. Защита от подделки вида ФИО.
+ * hasGlyph — есть ли символ в шрифте: отсутствующие (эмодзи, иероглифы, галочки) удаляются, иначе
+ * react-pdf падает на всём документе. Без hasGlyph проверки по шрифту нет.
  */
-export function sanitizePdfText(s: string): string {
+export function sanitizePdfText(s: string, hasGlyph?: (codePoint: number) => boolean): string {
   let out = '';
   for (const ch of s) {
     const c = ch.codePointAt(0)!;
     if (isInvisible(c)) continue;
+    if (hasGlyph && !isControl(c) && !/\s/.test(ch) && !hasGlyph(c)) continue;
     out += isControl(c) ? ' ' : ch;
   }
   const cleaned = out.replace(/\s+/g, ' ').trim();

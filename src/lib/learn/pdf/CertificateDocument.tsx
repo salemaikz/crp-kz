@@ -2,7 +2,8 @@
 // (BRAND.md, «Сертификат»). Без водяных знаков, теней, градиентов и колец. Без хуков и next-intl:
 // все строки приходят в props.
 import { Document, Image, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
-import { courseFontSize, nameFontSize, sanitizePdfText } from './layout';
+import { hasPdfGlyph } from './glyphs';
+import { courseFontSize, fitFontSize, nameFontSize, sanitizePdfText } from './layout';
 import { qrPath } from './qr';
 import { A4_LANDSCAPE, PDF_COLORS as C } from './theme';
 import type { CertificatePdfInput } from './types';
@@ -11,6 +12,9 @@ import type { CertificatePdfInput } from './types';
 const LOGO_WIDTH = 185;
 const LOGO_RATIO = 196 / 940;
 const QR_SIZE = 84;
+/** Ширина строки ФИО внутри рамки и ширина блока названия курса (см. стили), pt. */
+const NAME_MAX_WIDTH = 700;
+const COURSE_MAX_WIDTH = 522;
 /** Белое поле вокруг QR, в модулях. */
 const QR_QUIET = 4;
 
@@ -52,10 +56,13 @@ const s = StyleSheet.create({
 type Props = CertificatePdfInput & { logo: Buffer };
 
 export function CertificateDocument({ logo, ...c }: Props) {
-  // ФИО и название курса приходят из БД: чистим от управляющих и bidi-символов
-  const holder = sanitizePdfText(c.holderName);
-  const course = sanitizePdfText(c.courseTitle);
-  const nameSize = nameFontSize(holder);
+  // ФИО и название курса приходят из БД: чистим от управляющих и bidi-символов и от символов,
+  // которых нет в шрифте (эмодзи, иероглифы): с ними react-pdf падает на всём документе
+  const holder = sanitizePdfText(c.holderName, hasPdfGlyph);
+  const course = sanitizePdfText(c.courseTitle, hasPdfGlyph);
+  // длинное слово без пробелов и дефисов не переносится, поэтому размер подгоняется под ширину рамки
+  const nameSize = fitFontSize(nameFontSize(holder), holder, NAME_MAX_WIDTH);
+  const courseSize = fitFontSize(courseFontSize(course), course, COURSE_MAX_WIDTH);
   const qr = qrPath(c.verifyUrl);
   const view = qr.size + QR_QUIET * 2;
   const l = c.labels;
@@ -78,7 +85,7 @@ export function CertificateDocument({ logo, ...c }: Props) {
             <Text style={s.small}>{l.certifies}</Text>
             <Text style={[s.name, { fontSize: nameSize, letterSpacing: -0.03 * nameSize }]}>{holder}</Text>
             <Text style={s.small}>{l.completed}</Text>
-            <Text style={[s.course, { fontSize: courseFontSize(course) }]}>{course}</Text>
+            <Text style={[s.course, { fontSize: courseSize }]}>{course}</Text>
           </View>
 
           <View style={s.foot}>

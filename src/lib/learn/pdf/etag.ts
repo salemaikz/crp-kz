@@ -3,11 +3,11 @@
 import { createHash } from 'node:crypto';
 import { CERT_PDF_TEMPLATE_VERSION, type CertificatePdfInput } from './types';
 
-export function certificatePdfEtag(input: CertificatePdfInput): string {
+export function certificatePdfEtag(input: CertificatePdfInput, templateVersion = CERT_PDF_TEMPLATE_VERSION): string {
   const h = createHash('sha256');
   h.update(
     JSON.stringify([
-      CERT_PDF_TEMPLATE_VERSION,
+      templateVersion,
       input.number,
       input.holderName,
       input.courseTitle,

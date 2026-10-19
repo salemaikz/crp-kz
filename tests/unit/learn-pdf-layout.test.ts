@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { certificatePdfEtag } from '../../src/lib/learn/pdf/etag';
-import { courseFontSize, nameFontSize, sanitizePdfText } from '../../src/lib/learn/pdf/layout';
+import { courseFontSize, fitFontSize, nameFontSize, sanitizePdfText } from '../../src/lib/learn/pdf/layout';
 import { qrPath } from '../../src/lib/learn/pdf/qr';
 import { CERT_PDF_TEMPLATE_VERSION, type CertificatePdfInput } from '../../src/lib/learn/pdf/types';
 
@@ -51,6 +51,32 @@ describe('sanitizePdfText', () => {
   });
   it('казахские буквы не затрагиваются', () => {
     assert.equal(sanitizePdfText('Әлия Құрманғалиқызы'), 'Әлия Құрманғалиқызы');
+  });
+});
+
+describe('sanitizePdfText: символы вне шрифта', () => {
+  const has = (c: number) => c < 0x250 || (c >= 0x400 && c <= 0x52f);
+  it('удаляет эмодзи, галочки и иероглифы, пробелы схлопывает', () => {
+    assert.equal(sanitizePdfText('Анна \u{1F600}', has), 'Анна');
+    assert.equal(sanitizePdfText('Ахмет \u2713 Бек', has), 'Ахмет Бек');
+    assert.equal(sanitizePdfText('Анна \u4e2d\u6587', has), 'Анна');
+    assert.equal(sanitizePdfText('Маркетинг 2.0 \u2714', has), 'Маркетинг 2.0');
+  });
+  it('расширенная латиница и казахские буквы остаются, неразрывный пробел остаётся пробелом', () => {
+    assert.equal(sanitizePdfText('Gülşen Ağabek\u00a0Nūrlan', has), 'Gülşen Ağabek Nūrlan');
+  });
+});
+
+describe('fitFontSize', () => {
+  it('короткое имя не трогает', () => {
+    assert.equal(fitFontSize(47, 'Анна Серикова', 700), 47);
+  });
+  it('двойная фамилия через дефис считается по частям', () => {
+    assert.equal(fitFontSize(47, 'ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА', 700), fitFontSize(47, 'ҚҰРМАНҒАЛИҚЫЗЫ-', 700));
+  });
+  it('длинное слово без пробелов уменьшается до ширины', () => {
+    const size = fitFontSize(47, 'А'.repeat(60), 700);
+    assert.ok(size < 47 && size * 0.72 * 60 <= 700, `size ${size}`);
   });
 });
 
@@ -119,5 +145,7 @@ describe('certificatePdfEtag', () => {
   });
   it('версия макета входит в ETag', () => {
     assert.ok(Number.isInteger(CERT_PDF_TEMPLATE_VERSION) && CERT_PDF_TEMPLATE_VERSION >= 1);
+    assert.equal(certificatePdfEtag(base), certificatePdfEtag(base, CERT_PDF_TEMPLATE_VERSION));
+    assert.notEqual(certificatePdfEtag(base, 1), certificatePdfEtag(base, 2));
   });
 });

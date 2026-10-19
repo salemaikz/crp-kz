@@ -34,6 +34,7 @@ export function registerPdfFonts(): void {
       { src: path.join(PDF_FONT_DIR, 'Onest-SemiBold.ttf'), fontWeight: 600 },
     ],
   });
-  // без переносов внутри слов: английские правила ломают кириллицу
-  Font.registerHyphenationCallback((word) => [word]);
+  // без переносов внутри слов (английские правила ломают кириллицу), но после дефиса строку
+  // можно разорвать: двойные фамилии вроде Құрманғалиқызы-Нұрсұлтанова иначе уходят за рамку
+  Font.registerHyphenationCallback((word) => word.split(/(?<=-)/));
 }
