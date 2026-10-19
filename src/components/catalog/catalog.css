@@ -50,13 +50,14 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 24px;
     min-width: 0;
-    max-width: 660px;
+    /* шире половины: «предпринимателей» при 68 px — около 650 px; кольца лежат позади абсолютом */
+    max-width: 780px;
   }
   .cat-hero__title {
     color: #fff;
     font-size: clamp(38px, 5.2vw, 68px);
-    overflow-wrap: anywhere;
-    hyphens: auto;
+    /* страховка от вылета, а не правило переноса: слово должно помещаться целиком */
+    overflow-wrap: break-word;
   }
   /* на 360 px «предпринимателей» при 38 px не помещается: нижняя граница мельче только для узких экранов */
   @media (max-width: 420px) {
@@ -69,7 +70,7 @@
     color: #c3cad6;
     font-size: clamp(18px, 1.5vw, 21px);
     line-height: 1.5;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .cat-hero__actions {
     display: flex;
