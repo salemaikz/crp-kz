@@ -17,10 +17,18 @@
     "test:integration": "node --import tsx --test --test-concurrency=1 \"tests/integration/**/*.test.ts\"",
     "test:e2e": "playwright test",
     "db:migrate": "tsx scripts/db-migrate.ts",
-    "db:seed": "tsx scripts/db-seed.ts"
+    "db:seed": "tsx scripts/db-seed.ts",
+    "db:status": "tsx scripts/db-migrate.ts --status",
+    "db:grants": "tsx scripts/db-grants.ts",
+    "ops:preflight": "tsx scripts/ops-preflight.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
+    "mail:worker": "tsx scripts/mail-worker.ts",
+    "reminders:send": "tsx scripts/send-reminders.ts",
+    "files:sweep": "tsx scripts/files-sweep.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.10",
+    "@react-pdf/renderer": "4.9.0",
     "bcryptjs": "3.0.3",
     "lucide-react": "1.59.0",
     "next": "16.4.2",
