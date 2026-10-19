@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Award, BookOpen, Clock, Infinity as InfinityIcon, ListChecks, Check, Languages } from 'lucide-react';
+import { Languages } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CertificatePreview } from '@/components/catalog/CertificatePreview';
@@ -10,7 +10,7 @@ import { CourseFaq } from '@/components/catalog/CourseFaq';
 import { CourseMarkdown } from '@/components/catalog/CourseMarkdown';
 import { PriceCard } from '@/components/catalog/PriceCard';
 import { ProgramAccordion } from '@/components/catalog/ProgramAccordion';
-import { Breadcrumbs, Card, Container, PageHeader, Section, Stat } from '@/components/ui';
+import { Breadcrumbs, Container, PageHeader, Section } from '@/components/ui';
 import '@/components/catalog/catalog.css';
 import { getCurrentUser } from '@/lib/auth';
 import { CRP_CONTACTS } from '@/lib/brand';
@@ -20,7 +20,7 @@ import { localeAlternates, metaDescription } from '@/lib/catalog/seo';
 import { accessPeriod } from '@/lib/catalog/visibility';
 import { hasLocale as hasL10n, htmlLang, t as pick } from '@/lib/content/l10n';
 import type { Locale } from '@/lib/content/types';
-import { formatDuration, formatNumber } from '@/lib/format';
+import { formatDuration } from '@/lib/format';
 import { routing } from '@/lib/i18n/routing';
 
 type Props = { params: Promise<{ locale: string; slug: string }> };
@@ -57,7 +57,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-/** Страница курса: шапка с ценой и главной кнопкой, что получите, программа, описание, FAQ, сертификат. */
+/** Страница курса: шапка с фактами и карточкой цены, что получите, программа, описание, для кого, FAQ, сертификат. */
 export default async function CoursePage({ params }: Props) {
   const { locale, slug } = await resolveLocale(params);
   setRequestLocale(locale);
@@ -109,17 +109,11 @@ export default async function CoursePage({ params }: Props) {
       : null;
 
   const gain = [
-    { key: 'lessons', icon: <BookOpen />, title: t('course.gain.lessons.title'), text: t('course.gain.lessons.text') },
-    { key: 'tests', icon: <ListChecks />, title: t('course.gain.tests.title'), text: t('course.gain.tests.text') },
-    {
-      key: 'certificate',
-      icon: <Award />,
-      title: t('course.gain.certificate.title'),
-      text: t('course.gain.certificate.text'),
-    },
+    { key: 'lessons', title: t('course.gain.lessons.title'), text: t('course.gain.lessons.text') },
+    { key: 'tests', title: t('course.gain.tests.title'), text: t('course.gain.tests.text') },
+    { key: 'certificate', title: t('course.gain.certificate.title'), text: t('course.gain.certificate.text') },
     {
       key: 'access',
-      icon: periodText ? <Clock /> : <InfinityIcon />,
       title: t('course.gain.access.title'),
       text: periodText ? t('course.gain.access.limited', { period: periodText }) : t('course.gain.access.unlimited'),
     },
@@ -146,21 +140,26 @@ export default async function CoursePage({ params }: Props) {
         title={title}
         lead={summary || undefined}
         meta={
-          <>
-            <Stat
-              size="sm"
-              label={t('course.meta.level')}
-              value={course.level ? t(`level.${course.level}`) : t('level.any')}
-            />
+          <ul className="cat-facts">
+            <li>
+              {t('course.meta.level')}: <strong>{course.level ? t(`level.${course.level}`) : t('level.any')}</strong>
+            </li>
             {course.durationMin > 0 && (
-              <Stat size="sm" label={t('course.meta.duration')} value={formatDuration(course.durationMin, locale)} />
+              <li>
+                {t('course.meta.duration')}: <strong>{formatDuration(course.durationMin, locale)}</strong>
+              </li>
             )}
-            <Stat size="sm" label={t('course.meta.modules')} value={formatNumber(course.modulesCount, locale)} />
-            <Stat size="sm" label={t('course.meta.lessons')} value={formatNumber(course.lessonsCount, locale)} />
+            <li>
+              <strong>{t('counts.modules', { count: course.modulesCount })}</strong>
+              {' · '}
+              <strong>{t('counts.lessons', { count: course.lessonsCount })}</strong>
+            </li>
             {!staff && (
-              <Stat size="sm" label={t('course.meta.access')} value={periodText ?? t('course.meta.accessUnlimited')} />
+              <li>
+                {t('course.meta.access')}: <strong>{periodText ?? t('course.meta.accessUnlimited')}</strong>
+              </li>
             )}
-          </>
+          </ul>
         }
         aside={<PriceCard course={course} locale={locale} cta={cta} state={state} org={org} />}
       />
@@ -172,17 +171,14 @@ export default async function CoursePage({ params }: Props) {
               <h2 id="gain-title" className="display cat-block__title">
                 {t('course.sections.gain')}
               </h2>
-              <div className="cat-gain">
+              <ul className="cat-rows cat-rows--terms">
                 {gain.map((g) => (
-                  <Card key={g.key} padding="md" className="cat-gain__item">
-                    <span className="cat-gain__icon" aria-hidden="true">
-                      {g.icon}
-                    </span>
+                  <li key={g.key}>
                     <h3>{g.title}</h3>
                     <p>{g.text}</p>
-                  </Card>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </section>
 
             <section className="cat-block" aria-labelledby="program-title">
@@ -211,12 +207,9 @@ export default async function CoursePage({ params }: Props) {
               <h2 id="audience-title" className="display cat-block__title">
                 {t('course.sections.audience')}
               </h2>
-              <ul className="cat-audience">
+              <ul className="cat-rows">
                 {(['a1', 'a2', 'a3'] as const).map((k) => (
-                  <li key={k}>
-                    <Check aria-hidden="true" />
-                    {t(`course.audience.${audience}.${k}`, { org })}
-                  </li>
+                  <li key={k}>{t(`course.audience.${audience}.${k}`, { org })}</li>
                 ))}
               </ul>
             </section>
@@ -236,14 +229,14 @@ export default async function CoursePage({ params }: Props) {
       </Section>
 
       {(cta.kind === 'start' || cta.kind === 'buy') && (
-        <Section tone="night" glow spacing="tight" aria-labelledby="bottom-title">
+        <Section tone="night" spacing="tight" aria-labelledby="bottom-title">
           <Container>
             <div className="cat-bottom">
               <div className="cat-bottom__copy">
                 <h2 id="bottom-title" className="display h2">
                   {t('course.bottom.title')}
                 </h2>
-                <p className="lead">{t('course.bottom.text')}</p>
+                <p className="lead">{t('course.bottom.text', { lessons: t('counts.lessons', { count: course.lessonsCount }) })}</p>
               </div>
               <div className="cat-bottom__action">
                 <CourseCtaButton slug={course.slug} cta={cta} />

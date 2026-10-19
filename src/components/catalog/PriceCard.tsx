@@ -1,4 +1,3 @@
-import { Award, BookOpen, Check, ListChecks, Smartphone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Card, Price, ProgressBar } from '@/components/ui';
 import type { CourseCta } from '@/lib/catalog/cta';
@@ -18,7 +17,7 @@ type Props = {
   org: string;
 };
 
-/** Карточка цены в шапке курса: цена, срок доступа, состояние зрителя и главная кнопка. */
+/** Карточка цены в шапке курса: цена, срок доступа, состояние зрителя, главная кнопка и список «что входит» строками. */
 export function PriceCard({ course, locale, cta, state, org }: Props) {
   const t = useTranslations('catalog');
   const staff = course.visibility === 'internal';
@@ -33,7 +32,6 @@ export function PriceCard({ course, locale, cta, state, org }: Props) {
   return (
     <Card large padding="lg" className="on-paper cat-price">
       <div className="cat-price__head">
-        <span className="cat-price__label">{t('course.price.label')}</span>
         {staff ? (
           <>
             <span className="cat-price__value">{t('course.price.staff')}</span>
@@ -91,29 +89,14 @@ export function PriceCard({ course, locale, cta, state, org }: Props) {
       )}
 
       <ul className="cat-price__list">
-        <li>
-          <BookOpen aria-hidden="true" />
-          {t('course.includes.lessons', { count: course.lessonsCount })}
-        </li>
-        <li>
-          <ListChecks aria-hidden="true" />
-          {t('course.includes.tests')}
-        </li>
-        <li>
-          <Award aria-hidden="true" />
-          {t('course.includes.certificate')}
-        </li>
-        <li>
-          <Smartphone aria-hidden="true" />
-          {t('course.includes.mobile')}
-        </li>
+        <li>{t('course.includes.lessons', { count: course.lessonsCount })}</li>
+        <li>{t('course.includes.tests')}</li>
+        <li>{t('course.includes.certificate')}</li>
+        <li>{t('course.includes.mobile')}</li>
       </ul>
 
       {paid && cta.kind === 'buy' && (
-        <p className="cat-price__pay">
-          <Check aria-hidden="true" />
-          {t('course.price.payment')}
-        </p>
+        <p className="cat-price__pay">{t('course.price.payment')}</p>
       )}
     </Card>
   );

@@ -1,4 +1,3 @@
-import { ArrowRight, BookOpen, Clock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Badge, Card, Price, ProgressBar } from '@/components/ui';
 import type { Locale } from '@/lib/content/types';
@@ -16,73 +15,55 @@ type Props = {
   state?: ViewerCourseState;
 };
 
-/** Карточка курса в каталоге и на лендинге: обложка, мета, цена или прогресс. Вся карточка — ссылка. */
+/**
+ * Карточка курса в каталоге и на главной: сверху панель тона с числом уроков, ниже название,
+ * строка «уровень · вид», разделитель и цена или статус зрителя. Вся карточка — ссылка.
+ */
 export function CourseCard({ course, locale, state }: Props) {
   const t = useTranslations('catalog');
   const title = pick(course.title, locale);
-  const summary = pick(course.summary, locale);
   const enrolled = state?.access.ok === true;
   const expired = state?.access.reason === 'expired';
   const completed = enrolled && state.lessonsTotal > 0 && state.lessonsDone >= state.lessonsTotal;
   const staff = course.visibility === 'internal';
+  const paid = (course.priceKzt ?? 0) > 0;
   const org = course.ownerOrgKind === 'owner' ? 'ЦРП' : (course.ownerOrgName ?? t('card.orgFallback'));
+  const kind = staff ? t('card.staffLabel', { org }) : paid ? t('card.kind.paid') : t('card.kind.free');
+  const meta = [course.level ? t(`level.${course.level}`) : null, kind].filter(Boolean).join(' · ');
 
   return (
-    <Card as="article" padding="none" large interactive className="cat-card">
-      <CourseCover slug={course.slug} title={title} cover={course.cover}>
-        {course.level && <Badge tone="night">{t(`level.${course.level}`)}</Badge>}
-        {completed ? (
-          <Badge tone="success" dot>
-            {t('card.completed')}
-          </Badge>
-        ) : enrolled ? (
-          <Badge tone="red" dot>
-            {t('card.enrolled')}
-          </Badge>
-        ) : expired ? (
-          <Badge tone="warning">{t('card.expired')}</Badge>
-        ) : staff ? (
-          <Badge tone="red">{t('card.staffLabel', { org })}</Badge>
-        ) : null}
+    <Card as="article" padding="none" interactive className="cat-card">
+      <CourseCover slug={course.slug} cover={course.cover}>
+        <strong className="cat-cover__value">{t('counts.lessons', { count: course.lessonsCount })}</strong>
+        {course.durationMin > 0 && <span className="cat-cover__sub">{formatDuration(course.durationMin, locale)}</span>}
       </CourseCover>
 
       <div className="cat-card__body">
-        <ul className="cat-card__meta">
-          {course.durationMin > 0 && (
-            <li>
-              <Clock aria-hidden="true" />
-              {formatDuration(course.durationMin, locale)}
-            </li>
-          )}
-          <li>
-            <BookOpen aria-hidden="true" />
-            {t('counts.lessons', { count: course.lessonsCount })}
-          </li>
-        </ul>
-
         <h3 className="cat-card__title">
           <Link href={`/courses/${course.slug}`} className="cat-card__link">
             {title}
           </Link>
         </h3>
-        {summary && <p className="cat-card__summary">{summary}</p>}
+        <p className="cat-card__meta">{meta}</p>
 
         <div className="cat-card__foot">
-          {enrolled ? (
+          {completed ? (
+            <Badge tone="success" dot>
+              {t('card.completed')}
+            </Badge>
+          ) : enrolled ? (
             <ProgressBar
               size="sm"
               value={state.percent}
               label={t('card.progressLabel')}
               ariaLabel={`${t('card.progressLabel')}: ${title}`}
             />
+          ) : expired ? (
+            <Badge tone="warning">{t('card.expired')}</Badge>
+          ) : staff ? (
+            <span className="cat-card__staff">{t('card.staffPrice')}</span>
           ) : (
-            <div className="cat-card__price">
-              {staff ? <span className="cat-card__staff">{t('card.staffPrice')}</span> : <Price kzt={course.priceKzt} />}
-              <span className="cat-card__more" aria-hidden="true">
-                {t('card.details')}
-                <ArrowRight />
-              </span>
-            </div>
+            <Price kzt={course.priceKzt} />
           )}
         </div>
       </div>

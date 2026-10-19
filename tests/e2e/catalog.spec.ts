@@ -11,11 +11,14 @@ async function demoLogin(page: Page, role: 'admin' | 'manager' | 'operator' | 'c
 
 test('лендинг: первый экран, витрина курсов и блок для команд', async ({ page }) => {
   await page.goto('/ru');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Учитесь у практиков');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Курсы Центра развития предпринимателей');
   await expect(page.getByRole('link', { name: 'Выбрать курс' }).first()).toHaveAttribute('href', '/ru/courses');
-  await expect(page.getByRole('heading', { level: 2, name: 'С чего начать' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Курсы', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Целина', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 2, name: /От выбора курса до сертификата/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: 'Как проходит обучение' })).toBeVisible();
+  // шаги без «Шаг N»: номера 01–04 в кружке, заголовки шагов — действия
+  await expect(page.getByRole('heading', { level: 3, name: 'Получите сертификат' })).toBeVisible();
+  await expect(page.getByText('Шаг 1')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 3, name: 'Для сотрудников ЦРП' })).toBeVisible();
 });
 
@@ -90,7 +93,7 @@ test('платный курс: вместо «Начать бесплатно» 
 test('казахская версия: заголовок и lang="kk"', async ({ page }) => {
   await page.goto('/kz/courses');
   await expect(page.locator('html')).toHaveAttribute('lang', 'kk');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Бизнес пен команданың өсуіне арналған курстар');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Курстар');
   await page.goto('/kz/courses/celina');
   await expect(page.getByRole('link', { name: 'Кіріп, сатып алу' }).first()).toHaveAttribute(
     'href',

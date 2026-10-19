@@ -1,22 +1,17 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { cn, initials } from '@/components/ui';
+import { cn } from '@/components/ui';
 
-/** Палитры «ночных» обложек: как карточки кейсов на сайте ЦРП — тёмный градиент и цветное свечение. */
-const PALETTES = [
-  { from: '#0b0f17', to: '#34183a', glow: 'rgb(227 30 36 / 42%)' },
-  { from: '#0b0f17', to: '#18305f', glow: 'rgb(64 118 236 / 44%)' },
-  { from: '#0e1726', to: '#4b3410', glow: 'rgb(232 170 52 / 40%)' },
-  { from: '#0b0f17', to: '#0f433b', glow: 'rgb(48 190 150 / 36%)' },
-] as const;
+/** Тона обложек: как цвета карточек кейсов на сайте ЦРП — тёмная панель с цветным свечением тона. */
+const TONES = ['#7a1f2b', '#1f3f8a', '#17695a', '#7a5a14', '#5b2a86'] as const;
 
-/** Детерминированный номер палитры по slug: у курса всегда один и тот же цвет. */
-export function paletteIndex(slug: string): number {
+/** Детерминированный номер тона по slug: у курса всегда один и тот же цвет. */
+export function toneIndex(slug: string): number {
   let h = 0;
   for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return h % PALETTES.length;
+  return h % TONES.length;
 }
 
-/** Обложка — только свой (https или относительный) адрес; всё прочее рисуем градиентом. */
+/** Обложка — только свой (https или относительный) адрес; всё прочее рисуем панелью тона. */
 function safeCover(url: string | null): string | null {
   if (!url) return null;
   return /^(https:\/\/|\/(?!\/))/.test(url) ? url : null;
@@ -24,36 +19,26 @@ function safeCover(url: string | null): string | null {
 
 type Props = {
   slug: string;
-  title: string;
   cover: string | null;
-  /** Бейджи поверх обложки (уровень, статус). */
+  /** Полезный факт на панели: «15 уроков» крупно и длительность мелко. */
   children?: ReactNode;
   className?: string;
 };
 
-/** Обложка курса: градиент с кольцами и инициалами либо загруженная картинка. */
-export function CourseCover({ slug, title, cover, children, className }: Props) {
-  const p = PALETTES[paletteIndex(slug)] ?? PALETTES[0];
+/**
+ * Обложка курса: тёмная панель тона курса с фактом сверху карточки либо загруженное фото
+ * (под текстом — сплошной тёмный градиент для читаемости). Без букв-монограмм и колец.
+ */
+export function CourseCover({ slug, cover, children, className }: Props) {
   const image = safeCover(cover);
-  const style = { '--cv-from': p.from, '--cv-to': p.to, '--cv-glow': p.glow } as CSSProperties;
+  const style = { '--tone': TONES[toneIndex(slug)] ?? TONES[0] } as CSSProperties;
   return (
-    <div className={cn('cat-cover', className)} style={style}>
-      {image ? (
+    <div className={cn('cat-cover', image && 'cat-cover--image', className)} style={style}>
+      {image && (
         // eslint-disable-next-line @next/next/no-img-element -- внешний адрес обложки заранее неизвестен
         <img src={image} alt="" className="cat-cover__img" loading="lazy" />
-      ) : (
-        <>
-          <svg className="cat-cover__rings" viewBox="0 0 200 200" aria-hidden="true" focusable="false">
-            <circle cx="100" cy="100" r="96" />
-            <circle cx="100" cy="100" r="68" />
-            <circle cx="100" cy="100" r="40" />
-          </svg>
-          <span className="cat-cover__initials display" aria-hidden="true">
-            {initials(title)}
-          </span>
-        </>
       )}
-      {children && <div className="cat-cover__badges">{children}</div>}
+      {children && <div className="cat-cover__fact">{children}</div>}
     </div>
   );
 }

@@ -1,6 +1,5 @@
-import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Card, Container, EmptyState, Section, TextLink } from '@/components/ui';
+import { Badge, Button, Card, Container, EmptyState, Mark, Section, TextLink } from '@/components/ui';
 import { CRP_CONTACTS } from '@/lib/brand';
 import type { CatalogCourse, ViewerCourseState } from '@/lib/catalog/types';
 import type { Locale } from '@/lib/content/types';
@@ -22,12 +21,9 @@ export function FeaturedCourses({
     <Section tone="board" aria-labelledby="featured-title">
       <Container>
         <div className="section-head section-head--split">
-          <div className="cat-head">
-            <h2 id="featured-title" className="display h2">
-              {t('title')}
-            </h2>
-            <p className="lead">{t('lead')}</p>
-          </div>
+          <h2 id="featured-title" className="display h2">
+            {t('title')}
+          </h2>
           <TextLink href="/courses">{t('all')}</TextLink>
         </div>
         {courses.length > 0 ? (
@@ -46,7 +42,7 @@ export function FeaturedCourses({
 
 const STEPS = ['step1', 'step2', 'step3', 'step4'] as const;
 
-/** «Как проходит обучение»: четыре шага на ночной секции, как «От разбора до результата» на сайте. */
+/** «Как проходит обучение»: четыре шага на тёмной секции, номер 01–04 в кружке с красной обводкой, как на сайте. */
 export function HowItWorks() {
   const t = useTranslations('catalog.home.steps');
   return (
@@ -58,21 +54,16 @@ export function HowItWorks() {
           </h2>
         </div>
         <ol className="cat-steps">
-          {STEPS.map((key) => (
+          {STEPS.map((key, i) => (
             <li key={key} className="cat-step">
-              <span className="cat-step__label">{t(`${key}.label`)}</span>
+              <span className="cat-step__num" aria-hidden="true">
+                {String(i + 1).padStart(2, '0')}
+              </span>
               <h3 className="cat-step__title">{t(`${key}.title`)}</h3>
               <p className="cat-step__text">{t(`${key}.text`)}</p>
-              <span className="cat-step__tag">{t(`${key}.tag`)}</span>
             </li>
           ))}
         </ol>
-        <div className="cat-steps__cta">
-          <Button href="/courses" variant="primary" size="lg">
-            {t('cta')}
-          </Button>
-          <p>{t('note')}</p>
-        </div>
       </Container>
     </Section>
   );
@@ -80,7 +71,7 @@ export function HowItWorks() {
 
 export type TeamsViewer = 'guest' | 'user' | 'manager';
 
-/** «Для команд и компаний»: обучение сотрудников ЦРП (ссылка на «Команду» для руководителей) и B2B «скоро». */
+/** «Обучение команд»: обучение сотрудников ЦРП (ссылка на «Команду» для руководителей) и B2B «скоро». */
 export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Locale }) {
   const t = useTranslations('catalog.home.teams');
   return (
@@ -96,12 +87,9 @@ export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Lo
           <Card large padding="lg" className="cat-team">
             <h3 className="h3">{t('staff.title')}</h3>
             <p className="muted">{t('staff.text')}</p>
-            <ul className="cat-checks">
+            <ul className="cat-rows">
               {(['point1', 'point2', 'point3'] as const).map((k) => (
-                <li key={k}>
-                  <Check aria-hidden="true" />
-                  {t(`staff.${k}`)}
-                </li>
+                <li key={k}>{t(`staff.${k}`)}</li>
               ))}
             </ul>
             {viewer === 'manager' && (
@@ -121,12 +109,9 @@ export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Lo
               <Badge tone="neutral">{t('clients.badge')}</Badge>
             </div>
             <p className="muted">{t('clients.text')}</p>
-            <ul className="cat-checks">
+            <ul className="cat-rows">
               {(['point1', 'point2', 'point3'] as const).map((k) => (
-                <li key={k}>
-                  <Check aria-hidden="true" />
-                  {t(`clients.${k}`)}
-                </li>
+                <li key={k}>{t(`clients.${k}`)}</li>
               ))}
             </ul>
             <Button href={CRP_CONTACTS.phoneHref} variant="ghost">
@@ -139,16 +124,19 @@ export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Lo
   );
 }
 
-/** Финальный призыв: ночная секция со свечением. */
+/**
+ * Финальная карточка, как заявка на сайте: тёмная, с красным свечением внизу слева и линией-маркером
+ * под одним словом заголовка. Единственное место после первого экрана, где допустим этот декор.
+ */
 export function FinalCta() {
   const t = useTranslations('catalog.home.final');
   return (
-    <Section tone="night" glow spacing="tight" aria-labelledby="final-title">
+    <Section tone="board" spacing="tight" aria-labelledby="final-title">
       <Container>
-        <div className="cat-final">
+        <div className="cat-final on-night">
           <div className="cat-final__copy">
             <h2 id="final-title" className="display h2">
-              {t('title')}
+              {t.rich('title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
             </h2>
             <p className="lead">{t('lead')}</p>
           </div>

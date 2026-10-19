@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { FeaturedCourses, FinalCta, HowItWorks, TeamsBlock } from '@/components/catalog/home/HomeSections';
 import { HomeHero } from '@/components/catalog/home/HomeHero';
 import { getCurrentUser, getMemberships } from '@/lib/auth';
-import { getCatalogStats, getViewerStates, listFeaturedCourses } from '@/lib/catalog/queries';
+import { getViewerStates, listFeaturedCourses } from '@/lib/catalog/queries';
 import { localeAlternates } from '@/lib/catalog/seo';
 import type { Locale } from '@/lib/content/types';
 import { routing } from '@/lib/i18n/routing';
@@ -26,15 +26,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-/** Лендинг академии: первый экран, витрина курсов, как проходит обучение, команды, призыв. */
+/** Лендинг: первый экран, курсы, как проходит обучение, обучение команд, финальная карточка. */
 export default async function HomePage({ params }: Props) {
   const locale = await resolveLocale(params);
   setRequestLocale(locale);
 
   const user = await getCurrentUser();
-  const [memberships, stats, featured] = await Promise.all([
+  const [memberships, featured] = await Promise.all([
     user ? getMemberships(user.id) : Promise.resolve([]),
-    getCatalogStats(),
     listFeaturedCourses(3),
   ]);
   const states = user ? await getViewerStates(user.id, featured) : undefined;
@@ -42,7 +41,7 @@ export default async function HomePage({ params }: Props) {
 
   return (
     <>
-      <HomeHero stats={stats} loggedIn={Boolean(user)} locale={locale} />
+      <HomeHero loggedIn={Boolean(user)} />
       <FeaturedCourses courses={featured} locale={locale} states={states} />
       <HowItWorks />
       <TeamsBlock viewer={viewer} locale={locale} />

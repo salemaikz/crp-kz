@@ -23,7 +23,7 @@ export default async function CertIndexPage({ params }: Props) {
   const t = await getTranslations('learn.verify');
   return (
     <>
-      <PageHeader tone="night" title={t('index.title')} lead={t('index.lead')} />
+      <PageHeader tone="board" title={t('index.title')} lead={t('index.lead')} />
       <Section tone="board" spacing="tight">
         <Container size="narrow">
           <Card large className="lrn-verify">
