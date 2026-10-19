@@ -243,3 +243,15 @@ test('не администратор не редактирует и не чит
     (e: unknown) => e instanceof AdminError && e.code === 'FORBIDDEN',
   );
 });
+
+test('блоки image и file до задачи 3B отклоняются кодом FEATURE_DISABLED', async () => {
+  const fileId = '11111111-1111-4111-8111-111111111111';
+  const image = { id: 'img1', type: 'image', fileId, alt: 'Схема', width: 800, height: 600 };
+  const file = { id: 'f1', type: 'file', fileId, label: 'Памятка', name: 'memo', ext: 'pdf', sizeBytes: 1000 };
+  for (const block of [image, file]) {
+    await assert.rejects(
+      () => save({}, [block]),
+      (e: unknown) => e instanceof AdminError && e.code === 'FEATURE_DISABLED',
+    );
+  }
+});

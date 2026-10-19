@@ -63,6 +63,11 @@ export function kzQuizzesMatch(content: LessonContent): boolean {
   return kzQuizzesInSync(content.ru.blocks, content.kz?.blocks ?? []);
 }
 
+function hasFileBlocks(content: LessonContent): boolean {
+  const all = [...content.ru.blocks, ...(content.kz?.blocks ?? [])];
+  return all.some((b) => b.type === 'image' || b.type === 'file');
+}
+
 export type LessonSaveInput = {
   titleRu?: unknown;
   titleKz?: unknown;
@@ -93,6 +98,10 @@ export async function updateLesson(
 
   const m = meta.data;
   const doc = content.data;
+  // Схема принимает image/file, но проверка ссылок на файлы (принадлежность, права) появится в 3B.
+  // До этого такие блоки не сохраняем: ссылка на чужой или несуществующий файл попала бы в урок.
+  // Снимет 3B вместе с проверкой ссылок.
+  if (hasFileBlocks(doc)) throw new AdminError('FEATURE_DISABLED');
   if (!kzQuizzesMatch(doc)) throw new AdminError('KZ_QUIZ_MISMATCH', { content: 'kzQuizMismatch' });
 
   const db = await getDb();
