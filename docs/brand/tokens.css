@@ -1,0 +1,63 @@
+/*
+ * Дизайн-токены ЦРП. Источник правил — docs/brand/BRAND.md.
+ * При создании каркаса переносится в src/styles/ и подключается в globals.css.
+ * Шрифты (next/font/google): Montserrat 500/600/700, Open Sans 400/600,
+ * subsets: ['cyrillic', 'cyrillic-ext', 'latin'].
+ */
+
+:root {
+  /* фирменные */
+  --crp-red: #e31e24;
+  --crp-red-hover: #c4161c;
+  --crp-red-dark: #980000;
+  --crp-red-on-dark: #ff5a5f;
+
+  /* нейтральные */
+  --crp-black: #101010;
+  --crp-ink: #1b1b1b;
+  --crp-white: #ffffff;
+  --crp-gray-50: #f5f5f5;
+  --crp-gray-100: #ebebeb;
+  --crp-gray-300: #c7c7c7;
+  --crp-gray-400: #a1a1a1;
+  --crp-gray-600: #6b6b6b;
+
+  /* состояния */
+  --crp-success: #1b7f3b;
+  --crp-warning: #b25e00;
+  --crp-info: #1f5fbf;
+  --crp-error: #b3151b;
+
+  /* форма */
+  --crp-radius-control: 8px;
+  --crp-radius-card: 12px;
+  --crp-radius-pill: 999px;
+  --crp-shadow: 0 2px 8px rgba(16, 16, 16, 0.08);
+
+  /* типографика */
+  --crp-font-heading: 'Montserrat', Arial, sans-serif;
+  --crp-font-body: 'Open Sans', Arial, sans-serif;
+}
+
+/* Tailwind 4: токены как утилиты (bg-crp-red, text-crp-black, font-heading …) */
+@theme {
+  --color-crp-red: var(--crp-red);
+  --color-crp-red-hover: var(--crp-red-hover);
+  --color-crp-red-dark: var(--crp-red-dark);
+  --color-crp-red-on-dark: var(--crp-red-on-dark);
+  --color-crp-black: var(--crp-black);
+  --color-crp-ink: var(--crp-ink);
+  --color-crp-gray-50: var(--crp-gray-50);
+  --color-crp-gray-100: var(--crp-gray-100);
+  --color-crp-gray-300: var(--crp-gray-300);
+  --color-crp-gray-400: var(--crp-gray-400);
+  --color-crp-gray-600: var(--crp-gray-600);
+  --color-crp-success: var(--crp-success);
+  --color-crp-warning: var(--crp-warning);
+  --color-crp-info: var(--crp-info);
+  --color-crp-error: var(--crp-error);
+  --font-heading: var(--crp-font-heading);
+  --font-body: var(--crp-font-body);
+  --radius-control: var(--crp-radius-control);
+  --radius-card: var(--crp-radius-card);
+}
