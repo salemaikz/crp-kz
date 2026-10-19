@@ -157,9 +157,10 @@
   .mark__svg {
     position: absolute;
     left: -2%;
-    bottom: -0.2em;
+    /* ниже выносок «у»/«р» (низ строки + ~0.05em), но выше верха заглавных следующей строки (~0.17em) */
+    bottom: -0.34em;
     width: 104%;
-    height: 0.42em;
+    height: 0.36em;
     overflow: visible;
     pointer-events: none;
   }

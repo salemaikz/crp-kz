@@ -28,8 +28,8 @@ export function FeaturedCourses({
         </div>
         {courses.length > 0 ? (
           <div className="cat-grid">
-            {courses.map((course, index) => (
-              <CourseCard key={course.id} course={course} index={index} locale={locale} state={states?.get(course.id)} />
+            {courses.map((course) => (
+              <CourseCard key={course.id} course={course} locale={locale} state={states?.get(course.id)} />
             ))}
           </div>
         ) : (
@@ -130,7 +130,7 @@ export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Lo
 export function FinalCta() {
   const t = useTranslations('catalog.home.final');
   return (
-    <Section tone="board" spacing="tight" aria-labelledby="final-title">
+    <Section tone="board" spacing="tight" className="cat-final-section" aria-labelledby="final-title">
       <Container>
         <div className="cat-final on-night">
           <div className="cat-final__copy">

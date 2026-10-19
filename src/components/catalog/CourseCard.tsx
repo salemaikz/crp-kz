@@ -10,8 +10,6 @@ import './catalog.css';
 
 type Props = {
   course: CatalogCourse;
-  /** Порядковый номер курса в выдаче: по нему выбирается тон обложки. */
-  index: number;
   locale: Locale;
   /** Состояние зрителя по курсу; нет — гость или нет зачисления. */
   state?: ViewerCourseState;
@@ -22,7 +20,7 @@ type Props = {
  * строка «уровень» (для курсов сотрудников — ещё метка организации), краткое описание,
  * разделитель и цена или статус зрителя. Вся карточка — ссылка.
  */
-export function CourseCard({ course, index, locale, state }: Props) {
+export function CourseCard({ course, locale, state }: Props) {
   const t = useTranslations('catalog');
   const title = pick(course.title, locale);
   const enrolled = state?.access.ok === true;
@@ -38,7 +36,7 @@ export function CourseCard({ course, index, locale, state }: Props) {
 
   return (
     <Card as="article" padding="none" interactive className="cat-card">
-      <CourseCover index={index} cover={course.cover}>
+      <CourseCover slug={course.slug} cover={course.cover}>
         <strong className="cat-cover__value">{t('counts.lessons', { count: course.lessonsCount })}</strong>
         {course.durationMin > 0 && <span className="cat-cover__sub">{formatDuration(course.durationMin, locale)}</span>}
       </CourseCover>

@@ -141,11 +141,6 @@ export default async function CoursePage({ params }: Props) {
               {' · '}
               <strong>{t('counts.lessons', { count: course.lessonsCount })}</strong>
             </li>
-            {!staff && (
-              <li>
-                {t('course.meta.access')}: <strong>{periodText ?? t('course.meta.accessUnlimited')}</strong>
-              </li>
-            )}
           </ul>
         }
         aside={<PriceCard course={course} locale={locale} cta={cta} state={state} org={org} />}

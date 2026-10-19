@@ -1,13 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { cn } from '@/components/ui';
-
-/** Тона обложек: как цвета карточек кейсов на сайте ЦРП — тёмная панель с цветным свечением тона. */
-const TONES = ['#7a1f2b', '#1f3f8a', '#17695a', '#7a5a14', '#5b2a86'] as const;
-
-/** Тон по порядковому номеру в выдаче: соседние карточки всегда разного цвета. */
-export function toneAt(index: number): string {
-  return TONES[((index % TONES.length) + TONES.length) % TONES.length] ?? TONES[0];
-}
+import { toneFor } from '@/lib/catalog/tone';
 
 /** Обложка — только свой (https или относительный) адрес; всё прочее рисуем панелью тона. */
 function safeCover(url: string | null): string | null {
@@ -16,8 +9,8 @@ function safeCover(url: string | null): string | null {
 }
 
 type Props = {
-  /** Порядковый номер курса в выдаче (с нуля): определяет тон. */
-  index: number;
+  /** Slug курса: по его хешу выбирается тон, поэтому цвет курса везде одинаков. */
+  slug: string;
   cover: string | null;
   /** Полезный факт на панели: «15 уроков» крупно и длительность мелко. */
   children?: ReactNode;
@@ -28,9 +21,9 @@ type Props = {
  * Обложка курса: тёмная панель тона курса с фактом сверху карточки либо загруженное фото
  * (сверху, где текст, затемнение плотнее). Без букв-монограмм и колец.
  */
-export function CourseCover({ index, cover, children, className }: Props) {
+export function CourseCover({ slug, cover, children, className }: Props) {
   const image = safeCover(cover);
-  const style = { '--tone': toneAt(index) } as CSSProperties;
+  const style = { '--tone': toneFor(slug) } as CSSProperties;
   return (
     <div className={cn('cat-cover', image && 'cat-cover--image', className)} style={style}>
       {image && (

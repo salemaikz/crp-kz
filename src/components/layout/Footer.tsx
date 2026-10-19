@@ -1,11 +1,25 @@
 import Image from 'next/image';
+import { unstable_rethrow } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { getCurrentUser } from '@/lib/auth';
 import { CRP_CONTACTS } from '@/lib/brand';
 import { Link } from '@/lib/i18n/navigation';
 
+/** Вошёл ли пользователь: ссылки «Войти» и «Регистрация» ему не нужны. Сбой сессии = гость. */
+async function isSignedIn(): Promise<boolean> {
+  try {
+    return Boolean(await getCurrentUser());
+  } catch (err) {
+    // служебные исключения Next (динамический рендер, redirect) пробрасываем
+    unstable_rethrow(err);
+    console.error('[footer] не удалось получить пользователя', err);
+    return false;
+  }
+}
+
 /** Подвал «ночь»: логотип, о платформе, ссылки, контакты, «Разработано SalemAI». */
 export async function Footer() {
-  const t = await getTranslations('common');
+  const [t, signedIn] = await Promise.all([getTranslations('common'), isSignedIn()]);
   const year = new Date().getFullYear();
   return (
     <footer className="site-footer">
@@ -24,12 +38,16 @@ export async function Footer() {
               <li>
                 <Link href="/learn">{t('nav.learn')}</Link>
               </li>
-              <li>
-                <Link href="/login">{t('header.login')}</Link>
-              </li>
-              <li>
-                <Link href="/register">{t('header.register')}</Link>
-              </li>
+              {!signedIn && (
+                <>
+                  <li>
+                    <Link href="/login">{t('header.login')}</Link>
+                  </li>
+                  <li>
+                    <Link href="/register">{t('header.register')}</Link>
+                  </li>
+                </>
+              )}
             </ul>
           </nav>
           <nav aria-labelledby="footer-crp">

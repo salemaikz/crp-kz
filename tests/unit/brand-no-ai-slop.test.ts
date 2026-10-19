@@ -29,12 +29,12 @@ function find(pattern: RegExp, among: string[] = files): string[] {
 
 test('нет стекла, размытия и смешивания слоёв', () => {
   assert.deepEqual(find(/backdrop-filter|mix-blend/), []);
-  // blur — только как CSS-фильтр: onBlur и подобное в коде не считается
-  assert.deepEqual(find(/filter:\s*blur\(/, cssFiles), []);
+  // blur( без буквы перед ним: onBlur и .blur() не считаются
+  assert.deepEqual(find(/(?<![A-Za-z])blur\(/, [...cssFiles, ...tsxFiles]), []);
 });
 
 test('нет рукописного шрифта и цветной тени кнопки', () => {
-  assert.deepEqual(find(/font-hand|font-caveat|\bCaveat\(|shadow-red/), []);
+  assert.deepEqual(find(/font-hand|caveat|shadow-red/i), []);
 });
 
 test('удалённые компоненты не используются: Eyebrow, Hand, LinkArrow', () => {

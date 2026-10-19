@@ -10,7 +10,7 @@ export async function CertLookup({ locale, defaultValue }: { locale: string; def
     <form action={lookupCertificateAction} className="lrn-lookup">
       <input type="hidden" name="locale" value={locale} />
       <div className="lrn-lookup__row">
-        <Field label={t('label')} hint={t('hint')}>
+        <Field label={t('label')}>
           <Input
             name="number"
             placeholder={t('placeholder')}
@@ -20,12 +20,16 @@ export async function CertLookup({ locale, defaultValue }: { locale: string; def
             spellCheck={false}
             maxLength={40}
             required
+            aria-describedby="cert-lookup-hint"
           />
         </Field>
         <Button type="submit" size="lg">
           {t('submit')}
         </Button>
       </div>
+      <p id="cert-lookup-hint" className="lrn-lookup__hint">
+        {t('hint')}
+      </p>
     </form>
   );
 }

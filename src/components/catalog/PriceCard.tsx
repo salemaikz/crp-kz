@@ -17,7 +17,7 @@ type Props = {
   org: string;
 };
 
-/** Карточка цены в шапке курса: цена, срок доступа, состояние зрителя, главная кнопка и список «что входит» строками. */
+/** Карточка цены в шапке курса: цена, срок доступа, состояние зрителя, главная кнопка и список «что входит» (число уроков — в шапке). */
 export function PriceCard({ course, locale, cta, state, org }: Props) {
   const t = useTranslations('catalog');
   const staff = course.visibility === 'internal';
@@ -89,7 +89,6 @@ export function PriceCard({ course, locale, cta, state, org }: Props) {
       )}
 
       <ul className="cat-price__list">
-        <li>{t('course.includes.lessons', { count: course.lessonsCount })}</li>
         <li>{t('course.includes.tests')}</li>
         <li>{t('course.includes.certificate')}</li>
       </ul>
