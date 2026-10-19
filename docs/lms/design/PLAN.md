@@ -13,14 +13,14 @@
 
 Сверено с кодом: `src/lib/{db,env,auth,orders,admin,team,learn,catalog,content,i18n}`, `scripts/*`,
 `migrations/*`, `next.config.ts`, `package.json`, `.env.example`, `tests/**`, `.github/workflows/ci.yml`,
-`src/components/admin/AuditFeed.tsx`, `messages/*/admin.json`, `DECISIONS.md` (последняя запись — D-024),
+`src/components/admin/AuditFeed.tsx`, `messages/*/admin.json`, `DECISIONS.md`,
 `docs/lms/BUILD.md`.
 
-**Предусловие.** В рабочем дереве лежат незакоммиченные правки полного снимка демо-базы
+**Предусловие (выполнено в волне 0).** Правки полного снимка демо-базы
 (`src/lib/db/{index,snapshot}.ts`, `scripts/{build-demo-snapshot.ts,prebuild.mjs}`,
-`tests/integration/demo-snapshot.test.ts`, BUILD §11). План на них опирается: в снимке есть сид,
-даты сдвигаются по колонкам `BIGINT *_at`, тест требует, чтобы каждая BIGINT-колонка кончалась на
-`_at` или `_kzt`. Волна 0 начинается после того, как эти правки закоммичены.
+`tests/integration/demo-snapshot.test.ts`, BUILD §11) закоммичены до начала волны 0. План на них
+опирается: в снимке есть сид, даты сдвигаются по колонкам `BIGINT *_at`, тест требует, чтобы каждая
+BIGINT-колонка кончалась на `_at` или `_kzt`.
 
 ---
 
@@ -113,7 +113,8 @@ export function isFeatureActive(name: FeatureName, env?: Env, opts?: { today?: s
 `src/lib/env.ts` (волна 0):
 ```ts
 export function isDemo(env?: Env): boolean;                 // логика прежняя, окружение — параметром
-/** NEXT_PUBLIC_SITE_URL задан явно; вне демо — только https://. */
+/** В демо всегда true (адрес: NEXT_PUBLIC_SITE_URL, затем URL Netlify, затем VERCEL_URL, иначе localhost);
+ *  вне демо нужен явный https-адрес. */
 export function siteUrlConfigured(env?: Env): boolean;
 ```
 
@@ -295,7 +296,7 @@ try {
 
 ```ts
 export type AuditEntity = 'user' | 'course' | 'module' | 'lesson' | 'enrollment' | 'order' | 'certificate'
-  | 'team' | 'org' | 'file' | 'mail' | 'system';
+  | 'team' | 'org' | 'file' | 'mail' | 'reminders' | 'system';
 /** Реестр имён: существующие действия (course.create … team.assign) + новые из таблицы ниже. */
 export const AUDIT_ACTIONS = [ /* … */ ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -322,7 +323,7 @@ kz — с пометкой «требует проверки носителем�
 | `org.create` | org / id | NULL (CLI) | 5A | Создана организация | Ұйым құрылды |
 | `org.member_add` | org / id, meta `{userId, role}` | NULL (CLI) | 5A | В организацию добавлен сотрудник | Ұйымға қызметкер қосылды |
 | `mail.fail` | mail / mailId, meta `{template}` | NULL | 4A | Письмо не отправлено после 5 попыток | Хат 5 әрекеттен кейін жіберілмеді |
-| `reminders.run` | system / `'reminders'`, meta `{dueSoon, overdue, digests}` | админ или NULL | 4A | Сформированы напоминания о сроках | Мерзімдер туралы еске салғыштар құрылды |
+| `reminders.run` | reminders / `'reminders'`, meta `{dueSoon, overdue, digests}` | админ или NULL | 4A | Сформированы напоминания о сроках | Мерзімдер туралы еске салғыштар құрылды |
 | `file.upload` | file / id, meta `{courseId, lessonId, purpose, ext, sizeBytes}` (без имени файла: оно может быть ПДн, а журнал не чистится) | админ | 3B | Загружен файл в курс «{course}» | «{course}» курсына файл жүктелді |
 | `file.delete` | file / id | админ | 3B | Удалён файл из курса «{course}» | «{course}» курсынан файл өшірілді |
 | `file.purge` | file / id, meta `{reason:'orphan'}` | NULL | 3B | Удалён неиспользуемый файл | Қолданылмайтын файл өшірілді |
@@ -552,7 +553,8 @@ NEXT_TELEMETRY_DISABLED=
   открыт, поэтому любой может загрузить PDF/DOCX и раздавать его с домена демо. Варианты: в демо
   загруженные файлы видит только admin; или загрузка в демо только для чтения. Ключ блокировки
   квоты — в `src/lib/db/locks.ts`. Инвариант `files.course_id = lessons.course_id` отметить в BUILD:
-  он сломается, если появится перенос модуля между курсами.
+  он сломается, если появится перенос модуля между курсами. Журнал: meta `file.upload` без `name`
+  (Ж-5): up §3.4 шаг 12 и угроза #21 обновлены; в `files-upload` проверить отсутствие ключа `name`.
 - **4A.** Сид не создаёт строк `mail_outbox`: время в `dedupe_key` и `params` при сдвиге снимка
   не меняется. Скрипты — через `openScriptDb()`.
 - **5A.** `/api/health` ловит `MigrationsPendingError` из `getDb()` и отвечает 503. Preflight
