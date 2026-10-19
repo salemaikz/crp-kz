@@ -141,7 +141,9 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 аккаунт потом удалили (такой заказ оплатить нельзя). `amount_kzt` и
 `access_days` (NULL — бессрочно) — снимок предложения курса при оформлении.
 Оплата берёт срок из заказа. Миграция `2026-10-19-orders-access-days.sql`
-один раз заполняет старые заказы сроком текущего предложения. `email_verified_at` — NULL, пока email не подтверждён
+один раз заполняет старые заказы сроком текущего предложения.
+
+`users.email_verified_at` — NULL, пока email не подтверждён
 (поток подтверждения — позже; у демо-пользователей сида заполнено).
 
 Индексы: `enrollments(user_id)`, `enrollments(course_id)`, `lessons(module_id, position)`,
