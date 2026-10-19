@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { getDb, newId, now } from '../db';
+import { writeAudit } from '../audit';
 import { isDemo } from '../env';
 import { isDemoAccountEmail } from './demo';
 import { normalizeEmail } from './index';
@@ -120,9 +121,7 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
     await sql`
       INSERT INTO consents (id, user_id, order_id, kind, version, created_at)
       VALUES (${newId()}, ${userId}, NULL, 'pd_processing', ${PD_CONSENT_VERSION}, ${t})`;
-    await sql`
-      INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-      VALUES (${newId()}, ${userId}, 'user.register', 'user', ${userId}, ${db.json({})}, ${t})`;
+    await writeAudit(sql, { actorId: userId, action: 'user.register', entity: 'user', entityId: userId, createdAt: t });
     return true;
   });
   if (!created) return { error: 'exists', values };

@@ -19,11 +19,11 @@ const row = async (entityId: string) =>
 
 test('писатель без актора: система, крон и CLI пишут actor_id NULL', async () => {
   const t0 = Date.now();
-  await writeAudit(db.sql, { actorId: null, action: 'reminders.run', entity: 'system', entityId: 'reminders', meta: { dueSoon: 2 } });
+  await writeAudit(db.sql, { actorId: null, action: 'reminders.run', entity: 'reminders', entityId: 'reminders', meta: { dueSoon: 2 } });
   const r = await row('reminders');
   assert.equal(r?.actorId, null);
   assert.equal(r?.action, 'reminders.run');
-  assert.equal(r?.entity, 'system');
+  assert.equal(r?.entity, 'reminders');
   assert.deepEqual(r?.meta, { dueSoon: 2 });
   assert.ok((r?.createdAt ?? 0) >= t0);
 });

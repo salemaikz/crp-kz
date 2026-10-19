@@ -303,7 +303,7 @@ test('exportTeamReport: руководитель получает CSV своей
   const [log] = await db.sql<{ actorId: string; entity: string; entityId: string; meta: { rows: number; status: string | null } }>`
     SELECT actor_id, entity, entity_id, meta FROM audit_log WHERE action = 'team.export' ORDER BY created_at DESC LIMIT 1`;
   assert.equal(log?.actorId, 'mgrA');
-  assert.equal(log?.entity, 'organization');
+  assert.equal(log?.entity, 'org');
   assert.equal(log?.entityId, 'orgA');
   assert.equal(log?.meta.rows, 6);
 });

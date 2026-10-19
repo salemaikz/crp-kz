@@ -2,6 +2,7 @@
 // из предложения курса в момент заказа.
 import { canAccessCourse } from '../access';
 import { getDb, newId, now } from '../db';
+import { writeAudit } from '../audit';
 import { orderAccessKey } from './access-key';
 import { formatOrderNumber, randomOrderDigits } from './number';
 import { findOpenOrder, getCourseForSale } from './queries';
@@ -119,17 +120,21 @@ export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions
         VALUES (${newId()}, ${user.id}, ${id}, ${kind}, ${CONSENT_VERSION}, ${t})`;
     }
     // в журнал — без персональных данных покупателя
-    await sql`
-      INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-      VALUES (${newId()}, ${user.id}, 'order.create', 'order', ${id},
-              ${db.json({
-                number,
-                courseId: course.id,
-                amountKzt,
-                accessDays,
-                paymentMethod: input.paymentMethod,
-                buyerType: input.buyerType,
-              })}, ${t})`;
+    await writeAudit(sql, {
+      actorId: user.id,
+      action: 'order.create',
+      entity: 'order',
+      entityId: id,
+      meta: {
+        number,
+        courseId: course.id,
+        amountKzt,
+        accessDays,
+        paymentMethod: input.paymentMethod,
+        buyerType: input.buyerType,
+      },
+      createdAt: t,
+    });
     return { id, number, amountKzt, userId: user.id, accessDays, existing: false, differs: false };
   });
 

@@ -2,7 +2,8 @@
 // руководитель этой организации → курс назначаемый → каждый сотрудник — член этой организации.
 import { enroll, enrollmentState, type Enrollment } from '../access';
 import { isManagerOf } from '../auth';
-import { getDb, newId, now } from '../db';
+import { getDb, now } from '../db';
+import { writeAudit } from '../audit';
 import { listAssignableCourses } from './assignable';
 import { TeamError } from './types';
 
@@ -86,10 +87,14 @@ export async function assignCourse(input: AssignInput): Promise<AssignResult> {
       assigned.push(userId);
     }
 
-    await sql`
-      INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-      VALUES (${newId()}, ${input.actorId}, 'team.assign', 'course', ${course.id},
-              ${db.json({ orgId: input.orgId, userIds: assigned, skipped, dueAt })}, ${nowMs})`;
+    await writeAudit(sql, {
+      actorId: input.actorId,
+      action: 'team.assign',
+      entity: 'course',
+      entityId: course.id,
+      meta: { orgId: input.orgId, userIds: assigned, skipped, dueAt },
+      createdAt: nowMs,
+    });
     return { courseId: course.id, assigned, skipped };
   });
 }

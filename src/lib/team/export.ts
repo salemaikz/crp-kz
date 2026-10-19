@@ -1,6 +1,7 @@
 // Выгрузка отчёта в CSV: проверка прав, те же фильтры, что в интерфейсе, запись в журнал.
 import { isManagerOf } from '../auth';
-import { getDb, newId, now } from '../db';
+import { writeAudit } from '../audit';
+import { getDb, now } from '../db';
 import { reportToCsv, type CsvLabels } from './csv';
 import { buildTeamReport, filterReport, type ReportFilters } from './report';
 import { TeamError } from './types';
@@ -25,13 +26,13 @@ export async function exportTeamReport(input: {
   const csv = reportToCsv(rows, input.labels, input.locale);
 
   const db = await getDb();
-  await db.sql`
-    INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-    VALUES (${newId()}, ${input.actorId}, 'team.export', 'organization', ${input.orgId},
-            ${db.json({
-              rows: rows.length,
-              courseId: input.filters?.courseId ?? null,
-              status: input.filters?.status ?? null,
-            })}, ${nowMs})`;
+  await writeAudit(db.sql, {
+    actorId: input.actorId,
+    action: 'team.export',
+    entity: 'org',
+    entityId: input.orgId,
+    meta: { rows: rows.length, courseId: input.filters?.courseId ?? null, status: input.filters?.status ?? null },
+    createdAt: nowMs,
+  });
   return { csv, rows: rows.length };
 }

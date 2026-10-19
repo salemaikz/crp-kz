@@ -1,8 +1,8 @@
 // Сертификаты: выдача после 100 % (идемпотентно), номер CRP-<год>-<6 символов>, публичная проверка.
 import { randomInt } from 'node:crypto';
 import type { Locale } from '../content/types';
+import { writeAudit } from '../audit';
 import { getDb, isUniqueViolation, newId, now, type Sql } from '../db';
-import { jsonParam } from '../db/core';
 import { LearnError } from './errors';
 import { loadCourseAccess } from './gate';
 import type { CertificateRow, PublicCertificate } from './types';
@@ -74,10 +74,14 @@ export async function issueCertificate(input: IssueInput): Promise<{ certificate
       continue; // редкая гонка на уровне драйвера — пробуем другой номер
     }
     if (inserted) {
-      await db.sql`
-        INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-        VALUES (${newId()}, ${input.user.id}, 'certificate.issue', 'certificate', ${inserted.id},
-                ${jsonParam({ courseId: input.courseId, number: inserted.number })}, ${issuedAt})`;
+      await writeAudit(db.sql, {
+        actorId: input.user.id,
+        action: 'certificate.issue',
+        entity: 'certificate',
+        entityId: inserted.id,
+        meta: { courseId: input.courseId, number: inserted.number },
+        createdAt: issuedAt,
+      });
       return { certificate: inserted, created: true };
     }
     // ничего не вставили: либо параллельный вызов уже выдал сертификат, либо занят номер

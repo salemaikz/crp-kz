@@ -2,7 +2,8 @@
 // Переход статуса — условный UPDATE … WHERE status = <ожидаемый> RETURNING: двойной клик и
 // параллельные вызовы не создают дублей (второй получит отказ), возвращённый заказ не оплатить.
 import { DAY_MS, enroll, revokeEnrollment } from '../access';
-import { getDb, newId, now, type Sql } from '../db';
+import { writeAudit } from '../audit';
+import { getDb, now, type Sql } from '../db';
 import type { Order, OrderDecision, OrderStatus } from './types';
 
 type Op = 'paid' | 'cancel' | 'refund';
@@ -10,15 +11,12 @@ type Op = 'paid' | 'cancel' | 'refund';
 /** Запись order.* в журнал (без ПДн покупателя). */
 export async function audit(
   sql: Sql,
-  json: (v: unknown) => unknown,
   actorId: string,
-  action: string,
+  action: 'order.paid' | 'order.cancel' | 'order.refund' | 'order.cancel_by_owner',
   entityId: string,
-  meta: object,
+  meta: Record<string, unknown>,
 ) {
-  await sql`
-    INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-    VALUES (${newId()}, ${actorId}, ${action}, 'order', ${entityId}, ${json(meta)}, ${now()})`;
+  await writeAudit(sql, { actorId, action, entity: 'order', entityId, meta });
 }
 
 /** Почему переход не состоялся: заказа нет, статус уже другой или у заказа нет покупателя. */
@@ -62,7 +60,7 @@ export async function markPaid(orderId: string, adminId: string): Promise<OrderD
       },
       sql,
     );
-    await audit(sql, db.json, adminId, 'order.paid', o.id, {
+    await audit(sql, adminId, 'order.paid', o.id, {
       number: o.number,
       amountKzt: o.amountKzt,
       accessDays: o.accessDays,
@@ -83,7 +81,7 @@ export async function cancelOrder(orderId: string, adminId: string): Promise<Ord
       WHERE id = ${orderId} AND status = 'pending'
       RETURNING *`;
     if (!o) return refusal(sql, orderId, 'cancel');
-    await audit(sql, db.json, adminId, 'order.cancel', o.id, { number: o.number, amountKzt: o.amountKzt });
+    await audit(sql, adminId, 'order.cancel', o.id, { number: o.number, amountKzt: o.amountKzt });
     return { ok: true, order: o };
   });
 }
@@ -154,7 +152,7 @@ export async function refundOrder(orderId: string, adminId: string): Promise<Ord
         }
       }
     }
-    await audit(sql, db.json, adminId, 'order.refund', o.id, {
+    await audit(sql, adminId, 'order.refund', o.id, {
       number: o.number,
       amountKzt: o.amountKzt,
       accessRevoked,

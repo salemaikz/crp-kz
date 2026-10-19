@@ -24,7 +24,7 @@ export async function cancelOwnOrder(orderId: string, userId: string): Promise<O
       if (!cur) return { ok: false, reason: 'not_found' };
       return { ok: false, reason: cur.status === 'paid' ? 'already_paid' : 'not_pending', status: cur.status };
     }
-    await audit(sql, db.json, userId, 'order.cancel_by_owner', o.id, { number: o.number, amountKzt: o.amountKzt });
+    await audit(sql, userId, 'order.cancel_by_owner', o.id, { number: o.number, amountKzt: o.amountKzt });
     return { ok: true, order: o, userId };
   });
 }

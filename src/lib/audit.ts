@@ -15,12 +15,14 @@ export type AuditEntity =
   | 'org'
   | 'file'
   | 'mail'
+  | 'reminders'
   | 'system';
 
 /**
  * Реестр имён действий. Имя — строго «<сущность>.<глагол_snake>» в два сегмента: лента ищет подпись
  * по вложенному ключу, три сегмента сломали бы дерево ключей. Новое действие = строка здесь
- * и подписи ru/kz в admin.json.
+ * и подписи ru/kz в admin.json. У действий не от пользователя своя сущность (reminders.run, mail.fail),
+ * а не общая «system»: так сущность совпадает с первым сегментом имени.
  */
 export const AUDIT_ACTIONS = [
   // курсы, программа, уроки (admin)
@@ -79,9 +81,17 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
  */
 export async function writeAudit(
   sql: Sql,
-  e: { actorId: string | null; action: AuditAction; entity: AuditEntity; entityId: string; meta?: Record<string, unknown> },
+  e: {
+    actorId: string | null;
+    action: AuditAction;
+    entity: AuditEntity;
+    entityId: string;
+    meta?: Record<string, unknown>;
+    /** Время записи (epoch-мс); по умолчанию now(). Нужно, когда операция живёт на своём «сейчас». */
+    createdAt?: number;
+  },
 ): Promise<void> {
   await sql`
     INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-    VALUES (${newId()}, ${e.actorId}, ${e.action}, ${e.entity}, ${e.entityId}, ${jsonParam(e.meta ?? {})}, ${now()})`;
+    VALUES (${newId()}, ${e.actorId}, ${e.action}, ${e.entity}, ${e.entityId}, ${jsonParam(e.meta ?? {})}, ${e.createdAt ?? now()})`;
 }

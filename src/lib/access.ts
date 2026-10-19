@@ -1,7 +1,7 @@
 // Доступ к курсам — единственный источник правды. Нормативно: docs/lms/BUILD.md §4, SPEC.md §2.
 // Доступ к урокам — только по действующему зачислению (не отозвано, не истекло).
+import { writeAudit } from './audit';
 import { getDb, newId, now, type Sql } from './db';
-import { jsonParam } from './db/core';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -123,10 +123,8 @@ function expiryFor(accessDays: number | null | undefined, nowMs: number): number
   return expiresAt;
 }
 
-async function audit(sql: Sql, actorId: string | null, action: string, entityId: string, meta: object) {
-  await sql`
-    INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-    VALUES (${newId()}, ${actorId}, ${action}, 'enrollment', ${entityId}, ${jsonParam(meta)}, ${now()})`;
+async function audit(sql: Sql, actorId: string | null, action: 'enrollment.grant' | 'enrollment.revoke', entityId: string, meta: Record<string, unknown>) {
+  await writeAudit(sql, { actorId, action, entity: 'enrollment', entityId, meta });
 }
 
 /** Срок новой выдачи: явный expiresAt (если передан) или от accessDays. */
