@@ -7,6 +7,8 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { demoSnapshotPath } from '../../src/lib/db';
 import { listMigrations, migrate } from '../../src/lib/db/migrate';
+import { refreshSnapshotTime, snapshotMetaPath } from '../../src/lib/db/snapshot';
+import { seed } from '../../src/lib/db/seed';
 import { createPgliteDb, openPglite, wrapPglite } from '../../src/lib/db/pglite';
 
 async function tmp() {
@@ -116,6 +118,63 @@ test('demoSnapshotPath: только демо в production и только ес
       if (saved[k] === undefined) delete env[k];
       else env[k] = saved[k];
     }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('схема: все BIGINT-колонки public, кроме *_kzt, оканчиваются на _at (иначе сдвиг времени их пропустит)', async () => {
+  const db = wrapPglite(await openPglite());
+  try {
+    await migrate(db);
+    const cols = await db.sql<{ tableName: string; columnName: string }>`
+      SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND data_type = 'bigint' AND table_name <> 'schema_migrations'`;
+    assert.ok(cols.length > 0);
+    const bad = cols.filter((c) => !c.columnName.endsWith('_at') && !c.columnName.endsWith('_kzt'));
+    assert.deepEqual(bad, [], 'временная BIGINT-колонка без суффикса _at (или деньги без _kzt)');
+  } finally {
+    await db.close();
+  }
+});
+
+test('полный снимок: время сдвигается до «сейчас», деньги и schema_migrations не меняются', async () => {
+  const dir = await tmp();
+  try {
+    const DAY = 86_400_000;
+    const builtAt = Date.now() - 10 * DAY;
+    const file = path.join(dir, 'snap.tar.gz');
+    const pg = await openPglite();
+    const src = wrapPglite(pg);
+    await migrate(src);
+    await seed(src, { nowMs: builtAt });
+    await writeFile(file, Buffer.from(await (await pg.dumpDataDir('gzip')).arrayBuffer()));
+    await writeFile(snapshotMetaPath(file), JSON.stringify({ builtAt, seeded: true }));
+    await src.close();
+
+    const db = await createPgliteDb(undefined, { snapshotPath: file });
+    try {
+      const q = async () => ({
+        due: await db.sql<{ v: number }>`SELECT max(due_at) AS v FROM enrollments`,
+        ord: await db.sql<{ v: number }>`SELECT max(created_at) AS v FROM orders`,
+        money: await db.sql<{ v: number }>`SELECT sum(amount_kzt) AS v FROM orders`,
+        price: await db.sql<{ v: number }>`SELECT sum(price_kzt) AS v FROM course_offers`,
+        mig: await db.sql<{ v: number }>`SELECT sum(applied_at) AS v FROM schema_migrations`,
+      });
+      const before = await q();
+      await refreshSnapshotTime(db, file);
+      const after = await q();
+      const d = (k: 'due' | 'ord') => (after[k][0]!.v ?? 0) - (before[k][0]!.v ?? 0);
+      for (const k of ['due', 'ord'] as const) {
+        assert.ok(Math.abs(d(k) - 10 * DAY) < 60_000, `${k}: сдвиг ~10 суток`);
+      }
+      assert.equal(after.money[0]!.v, before.money[0]!.v);
+      assert.equal(after.price[0]!.v, before.price[0]!.v);
+      assert.equal(after.mig[0]!.v, before.mig[0]!.v);
+      assert.deepEqual(await migrate(db), []);
+    } finally {
+      await db.close();
+    }
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

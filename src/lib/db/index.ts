@@ -10,6 +10,7 @@ import path from 'node:path';
 import { assertDbConfigured, isDemo } from '../env';
 import type { Db, DbHandle } from './core';
 import { migrate } from './migrate';
+import { refreshSnapshotTime } from './snapshot';
 
 export type { Db, DbHandle, Row, Sql } from './core';
 export { isUniqueViolation } from './core';
@@ -33,9 +34,9 @@ export async function openDriver(): Promise<DbHandle> {
 }
 
 /**
- * Снимок схемы демо-базы (scripts/build-demo-snapshot.ts, prebuild): на serverless холодный
- * старт без initdb укладывается в лимит функции. В снимке только схема — сид идёт в рантайме,
- * поэтому даты демо-данных всегда свежие (BUILD.md §2). Берём его только в демо-проде:
+ * Снимок демо-базы (схема + сид) (scripts/build-demo-snapshot.ts, prebuild): на serverless холодный
+ * старт без initdb укладывается в лимит функции. В снимке уже есть сид, а даты при загрузке
+ * сдвигаются на «сейчас − время сборки» (snapshot.ts), так что демо-данные свежие (BUILD.md §2). Берём его только в демо-проде:
  * в dev и тестах база создаётся с нуля. Нет файла — предупреждаем один раз.
  */
 export function demoSnapshotPath(): string | undefined {
@@ -56,6 +57,9 @@ function shouldSeed(): boolean {
 async function init(): Promise<DbHandle> {
   const db = await openDriver();
   try {
+    // снимок с сидом: сдвигаем даты до текущего момента, ДО migrate() и проверки users
+    const snap = !process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim() ? demoSnapshotPath() : undefined;
+    if (snap) await refreshSnapshotTime(db, snap);
     await migrate(db);
     if (shouldSeed()) {
       const [row] = await db.sql<{ has: boolean }>`SELECT EXISTS (SELECT 1 FROM users) AS has`;

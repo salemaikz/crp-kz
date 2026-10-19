@@ -411,13 +411,18 @@ D-016); на своём сервере без `DATABASE_URL` нужен явны
 вне РК). Для лимитов входа на Vercel — `TRUST_X_REAL_IP=1`.
 `serverExternalPackages: ['@electric-sql/pglite']`.
 
-**Снимок схемы демо-базы.** `initdb` в PGlite занимает 5–7 с, на serverless это почти весь
-лимит функции. Поэтому `prebuild` (`scripts/prebuild.mjs` → `scripts/build-demo-snapshot.ts`)
-в демо-сборке (`DEMO_MODE=1` или `VERCEL=1` без `DATABASE_URL`) прогоняет миграции и кладёт
-`pg.dumpDataDir('gzip')` в `.demo/pglite-snapshot.tar.gz` (в git не попадает, в бандл —
-через `outputFileTracingIncludes`). Рантайм в демо-проде поднимает PGlite из снимка
-(~0,6 с), затем `migrate()` догоняет новые миграции, а сид идёт как раньше, так что даты
-демо свежие. Нет файла или он битый — база создаётся с нуля (в dev и тестах снимок не берётся).
+**Снимок демо-базы.** `initdb` в PGlite занимает 5–7 с, сид на слабом CPU функции ещё
+~4 с, а лимит функции 10 с. Поэтому `prebuild` (`scripts/prebuild.mjs` →
+`scripts/build-demo-snapshot.ts`) в демо-сборке (`DEMO_MODE=1` или `VERCEL=1` без
+`DATABASE_URL`) прогоняет миграции и сид и кладёт `pg.dumpDataDir('gzip')` в
+`.demo/pglite-snapshot.tar.gz` с описанием `.demo/pglite-snapshot.json` (`builtAt`,
+`seeded`). В git файлы не попадают, в бандл — через `outputFileTracingIncludes`.
+Рантайм в демо-проде поднимает PGlite из снимка и сдвигает все BIGINT-колонки `*_at` на
+«сейчас − builtAt» (`src/lib/db/snapshot.ts`), поэтому даты демо свежие; деньги (`*_kzt`)
+не трогаются. Правило для схемы: временная колонка — всегда BIGINT с суффиксом `_at`
+(тест это проверяет). Затем `migrate()` догоняет новые миграции. Нет файла или он битый —
+база создаётся с нуля (в dev и тестах снимок не берётся). Холодный старт на Netlify
+~3–4 с (схема без сида: 7,5–8 с).
 
 Netlify (D-024): `netlify.toml` в корне, переменные сайта `DEMO_MODE=1`, `NODE_VERSION=22`.
 
