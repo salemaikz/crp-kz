@@ -53,8 +53,9 @@ fi
 
 (cd "$SRC" && sha256sum -c "$SUMS") || die "исходники не совпали с scripts/fonts/sources.sha256"
 
-# Латиница, кириллица с казахскими буквами (U+0400-052F), знак тенге, пунктуация
-UNICODES="U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0300-0301,U+0400-052F,U+1C80-1C88,U+2000-206F,U+20AC,U+20B8,U+2116,U+2122,U+2212"
+# Латиница с расширением (U+0100-024F: казахская латиница, турецкий, азербайджанский, узбекский),
+# schwa, кириллица с казахскими буквами (U+0400-052F), знак тенге, пунктуация, стрелки
+UNICODES="U+0000-00FF,U+0100-024F,U+0259,U+2190-21FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0300-0301,U+0400-052F,U+1C80-1C88,U+2000-206F,U+20AC,U+20B8,U+2116,U+2122,U+2212"
 FEATURES="kern,liga,calt,ccmp,locl,mark,mkmk"
 
 mkdir -p "$OUT"
@@ -64,7 +65,7 @@ slice() {
   local src="$1" name="$2"
   shift 2
   local tmp="$WORK/$name"
-  fonttools varLib.instancer "$src" "$@" -o "$tmp" >/dev/null
+  fonttools varLib.instancer "$src" "$@" --update-name-table -o "$tmp" >/dev/null
   pyftsubset "$tmp" --unicodes="$UNICODES" --layout-features="$FEATURES" --output-file="$OUT/$name"
 }
 
