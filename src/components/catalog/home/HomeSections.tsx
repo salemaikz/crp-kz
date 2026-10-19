@@ -1,5 +1,5 @@
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Card, Container, EmptyState, Mark, Section, TextLink } from '@/components/ui';
+import { Badge, Button, Card, Container, EmptyState, Section, TextLink } from '@/components/ui';
 import { CRP_CONTACTS } from '@/lib/brand';
 import type { CatalogCourse, ViewerCourseState } from '@/lib/catalog/types';
 import type { Locale } from '@/lib/content/types';
@@ -28,8 +28,8 @@ export function FeaturedCourses({
         </div>
         {courses.length > 0 ? (
           <div className="cat-grid">
-            {courses.map((course) => (
-              <CourseCard key={course.id} course={course} locale={locale} state={states?.get(course.id)} />
+            {courses.map((course, index) => (
+              <CourseCard key={course.id} course={course} index={index} locale={locale} state={states?.get(course.id)} />
             ))}
           </div>
         ) : (
@@ -42,11 +42,11 @@ export function FeaturedCourses({
 
 const STEPS = ['step1', 'step2', 'step3', 'step4'] as const;
 
-/** «Как проходит обучение»: четыре шага на тёмной секции, номер 01–04 в кружке с красной обводкой, как на сайте. */
+/** «Как проходит обучение»: светлая секция, над шагом тонкая линия, номер 01–04 контурной красной цифрой, как на сайте v3. */
 export function HowItWorks() {
   const t = useTranslations('catalog.home.steps');
   return (
-    <Section tone="night" aria-labelledby="steps-title">
+    <Section tone="paper" aria-labelledby="steps-title">
       <Container>
         <div className="section-head">
           <h2 id="steps-title" className="display h2">
@@ -75,13 +75,12 @@ export type TeamsViewer = 'guest' | 'user' | 'manager';
 export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Locale }) {
   const t = useTranslations('catalog.home.teams');
   return (
-    <Section tone="paper" aria-labelledby="teams-title">
+    <Section tone="board" aria-labelledby="teams-title">
       <Container>
         <div className="section-head">
           <h2 id="teams-title" className="display h2">
             {t('title')}
           </h2>
-          <p className="lead">{t('lead')}</p>
         </div>
         <div className="cat-teams">
           <Card large padding="lg" className="cat-team">
@@ -125,8 +124,8 @@ export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Lo
 }
 
 /**
- * Финальная карточка, как заявка на сайте: тёмная, с красным свечением внизу слева и линией-маркером
- * под одним словом заголовка. Единственное место после первого экрана, где допустим этот декор.
+ * Финальная карточка, как заявка на сайте: тёмная, с красным свечением внизу слева.
+ * Единственное место после первого экрана, где допустим этот декор.
  */
 export function FinalCta() {
   const t = useTranslations('catalog.home.final');
@@ -136,7 +135,7 @@ export function FinalCta() {
         <div className="cat-final on-night">
           <div className="cat-final__copy">
             <h2 id="final-title" className="display h2">
-              {t.rich('title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
+              {t('title')}
             </h2>
             <p className="lead">{t('lead')}</p>
           </div>

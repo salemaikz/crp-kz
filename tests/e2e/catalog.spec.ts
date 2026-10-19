@@ -16,7 +16,8 @@ test('лендинг: первый экран, витрина курсов и б
   await expect(page.getByRole('heading', { level: 2, name: 'Курсы', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Целина', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Как проходит обучение' })).toBeVisible();
-  // шаги без «Шаг N»: номера 01–04 в кружке, заголовки шагов — действия
+  // шаги без «Шаг N»: номера 01–04 контурными цифрами, заголовки шагов — действия
+  await expect(page.getByRole('heading', { level: 3, name: 'Проходите уроки' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 3, name: 'Получите сертификат' })).toBeVisible();
   await expect(page.getByText('Шаг 1')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 3, name: 'Для сотрудников ЦРП' })).toBeVisible();

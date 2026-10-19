@@ -10,19 +10,13 @@ type Props = {
   period: string | null;
 };
 
-/** Частые вопросы: нативные <details>, вопрос про оплату — только для платных курсов. */
+/** Частые вопросы: нативные <details>. Срок доступа — только у курсов с ограничением, остальное страница уже говорит. */
 export function CourseFaq({ audience, period }: Props) {
   const t = useTranslations('catalog.course.faq');
   const items: Array<{ key: string; q: string; a: string }> = [
     { key: 'start', q: t('start.q'), a: t(`start.${audience}`) },
-    {
-      key: 'access',
-      q: t('access.q'),
-      a: period ? t('access.limited', { period }) : t('access.unlimited'),
-    },
+    ...(period ? [{ key: 'access', q: t('access.q'), a: t('access.limited', { period }) }] : []),
     { key: 'certificate', q: t('certificate.q'), a: t('certificate.a') },
-    { key: 'mobile', q: t('mobile.q'), a: t('mobile.a') },
-    ...(audience === 'paid' ? [{ key: 'payment', q: t('payment.q'), a: t('payment.a') }] : []),
     { key: 'help', q: t('help.q'), a: t('help.a', { phone: CRP_CONTACTS.phone }) },
   ];
   return (

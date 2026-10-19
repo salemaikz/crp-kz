@@ -10,6 +10,8 @@ import './catalog.css';
 
 type Props = {
   course: CatalogCourse;
+  /** Порядковый номер курса в выдаче: по нему выбирается тон обложки. */
+  index: number;
   locale: Locale;
   /** Состояние зрителя по курсу; нет — гость или нет зачисления. */
   state?: ViewerCourseState;
@@ -17,23 +19,26 @@ type Props = {
 
 /**
  * Карточка курса в каталоге и на главной: сверху панель тона с числом уроков, ниже название,
- * строка «уровень · вид», разделитель и цена или статус зрителя. Вся карточка — ссылка.
+ * строка «уровень» (для курсов сотрудников — ещё метка организации), краткое описание,
+ * разделитель и цена или статус зрителя. Вся карточка — ссылка.
  */
-export function CourseCard({ course, locale, state }: Props) {
+export function CourseCard({ course, index, locale, state }: Props) {
   const t = useTranslations('catalog');
   const title = pick(course.title, locale);
   const enrolled = state?.access.ok === true;
   const expired = state?.access.reason === 'expired';
   const completed = enrolled && state.lessonsTotal > 0 && state.lessonsDone >= state.lessonsTotal;
   const staff = course.visibility === 'internal';
-  const paid = (course.priceKzt ?? 0) > 0;
-  const org = course.ownerOrgKind === 'owner' ? 'ЦРП' : (course.ownerOrgName ?? t('card.orgFallback'));
-  const kind = staff ? t('card.staffLabel', { org }) : paid ? t('card.kind.paid') : t('card.kind.free');
-  const meta = [course.level ? t(`level.${course.level}`) : null, kind].filter(Boolean).join(' · ');
+  const org = course.ownerOrgKind === 'owner' ? t('card.orgOwner') : (course.ownerOrgName ?? t('card.orgFallback'));
+  // у публичного курса «платный/бесплатный» уже говорит цена внизу карточки
+  const meta = [course.level ? t(`level.${course.level}`) : null, staff ? t('card.staffLabel', { org }) : null]
+    .filter(Boolean)
+    .join(' · ');
+  const summary = pick(course.summary, locale);
 
   return (
     <Card as="article" padding="none" interactive className="cat-card">
-      <CourseCover slug={course.slug} cover={course.cover}>
+      <CourseCover index={index} cover={course.cover}>
         <strong className="cat-cover__value">{t('counts.lessons', { count: course.lessonsCount })}</strong>
         {course.durationMin > 0 && <span className="cat-cover__sub">{formatDuration(course.durationMin, locale)}</span>}
       </CourseCover>
@@ -44,7 +49,8 @@ export function CourseCard({ course, locale, state }: Props) {
             {title}
           </Link>
         </h3>
-        <p className="cat-card__meta">{meta}</p>
+        {meta && <p className="cat-card__meta">{meta}</p>}
+        {summary && <p className="cat-card__summary">{summary}</p>}
 
         <div className="cat-card__foot">
           {completed ? (

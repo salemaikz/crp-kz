@@ -92,7 +92,6 @@ export function PriceCard({ course, locale, cta, state, org }: Props) {
         <li>{t('course.includes.lessons', { count: course.lessonsCount })}</li>
         <li>{t('course.includes.tests')}</li>
         <li>{t('course.includes.certificate')}</li>
-        <li>{t('course.includes.mobile')}</li>
       </ul>
 
       {paid && cta.kind === 'buy' && (

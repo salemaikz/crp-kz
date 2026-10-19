@@ -5,7 +5,6 @@ import { Languages } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CertificatePreview } from '@/components/catalog/CertificatePreview';
-import { CourseCtaButton } from '@/components/catalog/CourseCtaButton';
 import { CourseFaq } from '@/components/catalog/CourseFaq';
 import { CourseMarkdown } from '@/components/catalog/CourseMarkdown';
 import { PriceCard } from '@/components/catalog/PriceCard';
@@ -57,7 +56,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-/** Страница курса: шапка с фактами и карточкой цены, что получите, программа, описание, для кого, FAQ, сертификат. */
+/** Страница курса: шапка с фактами и карточкой цены, программа, описание (там же — для кого), FAQ, пример сертификата. */
 export default async function CoursePage({ params }: Props) {
   const { locale, slug } = await resolveLocale(params);
   setRequestLocale(locale);
@@ -74,7 +73,7 @@ export default async function CoursePage({ params }: Props) {
   const staff = course.visibility === 'internal';
   const paid = (course.priceKzt ?? 0) > 0;
   const isMember = course.ownerOrgId !== null && memberOrgIds.includes(course.ownerOrgId);
-  const org = course.ownerOrgKind === 'owner' ? 'ЦРП' : (course.ownerOrgName ?? t('card.orgFallback'));
+  const org = course.ownerOrgKind === 'owner' ? t('card.orgOwner') : (course.ownerOrgName ?? t('card.orgFallback'));
   const cta = resolveCourseCta({
     visibility: course.visibility,
     priceKzt: course.priceKzt,
@@ -91,7 +90,6 @@ export default async function CoursePage({ params }: Props) {
   const periodText = period
     ? t(period.unit === 'month' ? 'counts.months' : 'counts.days', { count: period.value })
     : null;
-  const audience = staff ? 'staff' : (course.level ?? 'base');
 
   const jsonLd =
     course.visibility === 'public'
@@ -107,17 +105,6 @@ export default async function CoursePage({ params }: Props) {
             : { isAccessibleForFree: true }),
         }
       : null;
-
-  const gain = [
-    { key: 'lessons', title: t('course.gain.lessons.title'), text: t('course.gain.lessons.text') },
-    { key: 'tests', title: t('course.gain.tests.title'), text: t('course.gain.tests.text') },
-    { key: 'certificate', title: t('course.gain.certificate.title'), text: t('course.gain.certificate.text') },
-    {
-      key: 'access',
-      title: t('course.gain.access.title'),
-      text: periodText ? t('course.gain.access.limited', { period: periodText }) : t('course.gain.access.unlimited'),
-    },
-  ];
 
   return (
     <>
@@ -167,20 +154,6 @@ export default async function CoursePage({ params }: Props) {
       <Section tone="board" spacing="tight">
         <Container className="cat-course">
           <div className="cat-course__main">
-            <section className="cat-block" aria-labelledby="gain-title">
-              <h2 id="gain-title" className="display cat-block__title">
-                {t('course.sections.gain')}
-              </h2>
-              <ul className="cat-rows cat-rows--terms">
-                {gain.map((g) => (
-                  <li key={g.key}>
-                    <h3>{g.title}</h3>
-                    <p>{g.text}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
             <section className="cat-block" aria-labelledby="program-title">
               <h2 id="program-title" className="display cat-block__title">
                 {t('course.sections.program')}
@@ -203,17 +176,6 @@ export default async function CoursePage({ params }: Props) {
               </section>
             )}
 
-            <section className="cat-block" aria-labelledby="audience-title">
-              <h2 id="audience-title" className="display cat-block__title">
-                {t('course.sections.audience')}
-              </h2>
-              <ul className="cat-rows">
-                {(['a1', 'a2', 'a3'] as const).map((k) => (
-                  <li key={k}>{t(`course.audience.${audience}.${k}`, { org })}</li>
-                ))}
-              </ul>
-            </section>
-
             <section className="cat-block" aria-labelledby="faq-title">
               <h2 id="faq-title" className="display cat-block__title">
                 {t('course.sections.faq')}
@@ -227,24 +189,6 @@ export default async function CoursePage({ params }: Props) {
           </aside>
         </Container>
       </Section>
-
-      {(cta.kind === 'start' || cta.kind === 'buy') && (
-        <Section tone="night" spacing="tight" aria-labelledby="bottom-title">
-          <Container>
-            <div className="cat-bottom">
-              <div className="cat-bottom__copy">
-                <h2 id="bottom-title" className="display h2">
-                  {t('course.bottom.title')}
-                </h2>
-                <p className="lead">{t('course.bottom.text', { lessons: t('counts.lessons', { count: course.lessonsCount }) })}</p>
-              </div>
-              <div className="cat-bottom__action">
-                <CourseCtaButton slug={course.slug} cta={cta} />
-              </div>
-            </div>
-          </Container>
-        </Section>
-      )}
     </>
   );
 }

@@ -69,8 +69,8 @@ export default async function CoursesPage({ params, searchParams }: Props) {
               </div>
               {shown.length > 0 ? (
                 <div className="cat-grid">
-                  {shown.map((course) => (
-                    <CourseCard key={course.id} course={course} locale={locale} state={states?.get(course.id)} />
+                  {shown.map((course, index) => (
+                    <CourseCard key={course.id} course={course} index={index} locale={locale} state={states?.get(course.id)} />
                   ))}
                 </div>
               ) : (

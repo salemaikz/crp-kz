@@ -13,7 +13,7 @@ export type CatalogCourse = {
   slug: string;
   title: L10nRaw;
   summary: L10nRaw;
-  /** URL обложки или null — тогда рисуется градиент с инициалами. */
+  /** URL обложки-фото или null — тогда рисуется тёмная панель тона с числом уроков. */
   cover: string | null;
   level: CourseLevel | null;
   durationMin: number;
