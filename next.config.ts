@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
       './content/legal/**',
       './assets/fonts/pdf/**',
       './docs/brand/logo/crp-logo.png',
+      // pdfkit грузит стандартные шрифты через createRequire('#standard-fonts/*') → *.cjs;
+      // трассировка видит только *.mjs, и на Netlify рендер PDF падал без этих файлов
+      './node_modules/pdfkit/js/standard-fonts/**',
+      './node_modules/pdfkit/js/data/**',
     ],
   },
 };
