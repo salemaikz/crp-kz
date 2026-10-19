@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { BookOpenText, Clock, ListOrdered, ShieldCheck } from 'lucide-react';
+import { BookOpenText } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CompletionCard } from '@/components/learn/CompletionCard';
@@ -75,7 +75,7 @@ export default async function CoursePage({ params }: Props) {
   ) : null;
 
   const aside = (
-    <Card large padding="none" className="on-paper lrn-progress-card" data-complete={progress.complete}>
+    <Card large padding="none" className="lrn-progress-card" data-complete={progress.complete}>
       <div className="lrn-progress-card__top">
         <p className="meta">{t('progressTitle')}</p>
         <span className="lrn-progress-card__pct" data-testid="course-pct">
@@ -94,22 +94,8 @@ export default async function CoursePage({ params }: Props) {
             <DueBadge dueAt={enrollment.dueAt} locale={locale} />
           </li>
         )}
-        {course.durationMin > 0 && (
-          <li>
-            <Clock aria-hidden="true" />
-            {t('duration', { value: formatDuration(course.durationMin, locale) })}
-          </li>
-        )}
-        <li>
-          <ShieldCheck aria-hidden="true" />
-          {enrollment.expiresAt ? t('accessUntil', { date: formatDate(enrollment.expiresAt, locale) }) : t('accessForever')}
-        </li>
-        {course.sequential && (
-          <li>
-            <ListOrdered aria-hidden="true" />
-            {t('inOrder')}
-          </li>
-        )}
+        {course.durationMin > 0 && <li>{t('duration', { value: formatDuration(course.durationMin, locale) })}</li>}
+        <li>{enrollment.expiresAt ? t('accessUntil', { date: formatDate(enrollment.expiresAt, locale) }) : t('accessForever')}</li>
       </ul>
     </Card>
   );
@@ -117,7 +103,6 @@ export default async function CoursePage({ params }: Props) {
   return (
     <>
       <PageHeader
-        tone="night"
         breadcrumbs={
           <Breadcrumbs label={a11y('breadcrumbs')} items={[{ label: nav('learn'), href: '/learn' }, { label: title }]} />
         }

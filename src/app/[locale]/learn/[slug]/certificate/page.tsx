@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CertificateSheet } from '@/components/learn/CertificateSheet';
@@ -49,7 +48,7 @@ export default async function CertificatePage({ params }: Props) {
     if (access.status !== 'ok' || !access.progress.complete) redirect({ href: coursePath(slug), locale });
     return (
       <>
-        <PageHeader tone="night" title={t('ready.title')} lead={t('ready.lead')} />
+        <PageHeader title={t('ready.title')} lead={t('ready.lead')} />
         <Section tone="board" spacing="tight">
           <Container size="narrow">
             <CompletionCard
@@ -84,7 +83,6 @@ export default async function CertificatePage({ params }: Props) {
             </div>
             <div className="lrn-cert-toolbar__actions">
               <Button href={coursePath(slug)} variant="ghost">
-                <ArrowLeft aria-hidden="true" />
                 {t('back')}
               </Button>
               <PrintButton />
@@ -103,8 +101,7 @@ export default async function CertificatePage({ params }: Props) {
 
           <div className="lrn-noprint">
             <p className="lrn-cert-hint">{t('printHint')}</p>
-            <p className="lrn-cert-hint lrn-cert-hint--link">
-              <ShieldCheck aria-hidden="true" />
+            <p className="lrn-cert-hint">
               <TextLink href={`/cert/${encodeURIComponent(certificate.number)}`}>{t('verifyLink')}</TextLink>
             </p>
           </div>

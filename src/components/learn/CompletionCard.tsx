@@ -17,7 +17,7 @@ type Props = {
   showProgramLink?: boolean;
 };
 
-/** Экран завершения курса: поздравление и «Получить сертификат» (или «Открыть», если уже выдан). */
+/** Экран завершения курса: «Курс пройден», одна фраза и «Получить сертификат» (или «Открыть», если уже выдан). Плоская карточка без декора. */
 export async function CompletionCard({
   courseId,
   courseTitle,
@@ -30,7 +30,7 @@ export async function CompletionCard({
 }: Props) {
   const t = await getTranslations('learn.completion');
   return (
-    <section className="lrn-complete on-night" aria-labelledby="completion-title" data-testid="course-complete">
+    <section className="lrn-complete card card--lg" aria-labelledby="completion-title" data-testid="course-complete">
       <h2 id="completion-title" className="display lrn-complete__title">
         {t('title')}
       </h2>

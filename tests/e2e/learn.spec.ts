@@ -44,7 +44,11 @@ function escape(s: string): string {
 test('клиент: Моё обучение → Целина → урок с тестом → результат → «Урок пройден»', async ({ page }) => {
   await loginAsClient(page);
 
-  // «Моё обучение»: карточка «Целина» с прогрессом и «Продолжить», сертификат в списке
+  // «Моё обучение»: простая шапка — только h1 и одна строка, без надписи над заголовком
+  await expect(page.getByRole('heading', { level: 1, name: 'Моё обучение' })).toBeVisible();
+  await expect(page.getByText('Личный кабинет')).toHaveCount(0);
+
+  // карточка «Целина» с прогрессом и «Продолжить», сертификат в списке
   const celina = page.getByTestId('learn-courses').getByRole('article').filter({ hasText: 'Целина' });
   await expect(celina).toBeVisible();
   await expect(celina.getByRole('progressbar')).toBeVisible();

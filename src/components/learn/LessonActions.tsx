@@ -1,7 +1,6 @@
 'use client';
 
 import { useId, useState, useTransition, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, Check, Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@/components/ui';
 import { useRouter } from '@/lib/i18n/navigation';
@@ -63,7 +62,6 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
 
       {!completed && blocked && (
         <p id={hintId} className="lrn-actions__hint">
-          <Lock aria-hidden="true" />
           {t('actions.quizHint', { count: quizzesLeft })}
         </p>
       )}
@@ -72,7 +70,6 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
       <div className="lrn-actions__row">
         {prev && (
           <Button href={prev.href} variant="ghost" aria-label={`${t('actions.prev')}: ${prev.title}`}>
-            <ArrowLeft aria-hidden="true" />
             {t('actions.prev')}
           </Button>
         )}
@@ -80,7 +77,6 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
         {!completed && next && nextOpenNow && (
           <Button href={next.href} variant="ghost" aria-label={`${t('actions.skip')}: ${next.title}`}>
             {t('actions.skip')}
-            <ArrowRight aria-hidden="true" />
           </Button>
         )}
         {!completed ? (
@@ -92,18 +88,16 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
             aria-busy={pending || undefined}
             data-testid="complete-lesson"
           >
-            {pending ? <span className="spinner" aria-hidden="true" /> : <Check aria-hidden="true" />}
+            {pending && <span className="spinner" aria-hidden="true" />}
             {pending ? t('actions.completing') : t('actions.complete')}
           </Button>
         ) : next ? (
           <Button href={next.href} size="lg" data-testid="next-lesson" aria-label={`${t('actions.next')}: ${next.title}`}>
             {t('actions.next')}
-            <ArrowRight aria-hidden="true" />
           </Button>
         ) : !showCompletion ? (
           <Button href={courseHref} size="lg">
             {t('actions.toCourse')}
-            <ArrowRight aria-hidden="true" />
           </Button>
         ) : null}
       </div>

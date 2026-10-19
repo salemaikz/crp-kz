@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react';
-import { CircleCheck, CircleX, ListChecks, RotateCcw } from 'lucide-react';
+import { CircleCheck, CircleX } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@/components/ui';
 import type { PublicQuizBlock } from '@/lib/content/types';
@@ -74,9 +74,6 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
   return (
     <section className="lrn-quiz" aria-labelledby={titleId} data-testid="quiz">
       <header className="lrn-quiz__head">
-        <span className="lrn-quiz__icon" aria-hidden="true">
-          <ListChecks />
-        </span>
         <div>
           <h3 id={titleId} className="lrn-quiz__title">
             {t('quiz.title')}
@@ -84,7 +81,7 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
           <p className="meta">{t('quiz.meta', { count: block.questions.length, score: block.passScore })}</p>
         </div>
         {initial?.passed && !result && (
-          <Badge tone="success" icon={<CircleCheck aria-hidden="true" />}>
+          <Badge tone="success" dot>
             {t('quiz.passedBadge')}
           </Badge>
         )}
@@ -148,7 +145,7 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
               </div>
             )}
             <div className="lrn-result__text">
-              <Badge tone={result.passed ? 'success' : 'warning'} icon={result.passed ? <CircleCheck aria-hidden="true" /> : undefined}>
+              <Badge tone={result.passed ? 'success' : 'warning'} dot>
                 {result.passed ? t('quiz.passed') : t('quiz.failed')}
               </Badge>
               <p data-testid="quiz-result-text">
@@ -156,7 +153,6 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
               </p>
             </div>
             <Button variant={result.passed ? 'ghost' : 'primary'} size="sm" onClick={retry}>
-              <RotateCcw aria-hidden="true" />
               {t('quiz.retry')}
             </Button>
           </div>

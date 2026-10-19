@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Badge, Card } from '@/components/ui';
 import { t as loc } from '@/lib/content/l10n';
@@ -18,7 +18,7 @@ type Props = {
   quizLessonIds: ReadonlySet<string>;
 };
 
-/** Программа курса: модули и уроки с галочками, замками и пометкой «Тест». */
+/** Программа курса: модули и уроки строками с разделителями; галочка у пройденных, замок у закрытых, пометка «Тест». */
 export async function CourseOutline({ locale, courseSlug, progress, quizLessonIds }: Props) {
   const t = await getTranslations('learn');
   const started = progress.done > 0;
@@ -27,13 +27,10 @@ export async function CourseOutline({ locale, courseSlug, progress, quizLessonId
       {progress.modules.map((m, mi) => (
         <Card as="section" large padding="none" className="lrn-module" key={m.id} aria-labelledby={`module-${m.id}`}>
           <header className="lrn-module__head">
-            <p className="meta">{t('outline.module', { n: mi + 1 })}</p>
             <h2 id={`module-${m.id}`} className="display lrn-module__title">
               {loc(m.title, locale)}
             </h2>
-            <p className="meta lrn-module__meta">
-              {t('outline.moduleProgress', { done: m.done, total: m.lessons.length })}
-            </p>
+            <p className="meta">{t('outline.moduleMeta', { n: mi + 1, done: m.done, total: m.lessons.length })}</p>
           </header>
           <ol className="lrn-lessons">
             {m.lessons.map((l) => {
@@ -50,10 +47,7 @@ export async function CourseOutline({ locale, courseSlug, progress, quizLessonId
                     </span>
                     <span className="lrn-lesson__sub">
                       {l.durationMin > 0 && (
-                        <span className="lrn-lesson__time">
-                          <Clock aria-hidden="true" />
-                          {formatDuration(l.durationMin, locale)}
-                        </span>
+                        <span>{formatDuration(l.durationMin, locale)}</span>
                       )}
                       {quizLessonIds.has(l.id) && <Badge tone="neutral">{t('outline.quiz')}</Badge>}
                       {locked && <span>{t('outline.lockedHint')}</span>}
@@ -61,7 +55,7 @@ export async function CourseOutline({ locale, courseSlug, progress, quizLessonId
                   </span>
                   <span className="lrn-lesson__go">
                     {current && <span className="lrn-lesson__label">{started ? t('outline.continue') : t('outline.start')}</span>}
-                    {locked ? <Lock aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}
+                    {locked && <Lock aria-hidden="true" />}
                   </span>
                 </>
               );

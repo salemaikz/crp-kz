@@ -24,71 +24,19 @@
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
 }
 
+/* плоская карточка курса: бейджи, название, прогресс, срок, одно действие */
 .lrn-course {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  overflow: hidden;
-  padding: 0;
-}
-.lrn-course[data-state='closed'] .lrn-course__cover {
-  filter: grayscale(0.85) brightness(0.8);
-}
-.lrn-course__cover {
-  position: relative;
-  display: grid;
-  place-items: center;
-  aspect-ratio: 16 / 6.4;
-  overflow: hidden;
-  background:
-    radial-gradient(60% 90% at var(--glow-x, 82%) 50%, rgb(227 30 36 / 34%), transparent 70%),
-    linear-gradient(160deg, var(--deep), var(--night));
-  color: #fff;
-}
-.lrn-course__cover .circles {
-  position: absolute;
-  top: 50%;
-  right: var(--rings-x, -14%);
-  width: 62%;
-  transform: translateY(-50%);
-}
-.lrn-course__img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.lrn-course__glyph {
-  position: absolute;
-  left: 22px;
-  bottom: 18px;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  background: rgb(255 255 255 / 10%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 16%);
-}
-.lrn-course__glyph svg {
-  width: 24px;
-  height: 24px;
-}
-.lrn-course__badges {
-  position: absolute;
-  z-index: 2;
-  top: 14px;
-  left: 16px;
-  right: 16px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.lrn-course__body {
   display: grid;
   gap: 14px;
   align-content: start;
-  padding: 20px 22px 22px;
+}
+.lrn-course[data-state='closed'] .lrn-course__title {
+  color: var(--ink-2);
+}
+.lrn-course__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .lrn-course__title {
   font-size: clamp(20px, 1.7vw, 23px);
@@ -104,20 +52,6 @@
   inset: 0;
   z-index: 1;
   border-radius: inherit;
-}
-.lrn-course__next {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 14.5px;
-  color: var(--ink-2);
-}
-.lrn-course__next svg {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 3px;
-  color: var(--red);
 }
 .lrn-course__actions {
   position: relative;
@@ -137,23 +71,6 @@
 }
 .lrn-cert-item {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 16px;
-  align-items: start;
-  padding: 20px 22px;
-}
-.lrn-cert-item__icon {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: var(--red-tint);
-  color: var(--red);
-}
-.lrn-cert-item__icon svg {
-  width: 26px;
-  height: 26px;
 }
 .lrn-cert-item__body {
   display: grid;
@@ -187,10 +104,10 @@
   font-family: var(--font-display);
   font-weight: 700;
   font-variation-settings: 'SHRP' 100;
-  font-size: clamp(40px, 4vw, 54px);
-  letter-spacing: -0.04em;
+  font-size: clamp(32px, 3.2vw, 40px);
+  letter-spacing: -0.02em;
   line-height: 1;
-  color: var(--red);
+  color: var(--ink);
 }
 .lrn-progress-card[data-complete='true'] .lrn-progress-card__pct {
   color: var(--success);
@@ -208,13 +125,6 @@
 .lrn-progress-card__facts li {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-.lrn-progress-card__facts svg {
-  flex: none;
-  width: 17px;
-  height: 17px;
-  color: var(--ink-3);
 }
 
 .lrn-modules {
@@ -227,28 +137,20 @@
 }
 .lrn-module__head {
   display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: end;
-  gap: 4px 16px;
-  padding: 22px clamp(18px, 3vw, 30px) 12px;
+  gap: 4px;
+  padding: 22px clamp(18px, 3vw, 30px) 16px;
 }
 .lrn-module__title {
-  grid-column: 1;
   font-size: clamp(20px, 1.8vw, 24px);
   letter-spacing: -0.02em;
 }
-.lrn-module__meta {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  white-space: nowrap;
-}
 .lrn-lessons {
-  display: grid;
-  gap: 2px;
   margin: 0;
-  padding: 0 10px 12px;
+  padding: 0;
   list-style: none;
+}
+.lrn-lesson {
+  border-top: 1px solid var(--line);
 }
 .lrn-lesson__row {
   display: grid;
@@ -256,8 +158,7 @@
   align-items: center;
   gap: 14px;
   min-height: 60px;
-  padding: 10px 14px;
-  border-radius: 14px;
+  padding: 10px clamp(18px, 3vw, 30px);
   text-decoration: none;
   transition: background-color 0.15s ease;
 }
@@ -285,15 +186,6 @@ a.lrn-lesson__row:hover {
   font-weight: 400;
   color: var(--ink-3);
 }
-.lrn-lesson__time {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.lrn-lesson__time svg {
-  width: 14px;
-  height: 14px;
-}
 .lrn-lesson__go {
   display: flex;
   align-items: center;
@@ -303,9 +195,6 @@ a.lrn-lesson__row:hover {
 .lrn-lesson__go svg {
   width: 18px;
   height: 18px;
-}
-a.lrn-lesson__row:hover .lrn-lesson__go {
-  color: var(--red);
 }
 .lrn-lesson__label {
   font-size: 13px;
@@ -339,7 +228,6 @@ a.lrn-lesson__row:hover .lrn-lesson__go {
 }
 .lrn-status--current {
   border-color: var(--red);
-  box-shadow: 0 0 0 4px rgb(227 30 36 / 14%);
 }
 .lrn-status--current::after {
   content: '';
@@ -424,11 +312,9 @@ a.lrn-lesson__row:hover .lrn-lesson__go {
 }
 .lrn-outline__module-title {
   padding: 8px 8px 4px;
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
 }
 .lrn-outline__list {
   display: grid;
@@ -685,17 +571,14 @@ h3.lrn-heading {
   border-top: 1px solid var(--line);
 }
 
-/* выноска */
+/* выноска: плоская плашка с рамкой, значок только у предупреждения */
 .lrn-callout {
-  --tone: var(--info);
   --tone-bg: #eef3fb;
   --tone-line: rgb(31 95 191 / 22%);
-  display: grid;
-  grid-template-columns: 24px 1fr;
+  display: flex;
   gap: 12px;
   padding: 16px 18px;
   border: 1px solid var(--tone-line);
-  border-left: 4px solid var(--tone);
   border-radius: 16px;
   background: var(--tone-bg);
   font-size: 16.5px;
@@ -707,15 +590,18 @@ h3.lrn-heading {
   --tone-line: rgb(154 82 0 / 22%);
 }
 .lrn-callout[data-tone='success'] {
-  --tone: var(--success);
   --tone-bg: #eaf5ee;
   --tone-line: rgb(23 128 63 / 22%);
 }
 .lrn-callout > svg {
+  flex: none;
   width: 22px;
   height: 22px;
   margin-top: 1px;
   color: var(--tone);
+}
+.lrn-callout > div {
+  min-width: 0;
 }
 .lrn-callout p + p {
   margin-top: 0.6em;
@@ -739,47 +625,14 @@ h3.lrn-heading {
   height: 100%;
   border: 0;
 }
+/* заглушка: простая тёмная плашка с текстом */
 .lrn-video--poster {
   display: grid;
   place-items: center;
   padding: 20px;
-  background:
-    radial-gradient(60% 80% at 70% 50%, rgb(227 30 36 / 30%), transparent 70%),
-    linear-gradient(160deg, var(--deep), var(--night));
-  color: #fff;
+  background: var(--night);
+  color: var(--on-night);
   text-align: center;
-}
-.lrn-video--poster .circles {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: min(520px, 90%);
-  transform: translate(-50%, -50%);
-}
-.lrn-video__inner {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-items: center;
-  gap: 22px;
-}
-.lrn-video__play {
-  display: grid;
-  place-items: center;
-  width: clamp(60px, 9vw, 80px);
-  height: clamp(60px, 9vw, 80px);
-  border-radius: 50%;
-  background: var(--red);
-  color: #fff;
-  box-shadow:
-    0 0 0 10px rgb(227 30 36 / 22%),
-    0 0 0 22px rgb(227 30 36 / 10%);
-}
-.lrn-video__play svg {
-  width: 36%;
-  height: 36%;
-  margin-left: 6%;
-  fill: currentColor;
 }
 .lrn-video__note {
   max-width: 30ch;
@@ -797,9 +650,8 @@ h3.lrn-heading {
 .lrn-quiz {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: var(--radius);
   background: var(--paper);
-  box-shadow: var(--shadow);
 }
 .lrn-quiz__head {
   display: flex;
@@ -807,23 +659,7 @@ h3.lrn-heading {
   gap: 14px;
   padding: 18px clamp(18px, 3vw, 28px);
   border-bottom: 1px solid var(--line);
-  background:
-    radial-gradient(40% 160% at 100% 50%, rgb(227 30 36 / 6%), transparent 70%),
-    #fafaf8;
-}
-.lrn-quiz__icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: var(--ink);
-  color: #fff;
-}
-.lrn-quiz__icon svg {
-  width: 22px;
-  height: 22px;
+  background: var(--board);
 }
 .lrn-quiz__title {
   font-size: 21px;
@@ -1150,25 +986,18 @@ h3.lrn-heading {
 }
 
 /* ---------- Экран завершения курса ---------- */
+/* плоская карточка (.card .card--lg) — без тёмного фона и свечения */
 .lrn-complete {
-  position: relative;
-  overflow: hidden;
   display: grid;
-  gap: 18px;
-  padding: clamp(28px, 4.6vw, 52px);
-  border-radius: var(--radius-lg);
-  background:
-    radial-gradient(60% 100% at 100% 50%, rgb(227 30 36 / 30%), transparent 70%),
-    linear-gradient(170deg, var(--deep), var(--night));
-  color: #fff;
+  gap: 16px;
+  padding: clamp(24px, 4vw, 40px);
 }
 .lrn-complete__title {
-  font-size: clamp(32px, 4vw, 48px);
-  color: #fff;
+  font-size: clamp(28px, 3.4vw, 40px);
 }
 .lrn-complete__text {
   max-width: 52ch;
-  color: #c3cad6;
+  color: var(--ink-2);
   font-size: clamp(16px, 1.4vw, 18px);
 }
 .lrn-complete__actions {
@@ -1182,9 +1011,6 @@ h3.lrn-heading {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 22px;
-}
-.lrn-complete .text-link {
-  color: #fff;
 }
 
 /* ---------- Сертификат ---------- */
@@ -1216,17 +1042,6 @@ h3.lrn-heading {
   font-size: 14px;
   color: var(--ink-3);
 }
-.lrn-cert-hint--link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.lrn-cert-hint--link svg {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  color: var(--success);
-}
 
 .lrn-cert-wrap {
   container-type: inline-size;
@@ -1242,44 +1057,27 @@ h3.lrn-heading {
   overflow: hidden;
   background: #fff;
   color: #14161b;
-  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line);
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
 .lrn-cert__frame {
   position: absolute;
-  inset: 2.2cqw;
+  inset: 2cqw;
   display: grid;
   grid-template-rows: auto 1fr auto;
   padding: 3.4cqw 4.6cqw 3.2cqw;
-  border: max(2px, 0.42cqw) solid #e31e24;
+  /* 4 px при ширине листа 1123 px, на A4 в печати ≈ 1 мм */
+  border: max(2px, 0.36cqw) solid #e31e24;
 }
 .lrn-cert__head {
   position: relative;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
 }
 .lrn-cert__logo {
   width: 22cqw;
   height: auto;
-}
-.lrn-cert__kind {
-  display: inline-flex;
-  align-items: center;
-  gap: 1cqw;
-  margin-top: 0.6cqw;
-  font-size: 1.15cqw;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #4a4f59;
-}
-.lrn-cert__kind::before {
-  content: '';
-  width: 2.2cqw;
-  height: max(1px, 0.2cqw);
-  background: #e31e24;
 }
 .lrn-cert__body {
   position: relative;
@@ -1291,10 +1089,9 @@ h3.lrn-heading {
   font-family: var(--font-display);
   font-weight: 700;
   font-variation-settings: 'SHRP' 100;
-  font-size: 1.9cqw;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #e31e24;
+  font-size: 3.2cqw;
+  letter-spacing: -0.02em;
+  color: #14161b;
 }
 .lrn-cert__small {
   font-size: 1.5cqw;
@@ -1395,7 +1192,7 @@ h3.lrn-heading {
     width: 297mm;
     height: 210mm;
     aspect-ratio: auto;
-    box-shadow: none;
+    border: 0;
     break-inside: avoid;
   }
 }
@@ -1408,25 +1205,6 @@ h3.lrn-heading {
 }
 .lrn-verify__seal {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  font-weight: 700;
-}
-.lrn-verify__seal-icon {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: #e3f2e8;
-  color: var(--success);
-  box-shadow:
-    0 0 0 8px rgb(23 128 63 / 8%),
-    0 0 0 16px rgb(23 128 63 / 4%);
-}
-.lrn-verify__seal-icon svg {
-  width: 24px;
-  height: 24px;
 }
 .lrn-verify__list {
   display: grid;
@@ -1498,27 +1276,4 @@ h3.lrn-heading {
     max-width: none;
     padding: 0;
   }
-}
-
-/* карточка с прогрессом на тёмной шапке: белая «бумага», поэтому возвращаем тёмные цвета */
-.lrn-progress-card .progress__track {
-  background: var(--line);
-}
-.lrn-progress-card .progress__value {
-  color: var(--ink-2);
-}
-.lrn-progress-card .badge--neutral {
-  --badge-bg: #ebece7;
-  --badge-fg: var(--ink-2);
-}
-.lrn-progress-card .badge--red {
-  --badge-bg: var(--red-tint);
-  --badge-fg: var(--red-ink);
-}
-.lrn-progress-card .meta,
-.lrn-progress-card .muted {
-  color: var(--ink-2);
-}
-.lrn-progress-card .meta {
-  color: var(--ink-3);
 }

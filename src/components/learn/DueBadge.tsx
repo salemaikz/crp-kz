@@ -1,4 +1,3 @@
-import { CalendarClock } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Badge, type BadgeTone } from '@/components/ui';
 import { dueStatus, formatDate, relativeDue } from '@/lib/format';
@@ -16,9 +15,5 @@ export async function DueBadge({ dueAt, locale }: { dueAt: number; locale: strin
         : status === 'soon'
           ? t('soon', { when: relativeDue(dueAt, locale) })
           : t('until', { date: formatDate(dueAt, locale, { short: true }) });
-  return (
-    <Badge tone={tone} icon={<CalendarClock aria-hidden="true" />}>
-      {text}
-    </Badge>
-  );
+  return <Badge tone={tone}>{text}</Badge>;
 }

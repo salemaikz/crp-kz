@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ChevronDown, Clock } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Blocks } from '@/components/learn/Blocks';
@@ -93,6 +93,15 @@ export default async function LessonPage({ params }: Props) {
   const nextOpenNow = next !== null && next.state !== 'locked';
   const certificateHref = `${coursePath(course.slug)}/certificate`;
 
+  // «Модуль · урок 3 из 16 · 12 мин» одной строкой под заголовком
+  const position = [
+    lessonModule ? loc(lessonModule.title, locale) : null,
+    t('lesson.position', { n: node.index + 1, total: progress.total }),
+    node.durationMin > 0 ? formatDuration(node.durationMin, locale) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   const outline = (
     <OutlineNav locale={locale} courseSlug={course.slug} courseTitle={courseTitle} progress={progress} currentLessonId={node.id} />
   );
@@ -129,18 +138,11 @@ export default async function LessonPage({ params }: Props) {
 
         <div className="lrn-main">
           <header className="lrn-head">
-            <p className="meta">
-              {t('lesson.eyebrow', { module: lessonModule ? loc(lessonModule.title, locale) : '', n: node.index + 1, total: progress.total })}
-            </p>
             <h1 className="display lrn-head__title" data-testid="lesson-title">
               {lessonTitle}
             </h1>
             <div className="lrn-head__meta">
-              {node.durationMin > 0 && (
-                <Badge tone="neutral" icon={<Clock aria-hidden="true" />}>
-                  {formatDuration(node.durationMin, locale)}
-                </Badge>
-              )}
+              <p className="meta">{position}</p>
               {quizzes.length > 0 && <Badge tone="neutral">{t('outline.quiz')}</Badge>}
               {completed && (
                 <Badge tone="success" dot data-testid="lesson-done-badge">

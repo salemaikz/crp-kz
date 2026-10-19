@@ -1,4 +1,3 @@
-import { Search } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Button, Field, Input } from '@/components/ui';
 import { lookupCertificateAction } from '@/lib/learn/actions';
@@ -24,7 +23,6 @@ export async function CertLookup({ locale, defaultValue }: { locale: string; def
           />
         </Field>
         <Button type="submit" size="lg">
-          <Search aria-hidden="true" />
           {t('submit')}
         </Button>
       </div>

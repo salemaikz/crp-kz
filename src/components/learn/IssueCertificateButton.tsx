@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Award } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@/components/ui';
 import { useRouter } from '@/lib/i18n/navigation';
@@ -28,7 +27,6 @@ export function IssueCertificateButton({ courseId, locale, certificateHref, issu
   if (issued) {
     return (
       <Button href={certificateHref} size={size} data-testid="open-certificate">
-        <Award aria-hidden="true" />
         {t('completion.open')}
       </Button>
     );
@@ -46,7 +44,7 @@ export function IssueCertificateButton({ courseId, locale, certificateHref, issu
   return (
     <>
       <Button size={size} onClick={issue} disabled={pending} aria-busy={pending || undefined} data-testid="get-certificate">
-        {pending ? <span className="spinner" aria-hidden="true" /> : <Award aria-hidden="true" />}
+        {pending && <span className="spinner" aria-hidden="true" />}
         {pending ? t('completion.getting') : t('completion.get')}
       </Button>
       {error && (

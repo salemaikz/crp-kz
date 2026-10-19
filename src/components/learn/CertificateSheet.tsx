@@ -17,7 +17,8 @@ type Props = {
 };
 
 /**
- * Лист сертификата: A4 альбомный, белый, красный логотип, красная линия по краю.
+ * Лист сертификата: A4 альбомный, белый фон, красный логотип слева сверху, красная линия 4 px по краю.
+ * Без водяных знаков и декора (BRAND.md, «Сертификат»).
  * Все размеры в cqw — на экране лист масштабируется, в печати занимает ровно страницу.
  */
 export async function CertificateSheet({ holderName, courseTitle, issuedAt, number, locale, qrSrc, verifyHost }: Props) {
@@ -29,7 +30,6 @@ export async function CertificateSheet({ holderName, courseTitle, issuedAt, numb
           <header className="lrn-cert__head">
             {/* eslint-disable-next-line @next/next/no-img-element -- векторный логотип из /public/brand */}
             <img className="lrn-cert__logo" src="/brand/crp-logo.svg" alt={t('logoAlt')} />
-            <span className="lrn-cert__kind">{t('kind')}</span>
           </header>
 
           <div className="lrn-cert__body">

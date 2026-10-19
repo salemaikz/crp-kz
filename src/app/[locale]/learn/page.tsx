@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import { Award, BookOpen } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CourseCard } from '@/components/learn/CourseCard';
-import { Button, Card, Container, EmptyState, PageHeader, Section, Stat, TextLink } from '@/components/ui';
+import { Button, Card, Container, EmptyState, PageHeader, Section, TextLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
 import { formatDate } from '@/lib/format';
@@ -51,26 +51,10 @@ export default async function LearnPage({ params }: Props) {
   const sorted = [...courses].sort(byPriority);
   const open = sorted.filter((c) => c.access.ok);
   const closed = sorted.filter((c) => !c.access.ok);
-  const inProgress = open.filter((c) => !c.progress.complete).length;
-  const lessonsDone = courses.reduce((sum, c) => sum + c.progress.done, 0);
-  const firstName = user.name.trim().split(/\s+/)[0] || user.name;
 
   return (
     <>
-      <PageHeader
-        tone="night"
-        title={t('title')}
-        lead={courses.length > 0 ? t('lead', { name: firstName }) : t('leadEmpty', { name: firstName })}
-        meta={
-          courses.length > 0 || certificates.length > 0 ? (
-            <>
-              <Stat size="sm" value={inProgress} label={t('stats.inProgress', { count: inProgress })} />
-              <Stat size="sm" value={lessonsDone} label={t('stats.lessons', { count: lessonsDone })} />
-              <Stat size="sm" value={certificates.length} label={t('stats.certificates', { count: certificates.length })} />
-            </>
-          ) : undefined
-        }
-      />
+      <PageHeader title={t('title')} lead={courses.length > 0 ? t('lead') : t('leadEmpty')} />
 
       <Section tone="board" spacing="tight">
         <Container>
@@ -95,8 +79,8 @@ export default async function LearnPage({ params }: Props) {
                     <h2 className="h3">{t('coursesTitle')}</h2>
                   </div>
                   <div className="lrn-grid" data-testid="learn-courses">
-                    {open.map((c, i) => (
-                      <CourseCard key={c.course.id} item={c} index={i} locale={locale} />
+                    {open.map((c) => (
+                      <CourseCard key={c.course.id} item={c} locale={locale} />
                     ))}
                   </div>
                 </div>
@@ -109,8 +93,8 @@ export default async function LearnPage({ params }: Props) {
                     <p>{t('closedLead')}</p>
                   </div>
                   <div className="lrn-grid">
-                    {closed.map((c, i) => (
-                      <CourseCard key={c.course.id} item={c} index={open.length + i} locale={locale} />
+                    {closed.map((c) => (
+                      <CourseCard key={c.course.id} item={c} locale={locale} />
                     ))}
                   </div>
                 </div>
@@ -131,10 +115,7 @@ export default async function LearnPage({ params }: Props) {
               ) : (
                 <div className="lrn-certs" data-testid="learn-certificates">
                   {certificates.map((c) => (
-                    <Card key={c.id} as="article" large padding="none" className="lrn-cert-item">
-                      <span className="lrn-cert-item__icon" aria-hidden="true">
-                        <Award />
-                      </span>
+                    <Card key={c.id} as="article" large padding="md" className="lrn-cert-item">
                       <div className="lrn-cert-item__body">
                         <h3 className="display lrn-cert-item__title">{loc(c.courseTitle, locale)}</h3>
                         <p className="meta">{t('certificateIssued', { date: formatDate(c.issuedAt, locale) })}</p>
