@@ -11,7 +11,7 @@ export function hashSlug(slug: string): number {
   return h;
 }
 
-/** Тон обложки по slug курса: один и тот же курс всегда одного цвета — на главной, в каталоге и в кабинете. */
+/** Тон обложки по slug курса: один и тот же курс всегда одного цвета — на главной и в каталоге. */
 export function toneFor(slug: string): string {
   return COVER_TONES[hashSlug(slug) % COVER_TONES.length] ?? COVER_TONES[0];
 }

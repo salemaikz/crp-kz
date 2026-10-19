@@ -391,6 +391,10 @@
   .site-footer a {
     text-decoration: none;
   }
+  /* пункты меню подвала короткие: не рвём «бизнес-разбор» по дефису на узком экране */
+  .site-footer ul a {
+    white-space: nowrap;
+  }
   .site-footer a:hover {
     color: #fff;
     text-decoration: underline;

@@ -63,11 +63,10 @@ export default async function CoursesPage({ params, searchParams }: Props) {
             <>
               <div className="cat-toolbar">
                 <CatalogFilters active={active} available={available} counts={counts} />
-                {active !== 'all' && (
-                  <p className="cat-toolbar__count" aria-live="polite">
-                    {t('resultCount', { count: shown.length })}
-                  </p>
-                )}
+                {/* aria-live всегда в DOM, чтобы смену фильтра озвучивали; при «Все» — пусто (счётчик есть на чипе) */}
+                <p className="cat-toolbar__count" aria-live="polite">
+                  {active !== 'all' ? t('resultCount', { count: shown.length }) : null}
+                </p>
               </div>
               {shown.length > 0 ? (
                 <div className="cat-grid">

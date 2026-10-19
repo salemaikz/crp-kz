@@ -11,7 +11,7 @@ async function demoLogin(page: Page, role: 'admin' | 'manager' | 'operator' | 'c
 
 test('лендинг: первый экран, витрина курсов и блок для команд', async ({ page }) => {
   await page.goto('/ru');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Курсы Центра развития предпринимателей');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Курсы Центра Развития Предпринимателей');
   await expect(page.getByRole('link', { name: 'Выбрать курс' }).first()).toHaveAttribute('href', '/ru/courses');
   await expect(page.getByRole('heading', { level: 2, name: 'Курсы', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Целина', exact: true })).toBeVisible();
