@@ -3,8 +3,8 @@ import { cn } from './cn';
 type Props = {
   name: string;
   size?: 'sm' | 'md' | 'lg';
-  /** ink — графит; red — светло-красный; light — для тёмного фона. */
-  tone?: 'ink' | 'red' | 'light';
+  /** ink — графит; light — для тёмного фона. */
+  tone?: 'ink' | 'light';
   className?: string;
 };
 

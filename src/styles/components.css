@@ -99,19 +99,19 @@
     width: 44px;
   }
   /* «Призрачная» кнопка на тёмном фоне — светлая обводка */
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .btn--ghost {
+  :is(.section--night, .on-night) .btn--ghost {
     --btn-fg: #fff;
     --btn-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 55%);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .btn--ghost:hover {
+  :is(.section--night, .on-night) .btn--ghost:hover {
     --btn-bg: #fff;
     --btn-fg: var(--ink);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) :is(.on-paper, .card:not(.card--night)) .btn--ghost {
+  :is(.section--night, .on-night) :is(.on-paper, .card) .btn--ghost {
     --btn-fg: var(--ink);
     --btn-shadow: inset 0 0 0 1.5px var(--ink);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) :is(.on-paper, .card:not(.card--night)) .btn--ghost:hover {
+  :is(.section--night, .on-night) :is(.on-paper, .card) .btn--ghost:hover {
     --btn-bg: var(--ink);
     --btn-fg: #fff;
   }
@@ -144,11 +144,18 @@
   .text-link:hover {
     color: var(--ink);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .text-link {
+  :is(.section--night, .on-night) .text-link {
     color: var(--red-on-night);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .text-link:hover {
+  :is(.section--night, .on-night) .text-link:hover {
     color: #fff;
+  }
+  /* светлая карточка внутри тёмной секции: ссылка возвращает красный на белом */
+  :is(.section--night, .on-night) :is(.on-paper, .card) .text-link {
+    color: var(--red-ink);
+  }
+  :is(.section--night, .on-night) :is(.on-paper, .card) .text-link:hover {
+    color: var(--ink);
   }
 
   /* ---------- Карточки («бумага») ---------- */
@@ -166,15 +173,6 @@
     background: transparent;
     border: 1.5px dashed #c8cbc4;
   }
-  .card--night {
-    background: var(--night);
-    color: var(--on-night);
-    border-color: var(--night);
-  }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .card--night {
-    background: var(--night-2);
-    border-color: rgb(255 255 255 / 8%);
-  }
   /* карточка плоская; подъём и тень — только при наведении на кликабельную */
   @media (prefers-reduced-motion: no-preference) {
     .card--interactive {
@@ -187,23 +185,17 @@
       box-shadow: var(--shadow-hover);
     }
   }
-  .card--p-sm {
-    padding: 18px;
-  }
   .card--p-md {
     padding: clamp(20px, 2.4vw, 28px);
   }
   .card--p-lg {
     padding: clamp(24px, 3vw, 38px);
   }
-  .card--night :is(.lead, .muted, .meta) {
-    color: var(--on-night-2);
-  }
   /* белая карточка в тёмной секции: возвращаем тёмные цвета текста */
-  :is(.section--night, .section--deep, .section--glow, .on-night) .card:not(.card--night) :is(.lead, .muted) {
+  :is(.section--night, .on-night) .card :is(.lead, .muted) {
     color: var(--ink-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .card:not(.card--night) .meta {
+  :is(.section--night, .on-night) .card .meta {
     color: var(--ink-3);
   }
 
@@ -255,15 +247,11 @@
     --badge-bg: #e6eefa;
     --badge-fg: var(--info);
   }
-  .badge--night {
+  :is(.section--night, .on-night) .badge--neutral {
     --badge-bg: rgb(255 255 255 / 8%);
     --badge-fg: var(--on-night);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .badge--neutral {
-    --badge-bg: rgb(255 255 255 / 8%);
-    --badge-fg: var(--on-night);
-  }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .badge--red {
+  :is(.section--night, .on-night) .badge--red {
     --badge-bg: rgb(227 30 36 / 18%);
     --badge-fg: var(--red-on-night);
   }
@@ -295,8 +283,7 @@
   }
   .chip[aria-pressed='true'],
   .chip[aria-current='page'],
-  .chip[aria-selected='true'],
-  .chip--active {
+  .chip[aria-selected='true'] {
     background: var(--ink);
     border-color: var(--ink);
     color: #fff;
@@ -348,7 +335,7 @@
     min-height: 52px;
     padding: 12px 16px;
     border: 1.5px solid var(--line-strong);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-field);
     background: #fff;
     color: var(--ink);
     font-size: 16px;
@@ -544,10 +531,10 @@
   .progress--success .progress__fill {
     background: var(--success);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .progress__track {
+  :is(.section--night, .on-night) .progress__track {
     background: rgb(255 255 255 / 14%);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .progress__value {
+  :is(.section--night, .on-night) .progress__value {
     color: var(--on-night-2);
   }
 
@@ -559,15 +546,12 @@
     padding: clamp(36px, 6vw, 64px) clamp(20px, 4vw, 48px);
     text-align: center;
   }
+  /* иконка необязательная: простая линейная, без круга и фона */
   .empty__icon {
     display: grid;
     place-items: center;
-    width: 64px;
-    height: 64px;
-    margin-bottom: 10px;
-    border-radius: 50%;
-    background: var(--red-tint);
-    color: var(--red);
+    margin-bottom: 6px;
+    color: var(--ink-3);
   }
   .empty__icon svg {
     width: 28px;
@@ -759,7 +743,7 @@
   .price--free {
     color: var(--success);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .price--free {
+  :is(.section--night, .on-night) .price--free {
     color: #6fd99a;
   }
 
@@ -791,10 +775,10 @@
     font-size: 13px;
     color: var(--ink-3);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) .stat__value {
+  :is(.section--night, .on-night) .stat__value {
     color: #fff;
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night, .card--night) :is(.stat__label, .stat__hint) {
+  :is(.section--night, .on-night) :is(.stat__label, .stat__hint) {
     color: var(--on-night-2);
   }
 
@@ -822,10 +806,6 @@
     width: 56px;
     height: 56px;
     font-size: 18px;
-  }
-  .avatar--red {
-    background: var(--red-tint);
-    color: var(--red-ink);
   }
   .avatar--light {
     background: rgb(255 255 255 / 12%);
@@ -865,15 +845,15 @@
   .crumbs [aria-current='page'] {
     color: var(--ink-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .crumbs ol {
+  :is(.section--night, .on-night) .crumbs ol {
     color: var(--on-night-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .crumbs a:hover,
-  :is(.section--night, .section--deep, .section--glow, .on-night) .crumbs [aria-current='page'] {
+  :is(.section--night, .on-night) .crumbs a:hover,
+  :is(.section--night, .on-night) .crumbs [aria-current='page'] {
     color: #fff;
   }
 
-  /* ---------- Декор: концентрические круги из знака (только главная) ---------- */
+  /* ---------- Декор: концентрические круги из знака (первый экран и заявка на главной) ---------- */
   .circles {
     display: block;
     width: 100%;
@@ -884,64 +864,19 @@
   .circles circle {
     fill: none;
     stroke-width: 2.2;
-    transform-origin: 300px 300px;
   }
-  .circles--red circle:nth-child(1) {
+  .circles circle:nth-child(1) {
     stroke: rgb(227 30 36 / 22%);
   }
-  .circles--red circle:nth-child(2) {
+  .circles circle:nth-child(2) {
     stroke: rgb(227 30 36 / 32%);
   }
-  .circles--red circle:nth-child(3) {
+  .circles circle:nth-child(3) {
     stroke: rgb(227 30 36 / 44%);
   }
-  .circles--red circle:nth-child(4) {
+  .circles circle:nth-child(4) {
     fill: rgb(227 30 36 / 26%);
     stroke: rgb(227 30 36 / 60%);
-  }
-  /* на светлом фоне — тоньше и бледнее */
-  .circles--light circle {
-    stroke-width: 1.6;
-  }
-  .circles--light circle:nth-child(1) {
-    stroke: rgb(227 30 36 / 10%);
-  }
-  .circles--light circle:nth-child(2) {
-    stroke: rgb(227 30 36 / 14%);
-  }
-  .circles--light circle:nth-child(3) {
-    stroke: rgb(227 30 36 / 18%);
-  }
-  .circles--light circle:nth-child(4) {
-    fill: rgb(227 30 36 / 6%);
-    stroke: rgb(227 30 36 / 22%);
-  }
-  .circles--animated circle {
-    animation: ring-in 1.4s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-  }
-  .circles--animated circle:nth-child(1) {
-    animation-delay: 0.3s;
-  }
-  .circles--animated circle:nth-child(2) {
-    animation-delay: 0.2s;
-  }
-  .circles--animated circle:nth-child(3) {
-    animation-delay: 0.1s;
-  }
-  @keyframes ring-in {
-    from {
-      opacity: 0;
-      transform: scale(0.82);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .circles--animated circle {
-      animation: none;
-    }
   }
 
   /* ---------- Шапка страницы: крошки, h1, одна строка пояснения ---------- */
@@ -949,14 +884,14 @@
     position: relative;
     padding-block: clamp(32px, 5vw, 64px) clamp(28px, 4vw, 48px);
   }
-  .page-header--paper {
-    background: var(--paper);
-    border-bottom: 1px solid var(--line);
-  }
   /* для страницы курса: сплошной тёмный фон, без колец и свечения */
   .page-header--night {
     background: var(--night);
     color: #fff;
+  }
+  /* секция на доске сразу под шапкой на доске: низ шапки уже даёт отступ, второй не нужен */
+  .page-header--board + .section--board:not(.section--flush) {
+    padding-top: clamp(0px, 1vw, 4px);
   }
   .page-header__grid {
     display: grid;
@@ -965,7 +900,7 @@
   @media (min-width: 960px) {
     .page-header__grid--aside {
       grid-template-columns: minmax(0, 1fr) minmax(300px, 0.62fr);
-      align-items: end;
+      align-items: start;
       gap: clamp(32px, 5vw, 72px);
     }
   }

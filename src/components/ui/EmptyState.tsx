@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
-import { Inbox } from 'lucide-react';
 import { cn } from './cn';
 
 type Props = {
   title: ReactNode;
   description?: ReactNode;
-  /** Иконка lucide-react; по умолчанию — Inbox. */
+  /** Иконка lucide-react (по желанию): простая линейная, 28 px, без круга и фона. По умолчанию без иконки. */
   icon?: ReactNode;
   /** Кнопки действий. */
   action?: ReactNode;
@@ -15,7 +14,7 @@ type Props = {
   className?: string;
 };
 
-/** Пустое состояние: иконка в «кольцах», заголовок, пояснение и следующее действие. */
+/** Пустое состояние: заголовок, пояснение и следующее действие; иконка необязательна. */
 export function EmptyState({
   title,
   description,
@@ -27,9 +26,11 @@ export function EmptyState({
 }: Props) {
   return (
     <div className={cn('empty', framed && 'card card--lg', className)}>
-      <div className="empty__icon" aria-hidden="true">
-        {icon ?? <Inbox />}
-      </div>
+      {icon && (
+        <div className="empty__icon" aria-hidden="true">
+          {icon}
+        </div>
+      )}
       <H className="empty__title">{title}</H>
       {description && <p className="empty__text">{description}</p>}
       {action && <div className="empty__actions">{action}</div>}

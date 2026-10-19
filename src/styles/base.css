@@ -148,7 +148,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Красная линия-маркер под одним словом заголовка. Только первый экран главной и заявка внизу. */
+  /* Красная линия-маркер под одним словом заголовка первого экрана главной. Статичная, больше нигде. */
   .mark {
     position: relative;
     display: inline-block;
@@ -169,20 +169,6 @@
     stroke-width: 3;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-dasharray: 1;
-    stroke-dashoffset: 1;
-    animation: mark-draw 1.1s cubic-bezier(0.65, 0, 0.35, 1) 0.35s forwards;
-  }
-  @keyframes mark-draw {
-    to {
-      stroke-dashoffset: 0;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .mark__svg path {
-      animation: none;
-      stroke-dashoffset: 0;
-    }
   }
 
   /* ---------- Доступность ---------- */
@@ -230,20 +216,9 @@
   .section--paper {
     background: var(--paper);
   }
-  .section--night,
-  .section--deep {
+  .section--night {
     background: var(--night);
     color: var(--on-night);
-  }
-  .section--deep {
-    background: var(--deep);
-  }
-  .section--glow {
-    background: var(--hero-bg);
-    color: #fff;
-  }
-  .section--clip {
-    overflow: hidden;
   }
   @media (max-width: 640px) {
     .section {
@@ -276,21 +251,21 @@
   }
 
   /* Тёмный контекст: вторичный текст светлеет */
-  :is(.section--night, .section--deep, .section--glow, .on-night) .lead,
-  :is(.section--night, .section--deep, .section--glow, .on-night) .muted {
+  :is(.section--night, .on-night) .lead,
+  :is(.section--night, .on-night) .muted {
     color: var(--on-night-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .meta {
+  :is(.section--night, .on-night) .meta {
     color: var(--on-night-2);
   }
   /* белая карточка внутри тёмной секции возвращает тёмные цвета */
-  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper {
+  :is(.section--night, .on-night) .on-paper {
     color: var(--ink);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper :is(.lead, .muted) {
+  :is(.section--night, .on-night) .on-paper :is(.lead, .muted) {
     color: var(--ink-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper .meta {
+  :is(.section--night, .on-night) .on-paper .meta {
     color: var(--ink-3);
   }
 }

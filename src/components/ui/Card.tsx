@@ -3,9 +3,9 @@ import { cn } from './cn';
 
 type Props = HTMLAttributes<HTMLElement> & {
   as?: 'div' | 'article' | 'section' | 'aside' | 'li';
-  /** paper — белая «бумага»; night — тёмная карточка-акцент; dashed — пунктирная рамка. */
-  tone?: 'paper' | 'night' | 'dashed';
-  padding?: 'none' | 'sm' | 'md' | 'lg';
+  /** paper — белая «бумага»; dashed — пунктирная рамка. */
+  tone?: 'paper' | 'dashed';
+  padding?: 'none' | 'md' | 'lg';
   /** Радиус 28 px для крупных карточек. */
   large?: boolean;
   /** Кликабельная карточка: при наведении подъём на 4 px и тень (без reduced-motion). */

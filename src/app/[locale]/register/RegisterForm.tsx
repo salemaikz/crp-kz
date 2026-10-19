@@ -31,7 +31,7 @@ export function RegisterForm({ next }: { next?: string }) {
       )}
       <input type="hidden" name="locale" value={locale} />
       {next && <input type="hidden" name="next" value={next} />}
-      <Field label={t('fields.name')} required>
+      <Field label={t('fields.name')} required hint={t('fields.nameHint')}>
         <Input
           name="name"
           autoComplete="name"
