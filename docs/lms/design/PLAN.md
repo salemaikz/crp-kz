@@ -113,8 +113,9 @@ export function isFeatureActive(name: FeatureName, env?: Env, opts?: { today?: s
 `src/lib/env.ts` (волна 0):
 ```ts
 export function isDemo(env?: Env): boolean;                 // логика прежняя, окружение — параметром
-/** В демо всегда true (адрес: NEXT_PUBLIC_SITE_URL, затем URL Netlify, затем VERCEL_URL, иначе localhost);
- *  вне демо нужен явный https-адрес. */
+/** В демо true, если явного адреса нет или он корректный http(s); вне демо — только явный https.
+ *  Источники адреса — как в siteUrl(): NEXT_PUBLIC_SITE_URL → URL (только демо) →
+ *  VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL → localhost. */
 export function siteUrlConfigured(env?: Env): boolean;
 ```
 
@@ -288,8 +289,8 @@ try {
   await close();
 }
 ```
-`npm run db:status` (`db-migrate.ts --status`) — только чтение, код 1 при ненакатанных; незнакомый
-аргумент — код 2. Расширение закрытых списков CHECK — D-037 и BUILD §2.
+`npm run db:status` (`db-migrate.ts --status`) — только чтение, коды выхода по ops §3.13: 0 — всё
+накатано, 3 — есть ненакатанные, 1 — ошибка (в том числе БД в памяти и неверный аргумент). Расширение закрытых списков CHECK — D-037 и BUILD §2.
 Лог скриптов — только счётчики и id, без email, имён и текстов.
 
 ### 2.6 Журнал действий — `src/lib/audit.ts` (волна 0)
