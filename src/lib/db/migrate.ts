@@ -7,8 +7,12 @@ import { MIGRATION_LOCK_KEY } from './locks';
 const NAME_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.sql$/;
 
 export function migrationsDir(): string {
-  // Подмена каталога — только вне production: на сервере миграции берутся из выложенного релиза
-  const override = process.env.NODE_ENV !== 'production' ? process.env.MIGRATIONS_DIR : undefined;
+  // Подмена каталога — только для тестов и разработки. В production молча игнорировать её нельзя:
+  // приложение и ручной db:status разошлись бы в наборе файлов, поэтому это ошибка конфигурации
+  const override = process.env.MIGRATIONS_DIR?.trim();
+  if (override && process.env.NODE_ENV === 'production') {
+    throw new Error('MIGRATIONS_DIR задан в production: переменная только для тестов и разработки, уберите её из окружения.');
+  }
   return override || path.join(process.cwd(), 'migrations');
 }
 

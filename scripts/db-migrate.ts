@@ -4,6 +4,7 @@ import { openDriver } from '../src/lib/db';
 import { migrate, migrationStatus } from '../src/lib/db/migrate';
 import { isDemo } from '../src/lib/env';
 
+const IN_MEMORY_MESSAGE = 'База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR.';
 const DEFAULT_LOCK_TIMEOUT_MS = 5000;
 
 /** MIGRATE_LOCK_TIMEOUT_MS: целое положительное число миллисекунд. */
@@ -18,6 +19,11 @@ function lockTimeoutMs(raw = process.env.MIGRATE_LOCK_TIMEOUT_MS): number {
 }
 
 async function status(): Promise<number> {
+  // БД в памяти пуста по определению: «не накатаны» было бы ошибкой настройки, а не состоянием
+  if (!process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim()) {
+    console.error(IN_MEMORY_MESSAGE);
+    return 2;
+  }
   const db = await openDriver(); // без prepareDb и накатки
   try {
     const st = await migrationStatus(db);
