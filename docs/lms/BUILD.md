@@ -1,0 +1,321 @@
+# Сборка MVP — технический контракт
+
+Документ для агентов, которые строят платформу. Он **нормативный**, как
+`AGENTS.md` и `SPEC.md`. Расхождение кода с ним — баг. Менять контракт может
+только оркестратор, отдельным коммитом.
+
+Цель первой сборки — рабочая платформа, которую владелец откроет по ссылке и
+пройдёт сам. Нужны:
+- витрина и курсы;
+- урок с тестом и сертификат;
+- покупка через подтверждение админом;
+- назначения сотрудникам и отчёт руководителя;
+- конструктор курсов в админке.
+
+Вне этой сборки: эквайринг, B2B-места, задания с наставником, расписание
+уроков, ИИ.
+
+## 1. Стек и версии (pin)
+
+| Пакет | Версия |
+|---|---|
+| next / eslint-config-next | 16.4.2 |
+| react, react-dom | 19.3.1 |
+| typescript | 5.9.3 (не 7.x) |
+| tailwindcss, @tailwindcss/postcss | 4.3.3 |
+| next-intl | 4.14.9 |
+| postgres (postgres.js) | 3.4.9 |
+| @electric-sql/pglite | 0.5.10 |
+| zod | 3.25.76 |
+| bcryptjs | 3.0.3 |
+| react-markdown / remark-gfm | 10.1.0 / 4.0.1 |
+| qrcode (+ @types/qrcode) | 1.5.4 |
+| lucide-react | 1.59.0 |
+| @playwright/test | 1.56.1 (браузер: `/opt/pw-browsers/chromium-1194`) |
+| tsx | 4.23.15 |
+
+- Node 22, ESM.
+- Сборка `next build --webpack`, не Turbopack.
+- Новые зависимости добавляет **только оркестратор**. Агенты фич не трогают
+  `package.json`.
+
+## 2. База данных: один интерфейс, два драйвера
+
+`src/lib/db/index.ts`:
+
+```ts
+export type Row = Record<string, unknown>;
+export interface Sql {
+  <T = Row>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+}
+export interface Db {
+  sql: Sql;
+  tx<T>(fn: (sql: Sql) => Promise<T>): Promise<T>;
+  json(value: unknown): unknown;  // параметр для колонок jsonb: ${db.json(v)}
+  driver: 'postgres' | 'pglite';
+}
+export async function getDb(): Promise<Db>;  // ленивая инициализация + миграции + сид
+export function newId(): string;             // crypto.randomUUID()
+export function now(): number;               // Date.now()
+```
+
+**Выбор драйвера.**
+- Есть `DATABASE_URL` — используется postgres.js
+  (`transform: postgres.camel`, int8 → number).
+- Нет — PGlite: in-memory, либо файл `PGLITE_DIR`, если он задан.
+- PGlite = **демо-режим** (`isDemo()` в `src/lib/env.ts`).
+
+**Правила SQL** — единые для обоих драйверов:
+- Только tagged template со **значениями** в `${}`. Никаких вложенных
+  фрагментов `sql\`...\``, `sql(obj)`, `sql.unsafe` и склейки строк.
+- Списки — `= ANY(${ids})` (массив значений).
+- jsonb пишем так: `${db.json(value)}` (без `::jsonb` — каст делает драйвер).
+  Читаем уже распарсенным объектом.
+- Колонки в БД — snake_case, в JS — camelCase (адаптер переводит ключи строк).
+- id — `TEXT` (UUID); время — `BIGINT` epoch-мс (в JS `number`); деньги —
+  `BIGINT` целые тенге (`amount_kzt`); флаги — `BOOLEAN`.
+
+**Миграции.**
+- Файлы `migrations/YYYY-MM-DD-<slug>.sql`, строго идемпотентные
+  (`IF NOT EXISTS`), применяются по алфавиту.
+- Учёт — таблица `schema_migrations(name, applied_at)` (D-012).
+- Раннер: `src/lib/db/migrate.ts` + CLI `npm run db:migrate`.
+
+**Сид.**
+- `src/lib/db/seed.ts`, запускается автоматически, если таблица `users`
+  пустая и (`isDemo()` или `SEED_DEMO=1`). Также доступен `npm run db:seed`.
+- Сид детерминированный: фиксированные id и даты относительно `now()`.
+  Демо-данные одинаковы в любом экземпляре.
+
+## 3. Схема v1
+
+```
+users(id, email UNIQUE, password_hash, name, role TEXT CHECK(role IN ('admin','author','learner')) DEFAULT 'learner',
+      locale TEXT DEFAULT 'ru', created_at)
+sessions(id, user_id → users ON DELETE CASCADE, expires_at, created_at)
+organizations(id, slug UNIQUE, name, kind TEXT CHECK(kind IN ('owner','client')), created_at)
+organization_members(org_id → organizations, user_id → users, role TEXT CHECK(role IN ('manager','member')),
+      position TEXT, created_at, PRIMARY KEY(org_id, user_id))
+courses(id, slug UNIQUE, title jsonb, summary jsonb, description jsonb, cover TEXT, level TEXT,
+      duration_min INT, visibility TEXT CHECK(visibility IN ('public','internal','private')),
+      owner_org_id → organizations NULL, status TEXT CHECK(status IN ('draft','published')),
+      sequential BOOLEAN DEFAULT false, position INT DEFAULT 0, created_at, updated_at)
+course_modules(id, course_id → courses ON DELETE CASCADE, position INT, title jsonb, created_at)
+lessons(id, course_id → courses ON DELETE CASCADE, module_id → course_modules ON DELETE CASCADE,
+      position INT, slug TEXT, title jsonb, content jsonb, duration_min INT,
+      status TEXT CHECK(status IN ('draft','published')), created_at, updated_at, UNIQUE(course_id, slug))
+course_offers(id, course_id → courses UNIQUE, price_kzt BIGINT, access_days INT NULL, active BOOLEAN, created_at)
+enrollments(id, user_id → users, course_id → courses, source TEXT CHECK(source IN ('purchase','assignment','seat','grant','self')),
+      org_id NULL, order_id NULL, granted_by NULL, due_at BIGINT NULL, expires_at BIGINT NULL, revoked_at BIGINT NULL,
+      created_at, updated_at, UNIQUE(user_id, course_id))
+lesson_progress(user_id, lesson_id → lessons ON DELETE CASCADE, course_id, completed_at, PRIMARY KEY(user_id, lesson_id))
+quiz_attempts(id, user_id, lesson_id, block_id TEXT, correct INT, total INT, passed BOOLEAN, created_at)
+certificates(id, number UNIQUE, user_id, course_id, holder_name, locale, issued_at, UNIQUE(user_id, course_id))
+orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT,
+      status TEXT CHECK(status IN ('pending','paid','cancelled','refunded')),
+      buyer_type TEXT CHECK(buyer_type IN ('person','company')), buyer_name, buyer_email, buyer_phone,
+      company_name NULL, company_bin NULL, payment_method TEXT CHECK(payment_method IN ('kaspi','invoice')),
+      paid_at NULL, decided_by NULL, created_at, updated_at)
+consents(id, user_id NULL, order_id NULL, kind TEXT, version TEXT, created_at)
+audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta jsonb, created_at)
+```
+
+Индексы: `enrollments(user_id)`, `enrollments(course_id)`, `lessons(module_id, position)`,
+`course_modules(course_id, position)`, `orders(status, created_at)`, `audit_log(entity, entity_id)`.
+
+**Локализованные поля** (`title`, `summary`, …) хранятся как `{"ru": "...", "kz": "..."}`.
+Чтение — `t(field, locale)`: нужная локаль → `ru` → первая непустая.
+
+**Контент урока**: `content = {"ru": {"v":1,"blocks":[...]}, "kz": {...}}`.
+
+Блоки:
+
+| Тип | Поля |
+|---|---|
+| `heading` | `level` 2–3, `text` |
+| `text` | `markdown`, до 20 000 знаков |
+| `video` | `provider`: `youtube` или `placeholder`, `youtubeId?`, `caption?` |
+| `callout` | `tone`: `info`, `warn` или `success`, `text` |
+| `divider` | — |
+| `quiz` | `passScore` 1–100, `questions[]` |
+
+Вопрос теста: `{id, text, options: string[2..8], correct: number[], multiple: boolean, explain?}`.
+Схемы блоков — `src/lib/content/blocks.ts`, на zod.
+
+## 4. Доступ — единственный источник правды
+
+`src/lib/access.ts` (пишет фундамент, остальные только используют):
+
+```ts
+canAccessCourse(userId, courseId): Promise<{ ok: boolean; enrollment?: Enrollment; reason?: 'none'|'expired'|'revoked' }>
+canSelfEnroll(userId, course): Promise<boolean>   // бесплатный public (нет активного offer или price 0) или internal своей организации
+enroll(input: { userId, courseId, source, orgId?, orderId?, grantedBy?, dueAt?, accessDays? }, sql?): Promise<Enrollment>  // идемпотентно (upsert), снимает revoked
+revokeEnrollment(userId, courseId, actorId, sql?): Promise<void>
+```
+
+- Доступ к уроку — только при `ok`. Проверка — на сервере, в каждой странице
+  урока и в каждом server action (прогресс, тест, сертификат).
+- Платный курс никогда не даёт `self`.
+- Неопубликованный урок, модуль или курс слушателю не виден.
+- Правильные ответы теста (`correct`, `explain`) никогда не уходят на клиент
+  до сдачи. `explain` показываем только после попытки.
+
+## 5. Авторизация
+
+`src/lib/auth/*` (фундамент):
+
+```ts
+getCurrentUser(): Promise<User | null>        // React cache
+requireUser(locale): Promise<User>            // иначе redirect на /{locale}/login?next=
+requireAdmin(locale): Promise<User>
+getMemberships(userId): Promise<Membership[]>  // [{orgId, orgName, role}]
+isManagerOf(userId, orgId): Promise<boolean>
+```
+
+- **Сессия.** Строка в `sessions` (30 дней). Cookie `crp_session` (httpOnly,
+  sameSite=lax, secure в проде). Значение —
+  `base64url({sid,uid,exp}).hmacSHA256(SESSION_SECRET)`.
+- **Проверка.** Подпись и срок, затем строка в `sessions`.
+- **Демо-исключение.** Только при `isDemo()` и только для пользователей из сида:
+  если строки сессии нет (новый экземпляр без памяти), а подпись верна —
+  сессия создаётся заново. В обычном режиме без строки — отказ.
+- **Секрет.** `SESSION_SECRET` обязателен вне демо: без него вход не работает.
+  В демо — фиксированный демо-секрет.
+- **Пароли.** bcryptjs, cost 10; минимум 8 символов.
+- **Защита.** Ограничение частоты входа и регистрации — в памяти процесса.
+  `?next` принимает только относительные пути (`safeNext`).
+
+**Демо-аккаунты** (пароль `demo12345`), на странице входа — кнопки «Войти как …»
+только в демо:
+
+| Email | Роль | Что видит |
+|---|---|---|
+| `admin@crp.demo` | admin | админка: курсы, заказы, пользователи |
+| `manager@crp.demo` | руководитель в организации ЦРП | «Команда»: назначения и отчёт |
+| `operator@crp.demo` | сотрудник ЦРП | назначен внутренний курс со сроком, частичный прогресс |
+| `client@crp.demo` | предприниматель | купил «Целину», прошёл часть |
+
+## 6. Маршруты
+
+Все страницы — под `src/app/[locale]/`, локали `ru` (по умолчанию) и `kz`.
+Мутации — server actions с zod. Route handlers — только для файлов (CSV).
+
+| Путь | Кто | Владелец кода |
+|---|---|---|
+| `/[locale]` | все | **catalog** — лендинг академии |
+| `/[locale]/courses` | все | **catalog** — каталог |
+| `/[locale]/courses/[slug]` | все | **catalog** — страница курса. Кнопка зависит от состояния: «Купить» / «Начать бесплатно» / «Продолжить» |
+| `/[locale]/courses/[slug]/buy` | все | **checkout** — форма покупки |
+| `/[locale]/orders/[number]` | покупатель (по номеру и email) | **checkout** — статус заказа и инструкция по оплате |
+| `/[locale]/orders/[number]/invoice` | покупатель | **checkout** — счёт на оплату (печатный HTML) |
+| `/[locale]/learn` | вошедший | **learn** — «Моё обучение» |
+| `/[locale]/learn/[slug]` | зачисленный | **learn** — программа с прогрессом |
+| `/[locale]/learn/[slug]/[lesson]` | зачисленный | **learn** — урок: блоки, тест, «Урок пройден», дальше/назад |
+| `/[locale]/learn/[slug]/certificate` | зачисленный | **learn** — сертификат (печать в PDF через браузер) |
+| `/[locale]/cert/[number]` | все | **learn** — публичная проверка: ФИО, курс, дата |
+| `/[locale]/team` | руководитель | **team** — сотрудники, назначения, отчёт |
+| `/[locale]/team/report.csv` | руководитель | **team** — CSV (UTF-8 BOM) |
+| `/[locale]/admin` | admin | **admin** — сводка |
+| `/[locale]/admin/courses`, `/new`, `/[id]`, `/[id]/lessons/[lessonId]` | admin | **admin** — конструктор |
+| `/[locale]/admin/orders` | admin | **checkout** — заказы: «Оплачено» / «Отменить» / «Возврат» |
+| `/[locale]/admin/users` | admin | **admin** — пользователи, выдать или отозвать доступ |
+| `/[locale]/login`, `/register` | гость | **foundation** |
+
+## 7. Дизайн — по редизайну сайта ЦРП
+
+Эталон:
+- `docs/brand/reference/site-redesign.css`;
+- скриншоты `docs/brand/reference/*.webp`;
+- правила — `docs/brand/BRAND.md`.
+
+Кратко:
+- **Фон и текст.** Фон-«доска» `#f3f4f1`, карточки — белая «бумага» с
+  радиусом 18–24 px, текст графит `#14161b`.
+- **Красный** `#e31e24` — только акцент. Кнопка-«пилюля» с тенью
+  `0 8px 22px rgb(227 30 36 / 28%)`.
+- **Тёмные секции** «ночь» `#0e1726`; шапка тёмная полупрозрачная, как на
+  сайте.
+- **Шрифты.** Заголовки — Geologica 700 (`font-variation-settings:"SHRP" 100`,
+  трекинг −0.03em). Текст — Onest. Рукописные пометки — Caveat красным, редко.
+- **Детали.** Eyebrow с красной чёрточкой 22×2 px. Концентрические круги из
+  знака логотипа — декор первого экрана.
+- **Вёрстка.** Мобильная первична, контейнер 1240 px, гаттер
+  `clamp(16px, 4vw, 40px)`.
+
+Компоненты (фундамент, `src/components/ui/`): `Button` (primary / ghost /
+light / sm / lg / block), `Card`, `Badge`, `Eyebrow`, `Section` (board / paper
+/ night), `Container`, `Input`, `Select`, `Textarea`, `Field`, `ProgressBar`,
+`EmptyState`, `Tabs`, `Table`, `Price`, `Hand` (рукописная пометка),
+`Circles` (декор).
+
+## 8. Тексты и языки
+
+- next-intl. Сообщения — **по пространствам имён в отдельных файлах**:
+  `messages/{ru,kz}/{common,auth,catalog,learn,checkout,team,admin}.json`.
+  Загрузчик склеивает их по имени файла.
+- Каждый агент владеет только своими файлами.
+- Казахские строки пишет тот же агент. Перевод помечен «требует проверки
+  носителем» (issue #13).
+- Тест паритета ключей ru ↔ kz — в фундаменте.
+- `<html lang>`: `ru` или `kk` (D-002).
+
+## 9. Демо-контент (сид)
+
+Курсы — тексты наши, помечены как демо; цены — заглушки до решения ЦРП.
+
+| Курс | Тип | Состав |
+|---|---|---|
+| «Целина» | public, 99 000 ₸, 365 дней | 8 модулей: Основы бизнеса, Маркетинг, Продажи, Отдел продаж, Управление, Финансовая грамотность, Масштабирование, Личностный рост. В каждом по 2 урока: текст 150–300 слов и тест на 3 вопроса |
+| «Удвоение личных продаж» | public, 49 000 ₸ | 3 модуля, 15 видеоуроков (`video` placeholder + конспект), итоговый тест |
+| «Как проходит бизнес-разбор» | public, бесплатно | 3 урока + тест |
+| «Оператор ЦРП: первые две недели» | internal организации ЦРП | 4 модуля: Компания и продукты, Регламент обзвона, Работа в CRM, Итоговый тест |
+
+Пользователи и данные:
+- организации: ЦРП (`owner`);
+- демо-аккаунты из §5;
+- ещё 5 сотрудников ЦРП с разным прогрессом — для отчёта руководителя;
+- заказы: 1 оплаченный (`client@crp.demo` → «Целина»), 2 ожидающих
+  (физлицо Kaspi, юрлицо по счёту);
+- 1 выданный сертификат («Как проходит бизнес-разбор» у `client@crp.demo`).
+
+## 10. Тесты и проверки
+
+- **Unit** — `tests/unit/*.test.ts`, node:test + tsx: подсчёт теста,
+  схемы блоков, `t()`, `safeNext`, номер сертификата.
+- **Интеграционные** — `tests/integration/*.test.ts` на PGlite, без внешней БД:
+  - доступ (все пути §4);
+  - идемпотентность `enroll`;
+  - заказ → оплачено → зачисление, повтор → без дублей, возврат → отзыв;
+  - сертификат только после 100 %;
+  - изоляция руководителя по организации.
+- **E2E** — `tests/e2e/*.spec.ts`, Playwright на `next start` в демо-режиме:
+  - гость: каталог → курс;
+  - вход демо-клиентом → урок → тест → «пройден»;
+  - админ: подтверждение заказа;
+  - руководитель: назначение.
+- **Команды:** `npm run typecheck`, `npm run lint`, `npm run test:unit`,
+  `npm run test:integration`, `npm run build`, `npm run test:e2e`.
+- **CI** — `.github/workflows/ci.yml` с теми же шагами.
+
+## 11. Деплой превью
+
+Vercel, проект привязан к репозиторию. Без `DATABASE_URL` приложение работает в
+демо-режиме на PGlite: данные из сида, изменения живут до перезапуска
+экземпляра. В шапке плашка «Демо-версия: данные сбрасываются».
+`serverExternalPackages: ['@electric-sql/pglite']`.
+
+Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), см. issue #24.
+
+## 12. Кто что строит (зоны агентов)
+
+| Агент | Модель | Папки (владеет) |
+|---|---|---|
+| foundation | Opus | конфиги, `src/lib/{db,auth,env,access,i18n,content}`, `src/components/{ui,layout}`, `src/app/[locale]/layout.tsx`, `login`, `register`, `messages/*/{common,auth}.json`, `migrations/`, сид, тестовая инфраструктура, CI |
+| catalog | Sonnet | `src/app/[locale]/page.tsx`, `src/app/[locale]/courses/page.tsx`, `src/app/[locale]/courses/[slug]/page.tsx`, `src/components/catalog`, `src/lib/catalog`, `messages/*/catalog.json` |
+| learn | Sonnet | `src/app/[locale]/learn`, `src/app/[locale]/cert`, `src/components/learn`, `src/lib/learn` (прогресс, тест, сертификаты), `messages/*/learn.json` |
+| checkout | Opus | `src/app/[locale]/courses/[slug]/buy`, `src/app/[locale]/orders`, `src/app/[locale]/admin/orders`, `src/lib/orders`, `src/components/checkout`, `messages/*/checkout.json` |
+| team | Sonnet | `src/app/[locale]/team`, `src/lib/team`, `src/components/team`, `messages/*/team.json` |
+| admin | Sonnet | `src/app/[locale]/admin` (кроме `orders`), `src/lib/admin`, `src/components/admin`, `messages/*/admin.json` |
+
+Чужие папки не меняются. Не хватает чего-то в фундаменте — агент пишет об этом
+в отчёте, а не правит сам.
