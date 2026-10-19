@@ -102,3 +102,16 @@ export function siteUrlConfigured(e: Env = process.env): boolean {
   if (url.protocol === 'https:') return true;
   return url.protocol === 'http:' && isDemo(e);
 }
+
+/**
+ * Публичный адрес как URL или null, если он не разбирается (или не http/https).
+ * Единое место разбора: metadataBase и страница сертификата не падают на кривом NEXT_PUBLIC_SITE_URL.
+ */
+export function safeSiteUrl(e: Env = process.env): URL | null {
+  try {
+    const url = new URL(siteUrl(e));
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}

@@ -9,7 +9,7 @@ import { PrintButton } from '@/components/learn/PrintButton';
 import { Button, Container, PageHeader, Section, TextLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
-import { siteUrl } from '@/lib/env';
+import { safeSiteUrl, siteUrl, siteUrlConfigured } from '@/lib/env';
 import { isFeatureActive } from '@/lib/features';
 import { redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
@@ -84,17 +84,19 @@ export default async function CertificatePage({ params, searchParams }: Props) {
   const pdfHref = `/${locale}${coursePath(slug)}/certificate/pdf`;
 
   // сертификат печатается на языке, на котором проходили курс
-  // адрес сайта в env может быть не URL: тогда лист без QR и адреса проверки, печать работает (не 500)
+  // QR и адрес проверки — по тому же условию, что и в PDF (siteUrlConfigured): вне демо адрес задан явно и https.
+  // Кривой адрес в env: лист без QR, печать работает (не 500)
   let qrSrc: string | null = null;
   let verifyHost: string | null = null;
-  try {
-    const site = siteUrl();
-    const host = new URL(site).host;
-    qrSrc = await qrDataUri(certificateVerifyUrl(site, certificate.locale, certificate.number));
-    verifyHost = `${host}/${certificate.locale}/cert`;
-  } catch {
-    qrSrc = null;
-    verifyHost = null;
+  const parsed = siteUrlConfigured() ? safeSiteUrl() : null;
+  if (parsed) {
+    try {
+      qrSrc = await qrDataUri(certificateVerifyUrl(siteUrl(), certificate.locale, certificate.number));
+      verifyHost = `${parsed.host}/${certificate.locale}/cert`;
+    } catch {
+      qrSrc = null;
+      verifyHost = null;
+    }
   }
 
   return (

@@ -47,3 +47,11 @@ test('siteUrl: порядок источников адреса', () => {
   assert.equal(siteUrl({ ...prod, URL: 'https://n.app' }), 'http://localhost:3000', 'вне демо общая переменная URL не берётся');
   assert.equal(siteUrlConfigured({ ...prod, URL: 'https://n.app' }), false, 'вне демо нужен явный адрес');
 });
+
+test('safeSiteUrl: URL или null, не бросает', async () => {
+  const { safeSiteUrl } = await import('../../src/lib/env');
+  assert.equal(safeSiteUrl({ NEXT_PUBLIC_SITE_URL: 'not a url' }), null);
+  assert.equal(safeSiteUrl({ NEXT_PUBLIC_SITE_URL: 'localhost:3000' }), null, 'схема localhost:');
+  assert.equal(safeSiteUrl({ NEXT_PUBLIC_SITE_URL: 'ftp://x' }), null);
+  assert.equal(safeSiteUrl({ NEXT_PUBLIC_SITE_URL: 'https://learn.crp.kz/' })?.host, 'learn.crp.kz');
+});

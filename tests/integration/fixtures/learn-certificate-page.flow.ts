@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { after, before, mock, test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { isDemo } from '../../../src/lib/env';
 import { createTestDb, type TestDb } from '../../../src/lib/db/testing';
 import { EMPTY_COURSE_SLUG, PDF_COURSE_SLUG, seedPdf } from './learn-certificate-pdf.seed';
 
@@ -51,8 +52,15 @@ mock.module(src('components/learn/CertificateSheet.tsx'), {
       createElement('div', { 'data-testid': 'certificate', 'data-qr': qrSrc ? 'yes' : 'no' }),
   },
 });
+// layout: тяжёлые куски (шрифты next/font, шапка) не нужны, проверяется только generateMetadata
+mock.module(src('styles/fonts.ts'), { namedExports: { fontVariables: '' } });
+mock.module(src('components/layout/index.ts'), {
+  namedExports: { DemoBanner: () => null, Footer: () => null, Header: () => null },
+});
+mock.module(src('components/account/VerifyEmailNotice.tsx'), { namedExports: { VerifyEmailNotice: () => null } });
 mock.module('next/image', { defaultExport: () => createElement('img') });
 
+const { generateMetadata: layoutMetadata } = await import('../../../src/app/[locale]/layout');
 const { default: CertificatePage } = await import('../../../src/app/[locale]/learn/[slug]/certificate/page');
 
 let db: TestDb;
@@ -113,18 +121,52 @@ test('CERT_PDF выключен: печать без пояснения про P
   assert.ok(out.includes('learn.certificate.printHint'));
 });
 
-test('NEXT_PUBLIC_SITE_URL не URL вне демо: страница рендерится без QR, печать работает', async () => {
-  const keepSite = process.env.NEXT_PUBLIC_SITE_URL;
-  process.env.NEXT_PUBLIC_SITE_URL = 'not a url';
+/** Вне демо: DATABASE_URL задан (isDemo() === false), адрес сайта — как передан. */
+async function htmlOutsideDemo(site: string | undefined): Promise<string> {
+  const keepEnv = { site: process.env.NEXT_PUBLIC_SITE_URL, db: process.env.DATABASE_URL, node: process.env.NODE_ENV };
+  const env = process.env as Record<string, string | undefined>;
   try {
-    process.env.FEATURE_CERT_PDF = '0';
-    delete process.env.DEMO_MODE;
+    if (site === undefined) delete env.NEXT_PUBLIC_SITE_URL;
+    else env.NEXT_PUBLIC_SITE_URL = site;
+    env.FEATURE_CERT_PDF = '0';
+    delete env.DEMO_MODE;
+    env.DATABASE_URL = 'postgres://stub@localhost/stub'; // страница ходит в тестовую БД через мок, не в эту
+    env.NODE_ENV = 'production';
+    assert.equal(isDemo(), false);
     current = { id: 'pdf-ru' };
-    const out = renderToStaticMarkup(
+    return renderToStaticMarkup(
       await CertificatePage({ params: Promise.resolve({ locale: 'ru', slug: PDF_COURSE_SLUG }), searchParams: Promise.resolve({}) }),
     );
-    assert.ok(out.includes('print-certificate'));
-    assert.ok(out.includes('data-qr="no"'));
+  } finally {
+    for (const [k, v] of [['NEXT_PUBLIC_SITE_URL', keepEnv.site], ['DATABASE_URL', keepEnv.db], ['NODE_ENV', keepEnv.node]] as const) {
+      if (v === undefined) delete env[k];
+      else env[k] = v;
+    }
+  }
+}
+
+test('вне демо адрес не URL, не https или не задан: страница рендерится без QR, печать работает', async () => {
+  for (const site of ['not a url', 'localhost:3000', 'http://learn.crp.kz', undefined]) {
+    const out = await htmlOutsideDemo(site);
+    assert.ok(out.includes('print-certificate'), String(site));
+    assert.ok(out.includes('data-qr="no"'), String(site));
+  }
+});
+
+test('вне демо https-адрес задан: QR есть', async () => {
+  const out = await htmlOutsideDemo('https://learn.crp.kz');
+  assert.ok(out.includes('data-qr="yes"'));
+});
+
+test('generateMetadata layout: кривой NEXT_PUBLIC_SITE_URL не бросает, metadataBase не задаётся', async () => {
+  const keepSite = process.env.NEXT_PUBLIC_SITE_URL;
+  try {
+    process.env.NEXT_PUBLIC_SITE_URL = 'not a url';
+    const bad = await layoutMetadata({ params: Promise.resolve({ locale: 'ru' }) });
+    assert.equal(bad.metadataBase, undefined);
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://learn.crp.kz';
+    const ok = await layoutMetadata({ params: Promise.resolve({ locale: 'ru' }) });
+    assert.equal(new URL(String(ok.metadataBase)).host, 'learn.crp.kz');
   } finally {
     if (keepSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = keepSite;

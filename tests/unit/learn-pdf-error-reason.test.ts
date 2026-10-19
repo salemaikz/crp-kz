@@ -2,23 +2,23 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { describeRenderError } from '../../src/lib/learn/pdf/errorReason';
 
-const input = { holderName: 'Әлия Құрманғалиқызы', courseTitle: 'Бизнес-разбор' };
-
-test('класс, code и первая строка message; остальные строки не попадают', () => {
+test('системная ошибка Node: класс, code и первая строка message (до 200 символов)', () => {
   const e = Object.assign(new TypeError("ENOENT: no such file, open 'Helvetica.afm'\n  at stack"), { code: 'ENOENT' });
-  assert.equal(describeRenderError(e, input), "error=TypeError, code=ENOENT, message=ENOENT: no such file, open 'Helvetica.afm'");
+  assert.equal(describeRenderError(e), "error=TypeError, code=ENOENT, message=ENOENT: no such file, open 'Helvetica.afm'");
+  const long = Object.assign(new Error('x'.repeat(500)), { code: 'EACCES' });
+  assert.equal(describeRenderError(long).split('message=')[1]!.length, 200);
 });
 
-test('message обрезается до 200 символов', () => {
-  const out = describeRenderError(new Error('x'.repeat(500)), input);
-  assert.equal(out.split('message=')[1]!.length, 200);
+test('обычная ошибка: только класс, message не пишется (в нём могут быть ФИО и курс)', () => {
+  const out = describeRenderError(new Error('bad glyph ӘЛИЯ ҚҰРМАНҒАЛИҚЫЗЫ / Бизнес-разбор'));
+  assert.equal(out, 'error=Error');
 });
 
-test('ФИО и название курса вырезаются из message целиком и по словам', () => {
-  const out = describeRenderError(new Error('bad glyph in Әлия Құрманғалиқызы / Бизнес-разбор / құрманғалиқызы'), input);
-  assert.ok(!/Әлия|Құрман|құрман|Бизнес/.test(out), out);
+test('code не из системных не пишется, message тоже', () => {
+  const e = Object.assign(new Error('Әлия'), { code: 'Әлия' });
+  assert.equal(describeRenderError(e), 'error=Error');
 });
 
 test('не Error: без деталей', () => {
-  assert.equal(describeRenderError('Әлия', input), 'error=non-Error');
+  assert.equal(describeRenderError('Әлия'), 'error=non-Error');
 });

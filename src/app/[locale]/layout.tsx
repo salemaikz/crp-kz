@@ -6,7 +6,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { VerifyEmailNotice } from '@/components/account/VerifyEmailNotice';
 import { DemoBanner, Footer, Header } from '@/components/layout';
 import { htmlLang } from '@/lib/content/l10n';
-import { siteUrl } from '@/lib/env';
+import { safeSiteUrl } from '@/lib/env';
 import { routing } from '@/lib/i18n/routing';
 import { fontVariables } from '@/styles/fonts';
 import '../globals.css';
@@ -26,8 +26,10 @@ export async function generateMetadata({ params }: Pick<Props, 'params'>): Promi
   const { locale: raw } = await params;
   const locale = hasLocale(routing.locales, raw) ? raw : routing.defaultLocale;
   const t = await getTranslations({ locale, namespace: 'common' });
+  // кривой адрес в env не должен ронять метаданные всех страниц: тогда metadataBase не задаём
+  const base = safeSiteUrl();
   return {
-    metadataBase: new URL(siteUrl()),
+    ...(base ? { metadataBase: base } : {}),
     title: { template: t('meta.titleTemplate'), default: t('meta.defaultTitle') },
     description: t('meta.description'),
     applicationName: t('brand.name'),

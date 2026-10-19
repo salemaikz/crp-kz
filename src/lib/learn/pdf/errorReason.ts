@@ -1,23 +1,18 @@
-// Причина ошибки рендера PDF для журнала: без ПДн. Имя класса, code и первая строка message (до 200 символов).
-// Рендер может вставить в message фрагменты входного текста, поэтому ФИО и название курса из message вырезаются.
-import type { CertificatePdfInput } from './types';
+// Причина ошибки рендера PDF для журнала: без ПДн. Журнал хостинга — внешний сервис (D-009).
+// Всегда: имя класса и code. message — только у системных ошибок Node (ENOENT и т.п.): он описывает
+// файл или системный вызов, а не входной текст. У остальных ошибок рендер может вставить в message
+// ФИО или название курса (в любой раскладке регистра, с переносами), поэтому message не пишем.
 
 const MAX = 200;
+const SYSTEM_CODE = /^E[A-Z0-9_]+$/;
 
-export function describeRenderError(e: unknown, input: Pick<CertificatePdfInput, 'holderName' | 'courseTitle'>): string {
+export function describeRenderError(e: unknown): string {
   if (!(e instanceof Error)) return 'error=non-Error';
   const code = (e as { code?: unknown }).code;
   const parts = [`error=${e.constructor?.name || e.name || 'Error'}`];
-  if (typeof code === 'string' || typeof code === 'number') parts.push(`code=${String(code).slice(0, 40)}`);
-  let msg = String(e.message ?? '').split(/\r?\n/, 1)[0] ?? '';
-  // длинные фрагменты первыми, чтобы короткое слово не оставило хвост названия
-  const secrets = [input.holderName, input.courseTitle]
-    .flatMap((v) => [v, ...v.split(/\s+/)])
-    .filter((v) => v.length >= 3)
-    .sort((a, b) => b.length - a.length);
-  for (const v of secrets) {
-    msg = msg.split(v).join('[…]').split(v.toLowerCase()).join('[…]');
+  if (typeof code === 'string' && SYSTEM_CODE.test(code)) {
+    parts.push(`code=${code.slice(0, 40)}`);
+    parts.push(`message=${(String(e.message ?? '').split(/\r?\n/, 1)[0] ?? '').slice(0, MAX)}`);
   }
-  parts.push(`message=${msg.slice(0, MAX)}`);
   return parts.join(', ');
 }

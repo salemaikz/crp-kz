@@ -106,7 +106,7 @@ test('маршрут: флаг, гость, лимит, 404, ETag и 304 без 
     { env, encoding: 'utf8', timeout: 120_000 },
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-  assert.match(res.stdout, /# pass 15/);
+  assert.match(res.stdout, /# pass 17/);
 });
 
 test('символы вне шрифта (эмодзи, галочка, иероглифы) не ломают рендер и не попадают в текст', async () => {

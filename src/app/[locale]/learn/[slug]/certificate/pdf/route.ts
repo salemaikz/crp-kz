@@ -98,7 +98,7 @@ export async function GET(request: Request, { params }: Ctx) {
   };
   if (etagMatches(request.headers.get('if-none-match'), etag)) return new Response(null, { status: 304, headers });
 
-  // 6. тяжёлый модуль — лениво. В журнал при ошибке — номер и причина без ПДн (ФИО и курс вырезаются)
+  // 6. тяжёлый модуль — лениво. В журнал при ошибке — номер и причина без ПДн (message только у системных ошибок Node)
   try {
     const { renderCertificatePdf } = await import('@/lib/learn/pdf/render');
     const body = await renderCertificatePdf(input);
@@ -112,7 +112,7 @@ export async function GET(request: Request, { params }: Ctx) {
       },
     });
   } catch (e) {
-    console.error(`certificate pdf: render failed, number=${input.number}, ${describeRenderError(e, input)}`);
+    console.error(`certificate pdf: render failed, number=${input.number}, ${describeRenderError(e)}`);
     return nav ? redirect303(unavailableHref) : text('Internal error', 500);
   }
 }

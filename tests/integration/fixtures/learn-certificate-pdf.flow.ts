@@ -9,7 +9,7 @@ const src = (rel: string) => new URL(`../../../src/${rel}`, import.meta.url).hre
 
 let current: { id: string } | null = null;
 let renders = 0;
-let renderFails = false;
+let renderFails: Error | boolean = false;
 
 mock.module(src('lib/auth/index.ts'), { namedExports: { getCurrentUser: async () => current } });
 mock.module('next-intl/server', {
@@ -21,7 +21,7 @@ mock.module(src('lib/learn/pdf/render.ts'), {
   namedExports: {
     renderCertificatePdf: async () => {
       renders++;
-      if (renderFails) throw new Error('boom');
+      if (renderFails) throw renderFails instanceof Error ? renderFails : new Error('boom');
       return new TextEncoder().encode('%PDF-1.7 fake %%EOF');
     },
   },
@@ -166,8 +166,32 @@ test('ошибка рендера: 500 без деталей клиенту, в 
   }
   assert.equal(logged.length, 1);
   assert.ok(logged[0]!.includes(PDF_NUMBER));
-  assert.ok(logged[0]!.includes('error=Error') && logged[0]!.includes('message=boom'), logged[0]);
+  assert.ok(logged[0]!.includes('error=Error'), logged[0]);
+  assert.ok(!logged[0]!.includes('message='), 'message обычной ошибки не пишется');
   assert.ok(!logged[0]!.includes('Әлия') && !logged[0]!.includes('@'), 'ФИО или email в логе');
+});
+
+async function logOf(err: Error): Promise<string> {
+  current = { id: 'pdf-owner' };
+  renderFails = err;
+  const logged: string[] = [];
+  const spy = mock.method(console, 'error', (...a: unknown[]) => void logged.push(a.map(String).join(' ')));
+  try {
+    assert.equal((await call()).status, 500);
+  } finally {
+    spy.mock.restore();
+  }
+  return logged.join('\n');
+}
+
+test('ошибка рендера с ФИО в message без code: ни message, ни ФИО в журнале', async () => {
+  const out = await logOf(new Error('bad glyph ӘЛИЯ ҚҰРМАНҒАЛИҚЫЗЫ / Әл… / Бизнес'));
+  assert.ok(!/message=|Әлия|ӘЛИЯ|Әл…|ҚҰРМАН|Бизнес/.test(out), out);
+});
+
+test('системная ошибка ENOENT с путём попадает в журнал', async () => {
+  const out = await logOf(Object.assign(new Error("ENOENT: no such file or directory, open '/var/task/data/Helvetica.afm'"), { code: 'ENOENT' }));
+  assert.ok(out.includes('code=ENOENT') && out.includes('Helvetica.afm'), out);
 });
 
 test('неизвестная локаль в адресе не ломает маршрут: берётся ru', async () => {
