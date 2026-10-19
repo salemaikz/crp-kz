@@ -22,3 +22,16 @@ test('code не из системных не пишется, message тоже', 
 test('не Error: без деталей', () => {
   assert.equal(describeRenderError('Әлия'), 'error=non-Error');
 });
+
+test('ERR_* из Node: code пишется, message — нет (в нём может быть входной текст)', () => {
+  const e = Object.assign(new TypeError('The argument "Әлия Құрманғалиқызы" is invalid'), { code: 'ERR_INVALID_ARG_VALUE' });
+  assert.equal(describeRenderError(e), 'error=TypeError, code=ERR_INVALID_ARG_VALUE');
+});
+
+test('MODULE_NOT_FOUND: message пишется — так нашлась пропавшая на Netlify часть pdfkit', () => {
+  const e = Object.assign(new Error("Cannot find module '#standard-fonts/Helvetica'"), { code: 'MODULE_NOT_FOUND' });
+  assert.equal(
+    describeRenderError(e),
+    "error=Error, code=MODULE_NOT_FOUND, message=Cannot find module '#standard-fonts/Helvetica'",
+  );
+});
