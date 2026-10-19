@@ -78,6 +78,48 @@ export function fitText(
   return { text: cut, size: fitted };
 }
 
+/** Число строк при жадном переносе по пробелам (как у textkit); слово шире maxWidth занимает свою строку. */
+export function countLines(text: string, size: number, maxWidth: number, measure: Measure): number {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 0;
+  let lines = 1;
+  let cur = words[0]!;
+  for (const w of words.slice(1)) {
+    const next = `${cur} ${w}`;
+    if (measure(next, size) > maxWidth) {
+      lines++;
+      cur = w;
+    } else {
+      cur = next;
+    }
+  }
+  return lines;
+}
+
+/**
+ * Кегль и текст с ограничением по высоте. Сначала как fitText (кегль не ниже minSize). Если строк
+ * больше maxLines, кегль опускается ниже minSize шагом 0,5 pt до жёсткого предела hardMin.
+ * fits=false: даже на hardMin текст не укладывается в maxLines, PDF выдавать нельзя.
+ */
+export function fitBlock(
+  text: string,
+  size: number,
+  minSize: number,
+  hardMin: number,
+  maxWidth: number,
+  maxLines: number,
+  measure: Measure,
+): { text: string; size: number; lines: number; fits: boolean } {
+  const first = fitText(text, size, minSize, maxWidth, measure);
+  let cur = first;
+  let lines = countLines(cur.text, cur.size, maxWidth, measure);
+  while (lines > maxLines && cur.size > hardMin) {
+    cur = fitText(text, Math.max(hardMin, cur.size - STEP), hardMin, maxWidth, measure);
+    lines = countLines(cur.text, cur.size, maxWidth, measure);
+  }
+  return { ...cur, lines, fits: lines <= maxLines };
+}
+
 const MAX_TEXT = 200;
 
 /** Управляющие C0/C1 и разделители строк и абзацев (U+2028, U+2029): заменяются пробелом. */
@@ -104,16 +146,31 @@ function isInvisible(c: number): boolean {
  * react-pdf падает на всём документе. Без hasGlyph проверки по шрифту нет.
  */
 export function sanitizePdfText(s: string, hasGlyph?: (codePoint: number) => boolean): string {
+  return sanitizePdfTextDetailed(s, hasGlyph).text;
+}
+
+/**
+ * То же, что sanitizePdfText, плюс признак droppedLetters: при очистке выброшены буквы (\p{L}),
+ * которых нет в шрифте. Тогда текст в PDF вышел бы обрезанным (имя без части букв).
+ */
+export function sanitizePdfTextDetailed(
+  s: string,
+  hasGlyph?: (codePoint: number) => boolean,
+): { text: string; droppedLetters: boolean } {
   let out = '';
+  let droppedLetters = false;
   // NFC до проверки глифов: в NFD «й» и «ё» приходят базовой буквой и combining-знаком; знак
   // выпал бы как «нет в шрифте», и «Й» превратилась бы в «И»
   for (const ch of s.normalize('NFC')) {
     const c = ch.codePointAt(0)!;
     if (isInvisible(c)) continue;
-    if (hasGlyph && !isControl(c) && !/\s/.test(ch) && !hasGlyph(c)) continue;
+    if (hasGlyph && !isControl(c) && !/\s/.test(ch) && !hasGlyph(c)) {
+      if (/\p{L}/u.test(ch)) droppedLetters = true;
+      continue;
+    }
     out += isControl(c) ? ' ' : ch;
   }
   const cleaned = out.replace(/\s+/g, ' ').trim();
   const chars = Array.from(cleaned);
-  return chars.length > MAX_TEXT ? chars.slice(0, MAX_TEXT).join('').trimEnd() : cleaned;
+  return { text: chars.length > MAX_TEXT ? chars.slice(0, MAX_TEXT).join('').trimEnd() : cleaned, droppedLetters };
 }

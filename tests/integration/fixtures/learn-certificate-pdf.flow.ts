@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, mock, test } from 'node:test';
 import { createTestDb, type TestDb } from '../../../src/lib/db/testing';
-import { EMOJI_NUMBER, PDF_COURSE_SLUG, PDF_NUMBER, seedPdf } from './learn-certificate-pdf.seed';
+import { EMOJI_NUMBER, EMPTY_COURSE_SLUG, PDF_COURSE_SLUG, PDF_NUMBER, seedPdf } from './learn-certificate-pdf.seed';
 
 const src = (rel: string) => new URL(`../../../src/${rel}`, import.meta.url).href;
 
@@ -92,6 +92,25 @@ test('имя пустое после очистки: 303 на HTML-страни�
     assert.equal(res.headers.get('cache-control'), 'no-store');
   }
   assert.equal(renders, before, 'рендер для пустого имени вызывался');
+});
+
+test('PDF недоступен: пустой курс при обычном имени, неотображаемые буквы, не влезает по высоте — 303, рендера нет', async () => {
+  const before = renders;
+  const cases: { user: string; slug: string; what: string }[] = [
+    { user: 'pdf-empty', slug: EMPTY_COURSE_SLUG, what: 'пустой курс при обычном имени' },
+    { user: 'pdf-partial', slug: PDF_COURSE_SLUG, what: 'часть букв имени без глифа' },
+    { user: 'pdf-long', slug: PDF_COURSE_SLUG, what: 'имя не влезает по высоте' },
+  ];
+  for (const c of cases) {
+    current = { id: c.user };
+    for (const locale of ['ru', 'kz']) {
+      const res = await call(locale, c.slug);
+      assert.equal(res.status, 303, c.what);
+      assert.equal(res.headers.get('location'), `/${locale}/learn/${c.slug}/certificate`, c.what);
+      assert.equal(res.headers.get('cache-control'), 'no-store', c.what);
+    }
+  }
+  assert.equal(renders, before, 'рендер при недоступном PDF вызывался');
 });
 
 test('чужой сертификат, несуществующий курс и курс без сертификата — одинаковый 404', async () => {

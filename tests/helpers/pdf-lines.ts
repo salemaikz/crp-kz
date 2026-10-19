@@ -5,7 +5,8 @@ import path from 'node:path';
 import { inflateSync } from 'node:zlib';
 import * as fontkit from 'fontkit';
 
-export type PdfLine = { font: string; size: number; text: string; width: number };
+/** x, y — верх строки от верхнего края листа в pt (сумма сдвигов cm в стеке q/Q на момент BT). */
+export type PdfLine = { font: string; size: number; text: string; width: number; x: number; y: number };
 
 type Obj = { dict: string; stream: string | null };
 
@@ -77,9 +78,22 @@ export function pdfLines(bytes: Uint8Array): PdfLine[] {
 
   const content = objs.get(contentRef)!.stream!;
   const lines: PdfLine[] = [];
-  for (const bt of content.matchAll(/BT([\s\S]*?)ET/g)) {
-    const tf = /\/(\w+) ([\d.]+) Tf/.exec(bt[1]!);
-    const tj = /\[([^\]]*)\] TJ/.exec(bt[1]!);
+  // положение строки: страница перевёрнута один раз в начале, дальше вёрстка двигает системой координат
+  // только сдвигами «1 0 0 1 x y cm»; масштабы и отражения (логотип, переворот перед BT) значения не меняют
+  const stack: [number, number][] = [[0, 0]];
+  for (const m of content.matchAll(/^(q|Q|1 0 0 1 (-?[\d.]+) (-?[\d.]+) cm|BT[\s\S]*?\nET)$/gm)) {
+    const op = m[1]!;
+    if (op === 'q') stack.push([...stack[stack.length - 1]!] as [number, number]);
+    else if (op === 'Q') stack.pop();
+    else if (m[2] !== undefined) {
+      const top = stack[stack.length - 1]!;
+      top[0] += Number(m[2]);
+      top[1] += Number(m[3]);
+    }
+    if (!op.startsWith('BT')) continue;
+    const [bx, by] = stack[stack.length - 1]!;
+    const tf = /\/(\w+) ([\d.]+) Tf/.exec(op);
+    const tj = /\[([^\]]*)\] TJ/.exec(op);
     if (!tf || !tj) continue;
     const f = byName.get(tf[1]!)!;
     const size = Number(tf[2]);
@@ -99,7 +113,7 @@ export function pdfLines(bytes: Uint8Array): PdfLine[] {
         if (ch) adv += font.glyphForCodePoint(ch.codePointAt(0)!).advanceWidth;
       }
     }
-    lines.push({ font: f.baseFont, size, text, width: (adv / font.unitsPerEm) * size - (adjust / 1000) * size });
+    lines.push({ font: f.baseFont, size, text, width: (adv / font.unitsPerEm) * size - (adjust / 1000) * size, x: bx, y: by });
   }
   return lines;
 }

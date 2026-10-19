@@ -2,9 +2,7 @@
 // (BRAND.md, «Сертификат»). Без водяных знаков, теней, градиентов и колец. Без хуков и next-intl:
 // все строки приходят в props.
 import { Document, Image, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
-import { cleanCertificateTexts } from './glyphs';
-import { COURSE_MIN_SIZE, NAME_MIN_SIZE, courseFontSize, fitText, nameFontSize } from './layout';
-import { geologicaMeasure } from './measure';
+import { COURSE_MAX_WIDTH, NAME_MAX_WIDTH, NAME_TRACKING, planCertificatePdf } from './plan';
 import { qrPath } from './qr';
 import { A4_LANDSCAPE, PDF_COLORS as C } from './theme';
 import type { CertificatePdfInput } from './types';
@@ -13,11 +11,6 @@ import type { CertificatePdfInput } from './types';
 const LOGO_WIDTH = 185;
 const LOGO_RATIO = 196 / 940;
 const QR_SIZE = 84;
-/** Ширина строки ФИО внутри рамки и ширина блока названия курса (см. стили), pt. */
-const NAME_MAX_WIDTH = 700;
-/** Трекинг ФИО, в долях кегля. */
-const NAME_TRACKING = -0.03;
-const COURSE_MAX_WIDTH = 522;
 /** Белое поле вокруг QR, в модулях. */
 const QR_QUIET = 4;
 
@@ -41,8 +34,8 @@ const s = StyleSheet.create({
   body: { flexGrow: 1, justifyContent: 'center' },
   title: { fontFamily: 'Geologica', fontWeight: 700, fontSize: 27, letterSpacing: -0.54, marginBottom: 14 },
   small: { fontSize: 12.6, color: C.muted },
-  name: { fontFamily: 'Geologica', fontWeight: 700, lineHeight: 1.05, marginTop: 10, marginBottom: 12 },
-  course: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: 522, lineHeight: 1.15, marginTop: 10 },
+  name: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: NAME_MAX_WIDTH, lineHeight: 1.05, marginTop: 10, marginBottom: 12 },
+  course: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: COURSE_MAX_WIDTH, lineHeight: 1.15, marginTop: 10 },
   foot: { flexDirection: 'row', alignItems: 'flex-end' },
   facts: { flexGrow: 1, flexDirection: 'row' },
   fact: { marginRight: 28 },
@@ -59,12 +52,10 @@ const s = StyleSheet.create({
 type Props = CertificatePdfInput & { logo: Buffer };
 
 export function CertificateDocument({ logo, ...c }: Props) {
-  // ФИО и название курса приходят из БД: чистим от управляющих и bidi-символов и от символов,
-  // которых нет в шрифте (эмодзи, иероглифы): с ними react-pdf падает на всём документе
-  const { holder, course } = cleanCertificateTexts(c);
-  // слово без пробелов не переносится, поэтому кегль подгоняется под ширину по замеру самого шрифта
-  const name = fitText(holder, nameFontSize(holder), NAME_MIN_SIZE, NAME_MAX_WIDTH, geologicaMeasure(NAME_TRACKING));
-  const courseFit = fitText(course, courseFontSize(course), COURSE_MIN_SIZE, COURSE_MAX_WIDTH, geologicaMeasure());
+  // ФИО и название курса приходят из БД: план чистит их от управляющих и bidi-символов и от символов,
+  // которых нет в шрифте, и подбирает кегль. Недоступный план (plan.ok=false) сюда не доходит:
+  // маршрут отвечает 303 раньше
+  const { name, course: courseFit } = planCertificatePdf(c);
   const qr = qrPath(c.verifyUrl);
   const view = qr.size + QR_QUIET * 2;
   const l = c.labels;

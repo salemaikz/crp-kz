@@ -15,6 +15,7 @@ import { redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { getCertificate } from '@/lib/learn/certificates';
 import { getCourse } from '@/lib/learn/data';
+import { planCertificatePdf } from '@/lib/learn/pdf/plan';
 import { certificateVerifyUrl, qrDataUri } from '@/lib/learn/qr';
 import { coursePath, getCourseAccess, routeParam } from '@/lib/learn/server';
 import '@/components/learn/learn.css';
@@ -69,7 +70,11 @@ export default async function CertificatePage({ params }: Props) {
   }
 
   // при CERT_PDF — ссылка на файл, иначе прежняя печать браузером
-  const pdfActive = isFeatureActive('CERT_PDF');
+  // то же правило «PDF недоступен», что и в маршруте: тогда печать браузером (его шрифты покажут имя целиком)
+  const certTitle = loc(course.title, certificate.locale);
+  const pdfFlag = isFeatureActive('CERT_PDF');
+  const pdfActive = pdfFlag && planCertificatePdf({ holderName: certificate.holderName, courseTitle: certTitle }).ok;
+  const pdfUnavailable = pdfFlag && !pdfActive;
   const pdfHref = `/${locale}${coursePath(slug)}/certificate/pdf`;
 
   // сертификат печатается на языке, на котором проходили курс
@@ -103,7 +108,7 @@ export default async function CertificatePage({ params }: Props) {
 
           <CertificateSheet
             holderName={certificate.holderName}
-            courseTitle={loc(course.title, certificate.locale)}
+            courseTitle={certTitle}
             issuedAt={certificate.issuedAt}
             number={certificate.number}
             locale={certificate.locale}
@@ -112,6 +117,11 @@ export default async function CertificatePage({ params }: Props) {
           />
 
           <div className="lrn-noprint">
+            {pdfUnavailable && (
+              <p className="lrn-cert-hint" data-testid="certificate-pdf-unavailable">
+                {t('pdfUnavailable')}
+              </p>
+            )}
             <p className="lrn-cert-hint">{pdfActive ? t('pdfHint') : t('printHint')}</p>
             <p className="lrn-cert-hint">
               <TextLink href={`/cert/${encodeURIComponent(certificate.number)}`}>{t('verifyLink')}</TextLink>

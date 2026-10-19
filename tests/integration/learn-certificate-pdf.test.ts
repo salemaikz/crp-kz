@@ -9,6 +9,8 @@ import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import { loadCertificatePdfInput } from '../../src/lib/learn/pdf/data';
 import { renderCertificatePdf } from '../../src/lib/learn/pdf/render';
 import { cleanCertificateTexts } from '../../src/lib/learn/pdf/glyphs';
+import { COURSE_MAX_LINES, NAME_MAX_LINES, NAME_MAX_WIDTH } from '../../src/lib/learn/pdf/plan';
+import { A4_LANDSCAPE } from '../../src/lib/learn/pdf/theme';
 import { pdfLines } from '../helpers/pdf-lines';
 import { missingChars, pdfText, unicodeInPdf } from '../helpers/pdf-text';
 import { OWNER_EMAIL, OWNER_NAME, PDF_COURSE_SLUG, PDF_NUMBER, RU_NUMBER, seedPdf } from './fixtures/learn-certificate-pdf.seed';
@@ -104,7 +106,7 @@ test('маршрут: флаг, гость, лимит, 404, ETag и 304 без 
     { env, encoding: 'utf8', timeout: 120_000 },
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-  assert.match(res.stdout, /# pass 9/);
+  assert.match(res.stdout, /# pass 10/);
 });
 
 test('символы вне шрифта (эмодзи, галочка, иероглифы) не ломают рендер и не попадают в текст', async () => {
@@ -161,5 +163,62 @@ test('разбор строк PDF видит текст и размер: обы�
 test('имя из одних символов вне шрифта: слой данных отдаёт его как есть, очистка даёт пустую строку', async () => {
   const input = (await loadCertificatePdfInput('pdf-emoji', PDF_COURSE_SLUG))!;
   assert.ok(input);
-  assert.deepEqual(cleanCertificateTexts(input), { holder: '', course: 'Бизнес-разбор' });
+  assert.deepEqual(cleanCertificateTexts(input), { holder: '', course: 'Бизнес-разбор', droppedLetters: false });
+});
+
+// Геометрия листа, pt: внутренняя ширина рамки = лист − 2·17 (отступ) − 2·3 (линия) − 2·39 (поля)
+const CONTAINER_WIDTH = A4_LANDSCAPE.width - 2 * 17 - 2 * 3 - 2 * 39;
+// верх подвала = верх подписи под QR − QR (84) − отступ (5)
+const QR_BLOCK_TOP = 84 + 5;
+
+test('ширина контейнера по макету ≈ 723,89 pt, ФИО режется по NAME_MAX_WIDTH внутри него', () => {
+  assert.ok(Math.abs(CONTAINER_WIDTH - 723.89) < 0.01, `ширина ${CONTAINER_WIDTH}`);
+  assert.ok(NAME_MAX_WIDTH <= CONTAINER_WIDTH);
+});
+
+test('резка слов и перенос идут по одной ширине: ни одна строка не шире контейнера', async () => {
+  const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
+  for (const holderName of ['Ж'.repeat(120), 'ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА-ЖАНБЫРБАЕВА', 'А'.repeat(200)]) {
+    const lines = pdfLines(await renderCertificatePdf({ ...base, holderName })).filter((l) => l.font.includes('Geologica'));
+    for (const l of lines) assert.ok(l.width <= CONTAINER_WIDTH, `${holderName.slice(0, 12)}: ${l.width.toFixed(1)} pt`);
+    // и сами строки ФИО (кроме заголовка и курса) не шире NAME_MAX_WIDTH с допуском на округление TJ
+    for (const l of lines.slice(1, -1)) assert.ok(l.width <= NAME_MAX_WIDTH + 3.5, `${l.width.toFixed(1)} pt`);
+  }
+});
+
+test('патологически длинные ФИО и курс не вылезают по высоте на подпись и подвал', async () => {
+  const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
+  const cases = [
+    { holderName: 'Жумабаева Ж '.repeat(16).trim(), courseTitle: 'Предпринимательство и управление '.repeat(6).trim() },
+    { holderName: 'Ш '.repeat(100).trim(), courseTitle: 'Ж'.repeat(200) },
+    { holderName: 'Gülşen Şahin Ağabek Nūrlan Ərkin İlhan '.repeat(5).trim(), courseTitle: 'Ш '.repeat(100).trim() },
+  ];
+  for (const c of cases) {
+    const lines = pdfLines(await renderCertificatePdf({ ...base, ...c }));
+    const geo = lines.filter((l) => l.font.includes('Geologica'));
+    const title = geo[0]!;
+    const course = geo.slice(1).filter((l) => l.size >= 12);
+    const qrTitle = lines.find((l) => base.labels.qrTitle.startsWith(l.text) && l.size === 8)!;
+    const footTop = qrTitle.y - QR_BLOCK_TOP;
+    const last = geo[geo.length - 1]!;
+    // низ последней строки курса (кегль × межстрочный 1,15) выше верха подвала
+    assert.ok(last.y + last.size * 1.15 <= footTop, `курс ${(last.y + last.size * 1.15).toFixed(1)} > подвал ${footTop.toFixed(1)}`);
+    // и сверху блок не заходит на логотип: заголовок ниже низа логотипа (17 + 70,6)
+    assert.ok(title.y >= 17 + 70.6, `заголовок y=${title.y.toFixed(1)}`);
+    const nameLines = geo.slice(1, -1).filter((l) => l.size > 12.6);
+    assert.ok(course.length > 0 && nameLines.length > 0);
+  }
+});
+
+test('число строк на листе в пределах 3 для ФИО и 5 для курса', async () => {
+  const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
+  const holderName = 'Жумабаева Ж '.repeat(16).trim();
+  const courseTitle = 'Предпринимательство и управление '.repeat(6).trim();
+  const all = pdfLines(await renderCertificatePdf({ ...base, holderName, courseTitle }));
+  const from = all.findIndex((l) => l.text === base.labels.certifies);
+  const mid = all.findIndex((l) => l.text === base.labels.completed);
+  const end = all.findIndex((l) => l.text === base.labels.issued.toUpperCase() || l.size < 10);
+  assert.ok(from >= 0 && mid > from && end > mid, 'не нашли подписи листа');
+  assert.ok(mid - from - 1 <= NAME_MAX_LINES, `строк ФИО ${mid - from - 1}`);
+  assert.ok(end - mid - 1 <= COURSE_MAX_LINES, `строк курса ${end - mid - 1}`);
 });
