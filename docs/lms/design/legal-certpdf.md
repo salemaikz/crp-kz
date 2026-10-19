@@ -91,7 +91,9 @@
   - гость — перенаправление на вход;
   - чужой или несуществующий — 404; при навигации браузера (`Accept: text/html`) — одинаковый
     303 на `/{locale}/learn`, а при 503 и 500 — 303 на страницу сертификата `?pdf=unavailable`
-    с печатью браузером (уточнено после волны 2).
+    с печатью браузером (уточнено после волны 2);
+  - PDF собрать нельзя (буквы вне шрифта, пустое имя или курс, текст не помещается) — 303 на
+    страницу сертификата для любого запроса.
 - Шрифты:
   - статические TTF-срезы Geologica Bold SHRP=100, Onest Regular и Onest SemiBold с латиницей,
     кириллицей и казахскими буквами;
@@ -478,7 +480,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ loca
   //    (next — на страницу сертификата, а не на PDF)
   // 4. лимит: rateLimit(`cert-pdf:${user.id}`, 10, 60_000) — нет → 429 + Retry-After
   // 5. input = loadCertificatePdfInput(user.id, slug); null → 404 (одинаково для «нет курса» и «нет сертификата»);
-  //    при навигации (Accept: text/html) — одинаковый 303 на /{locale}/learn (уточнено после волны 2)
+  //    при навигации (Accept: text/html) — одинаковый 303 на /{locale}/learn (уточнено после волны 2);
+  //    PdfConfigError (нет https-адреса вне демо) → 503, при навигации — 303 на страницу сертификата ?pdf=unavailable
   // 5а. planCertificatePdf(input) не ok (имя или курс пустые после очистки, выброшены буквы, не влезает
   //    по высоте) → 303 на /{locale}/learn/{slug}/certificate, где печать браузером — для любого Accept
   // 6. etag = certificatePdfEtag(input); If-None-Match совпал → 304 (после шагов 3–5!)
