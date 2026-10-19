@@ -501,10 +501,10 @@ Netlify (D-024): `netlify.toml` в корне, переменные сайта `
 | checkout | Opus | `src/app/[locale]/courses/[slug]/buy`, `src/app/[locale]/orders`, `src/app/[locale]/admin/orders`, `src/lib/orders`, `src/components/checkout`, `messages/*/checkout.json` |
 | team | Sonnet | `src/app/[locale]/team`, `src/lib/team`, `src/components/team`, `messages/*/team.json` |
 | admin | Sonnet | `src/app/[locale]/admin` (кроме `orders`), `src/lib/admin`, `src/components/admin`, `messages/*/admin.json` |
-| mail | [дозаполни: модель] | `src/lib/{mail,reminders}`, `src/app/[locale]/admin/mail`, `messages/*/mail.json` |
-| files | [дозаполни: модель] | `src/lib/{storage,files}`, `src/app/api/{uploads,files}`, `src/components/admin/files`, `messages/*/files.json` |
-| legal | [дозаполни: модель] | `src/lib/legal`, `src/app/[locale]/legal`, `src/components/legal`, `content/legal`, `messages/*/legal.json` |
-| ops | [дозаполни: модель] | `src/lib/ops`, `src/app/api/health`, `deploy/`, `docs/ops/` |
+| mail | Opus → Sonnet (T2→T1: проект и ревью — Opus, реализация — Sonnet) | `src/lib/{mail,reminders}`, `src/app/[locale]/admin/mail`, `messages/*/mail.json` |
+| files | Opus → Sonnet (T2→T1: проект и ревью — Opus, реализация — Sonnet) | `src/lib/{storage,files}`, `src/app/api/{uploads,files}`, `src/components/admin/files`, `messages/*/files.json` |
+| legal | Opus → Sonnet (T2→T1: проект и ревью — Opus, реализация — Sonnet) | `src/lib/legal`, `src/app/[locale]/legal`, `src/components/legal`, `content/legal`, `messages/*/legal.json` |
+| ops | Opus → Sonnet (T2→T1: проект и ревью — Opus, реализация — Sonnet) | `src/lib/ops`, `src/app/api/health`, `deploy/`, `docs/ops/` |
 
 PDF сертификата — в зоне learn (`src/lib/learn/pdf`), шрифты — `assets/fonts/pdf`.
 
