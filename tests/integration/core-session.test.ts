@@ -67,7 +67,12 @@ test('сессия: создание, проверка, отзыв', async () =>
 
 test('подделка и истёкшая строка — отказ', async () => {
   const { token } = await createSessionToken('plain-user');
-  assert.equal(await resolveSessionToken(token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A')), null);
+  // Портим ПЕРВЫЙ символ подписи: 43 символа base64url = 258 бит при 256 значимых, у последнего символа
+  // два младших бита — незначащие. Замена хвоста 'A'->'B' (или любого символа с теми же старшими битами)
+  // декодируется в те же 32 байта и даёт валидную подпись — отсюда редкое (~1/16) падение теста.
+  const dot = token.indexOf('.');
+  const forgedSig = (token[dot + 1] === 'A' ? 'B' : 'A') + token.slice(dot + 2);
+  assert.equal(await resolveSessionToken(token.slice(0, dot + 1) + forgedSig), null);
   assert.equal(await resolveSessionToken('garbage'), null);
   assert.equal(await resolveSessionToken(undefined), null);
   await db.sql`UPDATE sessions SET expires_at = ${Date.now() - 1} WHERE user_id = 'plain-user'`;

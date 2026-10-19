@@ -21,7 +21,8 @@ const MIN = 60_000;
 let db: TestDb;
 let oldHash: string;
 const saved: Record<string, string | undefined> = {};
-const KEYS = ['FEATURE_PASSWORD_RESET', 'MAIL_AUTH_HOURLY_CAP'];
+// DEMO_MODE и DATABASE_URL задают режим явно (isDemo), поэтому тоже восстанавливаются
+const KEYS = ['FEATURE_PASSWORD_RESET', 'MAIL_AUTH_HOURLY_CAP', 'DEMO_MODE', 'DATABASE_URL'];
 
 before(async () => {
   for (const k of KEYS) saved[k] = process.env[k];
@@ -61,15 +62,47 @@ const counts = async () => {
   return { tokens: a?.n, mails: m?.n };
 };
 
-test('запрос: неизвестный email и аккаунт сида в демо — ничего не пишут', async () => {
+test('запрос: неизвестный email — ничего не пишется', async () => {
   await requestPasswordReset({ email: 'nobody@x.kz', locale: 'ru', nowMs: T0 });
   assert.deepEqual(await counts(), { tokens: 0, mails: 0 });
-  // сид-аккаунт: сессии демо восстанавливаются по подписи, пароль общий — сброс молча не выполняется
-  const [seed] = await db.sql<{ id: string }>`SELECT id FROM users WHERE id = ${seedId('user', 'client@crp.demo')}`;
-  if (seed) {
-    await requestPasswordReset({ email: 'client@crp.demo', locale: 'ru', nowMs: T0 });
-    assert.deepEqual(await counts(), { tokens: 0, mails: 0 });
+});
+
+/** Пользователь сида (id = seedId('user', email)) создаётся прямо в тесте, а не берётся из сида БД. */
+async function withSeedUser(email: string, fn: () => Promise<void>): Promise<void> {
+  const id = seedId('user', email);
+  await db.sql`INSERT INTO users (id, email, password_hash, name, locale, created_at)
+    VALUES (${id}, ${email}, ${oldHash}, 'Сид', 'ru', 1) ON CONFLICT (id) DO NOTHING`;
+  try {
+    await fn();
+  } finally {
+    await db.sql`DELETE FROM sessions WHERE user_id = ${id}`;
+    await db.sql`DELETE FROM auth_tokens WHERE user_id = ${id}`;
+    await db.sql`DELETE FROM mail_outbox WHERE user_id = ${id}`;
+    await db.sql`DELETE FROM users WHERE id = ${id}`;
   }
+}
+
+test('запрос: аккаунт сида в демо (DEMO_MODE=1) — сброс молча не выполняется', async () => {
+  process.env.DEMO_MODE = '1';
+  delete process.env.DATABASE_URL;
+  await withSeedUser('seedreq@crp.demo', async () => {
+    await requestPasswordReset({ email: 'seedreq@crp.demo', locale: 'ru', nowMs: T0 });
+    assert.deepEqual(await counts(), { tokens: 0, mails: 0 });
+  });
+});
+
+test('сброс: не демо (задан DATABASE_URL) — токен сид-аккаунта меняет пароль как обычный', async () => {
+  delete process.env.DEMO_MODE;
+  process.env.DATABASE_URL = 'postgres://demo-off.invalid/none'; // только признак «не демо»: БД подменена createTestDb
+  const email = 'seedreq@crp.demo';
+  await withSeedUser(email, async () => {
+    const id = seedId('user', email);
+    const secret = await db.tx((sql) => issueToken(sql, { userId: id, email, kind: 'password_reset', nowMs: T0 }));
+    assert.ok(secret);
+    assert.deepEqual(await resetPassword({ token: secret.raw, passwordHash: 'new-hash', nowMs: T0 + MIN }), { ok: true, userId: id });
+    const [u] = await db.sql<{ passwordHash: string }>`SELECT password_hash FROM users WHERE id = ${id}`;
+    assert.equal(u?.passwordHash, 'new-hash');
+  });
 });
 
 test('запрос: известный email — токен, письмо на языке формы, журнал без email', async () => {
@@ -170,6 +203,8 @@ test('сброс: email сменили после выдачи — ссылка 
 });
 
 test('сброс: токен сид-аккаунта в демо расходуется, пароль и сессии не трогаются', async () => {
+  process.env.DEMO_MODE = '1';
+  delete process.env.DATABASE_URL;
   const seedEmail = 'seedcheck@crp.demo';
   const seedUser = seedId('user', seedEmail);
   await db.sql`DELETE FROM users WHERE id = ${seedUser}`;
