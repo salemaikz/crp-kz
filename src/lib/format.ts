@@ -30,15 +30,31 @@ export function formatNumber(value: number, locale: Locale | string): string {
   return new Intl.NumberFormat(intlLocale(locale), { maximumFractionDigits: 0 }).format(value);
 }
 
-type DateOptions = { withTime?: boolean; short?: boolean };
+type DateOptions = {
+  withTime?: boolean;
+  short?: boolean;
+  /** Не писать год, если дата в текущем году (по Астане): «24 окт.» вместо «24 окт. 2026 г.». */
+  omitCurrentYear?: boolean;
+  /** «Сейчас» для omitCurrentYear (в тестах). */
+  now?: number;
+};
+
+/** Календарный год даты в часовом поясе Астаны. */
+function almatyYear(ms: number): number {
+  const part = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric' })
+    .formatToParts(new Date(ms))
+    .find((p) => p.type === 'year');
+  return Number(part?.value);
+}
 
 /** epoch-мс → «19 октября 2026 г.» в часовом поясе Астаны. */
 export function formatDate(ms: number, locale: Locale | string, options: DateOptions = {}): string {
+  const omitYear = options.omitCurrentYear === true && almatyYear(ms) === almatyYear(options.now ?? Date.now());
   const fmt = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: TIME_ZONE,
     day: 'numeric',
     month: options.short ? 'short' : 'long',
-    year: 'numeric',
+    ...(omitYear ? {} : { year: 'numeric' as const }),
     ...(options.withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
   });
   return fmt.format(new Date(ms));

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ReceiptText } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { requireAdmin } from '@/lib/auth';
@@ -92,19 +91,10 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
           >
             {o.number}
           </Link>
-          <span className="co-cell-meta co-only-mobile">{formatDate(o.createdAt, locale, { withTime: true })}</span>
+          <span className="co-cell-meta num co-date">
+            {formatDate(o.createdAt, locale, { short: true, omitCurrentYear: true })}, {formatTime(o.createdAt, locale)}
+          </span>
         </>
-      ),
-    },
-    {
-      key: 'date',
-      header: t('admin.columns.date'),
-      hideOnMobile: true,
-      cell: (o) => (
-        <span className="num co-date">
-          {formatDate(o.createdAt, locale, { short: true })}
-          <span className="co-cell-meta">{formatTime(o.createdAt, locale)}</span>
-        </span>
       ),
     },
     {
@@ -127,18 +117,19 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
     {
       key: 'course',
       header: t('admin.columns.course'),
+      width: '24%',
       cell: (o) => <span className="co-course-cell">{tl(o.courseTitle, locale)}</span>,
     },
     {
       key: 'amount',
       header: t('admin.columns.amount'),
       align: 'right',
-      cell: (o) => <strong className="num">{formatPrice(o.amountKzt, locale)}</strong>,
-    },
-    {
-      key: 'method',
-      header: t('admin.columns.method'),
-      cell: (o) => t(`common.method.${o.paymentMethod}`),
+      cell: (o) => (
+        <>
+          <strong className="num co-amount">{formatPrice(o.amountKzt, locale)}</strong>
+          <span className="co-cell-meta">{t(`common.method.${o.paymentMethod}`)}</span>
+        </>
+      ),
     },
     {
       key: 'status',
@@ -198,7 +189,6 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
       </nav>
       {orders.length === 0 ? (
         <EmptyState
-          icon={<ReceiptText />}
           title={t(`admin.empty.${filter}`)}
           description={t('admin.empty.text')}
           action={

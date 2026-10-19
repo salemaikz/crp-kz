@@ -86,7 +86,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
       <PageHeader
         title={t('header.title')}
         lead={t('header.lead')}
-        meta={orgLabel(org)}
+        meta={orgs.length === 1 ? t('header.org', { name: orgLabel(org) }) : undefined}
         actions={<OrgSwitcher orgs={orgs} active={org.slug} label={t('header.orgLabel')} />}
       />
 
@@ -122,9 +122,7 @@ export default async function TeamPage({ params, searchParams }: Props) {
                 <h2 id="report-title" className="display team-block__title">
                   {t('report.title')}
                 </h2>
-                <p className="team-block__lead">
-                  {t('report.lead')} · {t('report.count', { count: rows.length })}
-                </p>
+                <p className="team-block__lead">{t('report.lead')}</p>
               </div>
               <Button href={csvHref} external variant="ghost" size="sm" download>
                 {t('report.export')}
@@ -138,6 +136,9 @@ export default async function TeamPage({ params, searchParams }: Props) {
               course={course}
               status={status}
             />
+            <p className="meta team-count" role="status">
+              {t('report.count', { count: rows.length })}
+            </p>
             <ReportTable rows={rows} locale={locale} filtered={Boolean(course || status)} />
           </section>
         </Container>

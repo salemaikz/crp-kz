@@ -186,6 +186,18 @@
     justify-items: start;
     line-height: 1.3;
   }
+  .team-due__date {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* относительный срок («через 2 недели») может перенестись, но ровно, без «висячих» слов */
+  .team-due .meta {
+    max-width: 14ch;
+    text-wrap: balance;
+  }
+  .team-count {
+    margin: -8px 0 0;
+  }
   .team-cert {
     font-size: 14px;
     font-variant-numeric: tabular-nums;

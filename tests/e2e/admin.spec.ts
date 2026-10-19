@@ -226,6 +226,9 @@ test('казахская версия урока: копия из RU сохра�
   await page.getByRole('button', { name: 'Добавить урок' }).click();
   await page.getByTestId('add-lesson-form').getByLabel('Название урока — русский').fill('Урок');
   await page.getByTestId('add-lesson-form').getByRole('button', { name: 'Добавить урок' }).click();
+  // пока казахской версии нет: сводка над программой и пометка «RU» у урока
+  await expect(page.getByTestId('program-kz-summary')).toHaveText('Без казахской версии: 1 из 1 урока');
+  await expect(page.getByTestId('lesson-row')).toContainText('RU');
   await page.getByTestId('lesson-row').getByRole('link', { name: 'Урок' }).first().click();
 
   await page.getByTestId('add-block-callout').first().click();
@@ -241,9 +244,11 @@ test('казахская версия урока: копия из RU сохра�
   await page.getByRole('tab', { name: /ҚАЗ/ }).click();
   await expect(page.getByLabel('Текст выноски').filter({ visible: true })).toHaveValue('Маңызды ереже');
 
-  // в программе у урока появилась пометка о казахской версии
+  // в программе сводка и пометка «RU» исчезли: у единственного урока есть казахская версия
   await page.goto(coursePath);
-  await expect(page.getByTestId('lesson-row')).toContainText('Есть казахская версия');
+  await expect(page.getByTestId('lesson-row')).toHaveCount(1);
+  await expect(page.getByTestId('program-kz-summary')).toHaveCount(0);
+  await expect(page.getByTestId('lesson-row')).not.toContainText('RU');
 });
 
 test('казахская версия урока: лишний тест после удаления в RU и недостающий тест — исправление в один клик', async ({ page }) => {

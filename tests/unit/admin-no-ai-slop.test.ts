@@ -46,3 +46,42 @@ test('тексты админки: нет лозунгов-заголовков 
     assert.doesNotMatch(json, /Что на платформе|Быстрые действия|Жылдам әрекеттер|Платформада бүгін/, locale);
   }
 });
+
+test('панель сохранения урока — не плавающая плашка: у низа окна, без скругления', () => {
+  const css = read(join(ROOT, 'src/components/admin/admin.css'));
+  const bar = /\.adm-savebar \{([^}]*)\}/.exec(css)?.[1] ?? '';
+  assert.match(bar, /bottom:\s*0/);
+  assert.doesNotMatch(bar, /border-radius/);
+  assert.match(bar, /border-top/);
+});
+
+test('аннулированный счёт: плашка без поворота и прозрачности', () => {
+  const css = read(join(ROOT, 'src/components/checkout/checkout.css'));
+  const stamp = /\.co-stamp \{([^}]*)\}/.exec(css)?.[1] ?? '';
+  assert.match(stamp, /border:\s*2px solid var\(--error\)/);
+  assert.doesNotMatch(stamp, /rotate|opacity|position:\s*absolute/);
+});
+
+test('пустые состояния в админке, заказах и команде — без декоративных иконок', () => {
+  const files = [
+    ...adminFiles.filter((f) => f.endsWith('.tsx')),
+    ...walk(join(ROOT, 'src/app/[locale]/orders')),
+    ...walk(join(ROOT, 'src/components/team')),
+  ];
+  for (const file of files) {
+    const src = read(file);
+    assert.doesNotMatch(src, /<EmptyState[^>]*\sicon=/, file.slice(ROOT.length + 1));
+    assert.doesNotMatch(src, /<EmptyState\s*\n(?:[^>]*\n)*?\s+icon=/, file.slice(ROOT.length + 1));
+  }
+});
+
+test('список заказов: подтверждение без фиксированной ширины, колонка действий не переносится', () => {
+  const css = read(join(ROOT, 'src/components/checkout/checkout.css'));
+  assert.doesNotMatch(css, /196px/);
+  assert.match(css, /\.co-orders \.table :is\(th, td\):last-child \{[^}]*white-space:\s*nowrap/);
+});
+
+test('таблица заказов: без отдельных колонок даты и способа оплаты (они под номером и суммой)', () => {
+  const src = read(join(ROOT, 'src/app/[locale]/admin/orders/page.tsx'));
+  assert.doesNotMatch(src, /key: 'date'|key: 'method'/);
+});

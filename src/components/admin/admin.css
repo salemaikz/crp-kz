@@ -269,19 +269,18 @@
   gap: 8px;
 }
 
-/* Панель сохранения: прилипает к низу экрана, пока форма длиннее окна */
+/* Панель сохранения: прижата к низу окна на ширину основной колонки, пока форма длиннее окна */
 .adm-savebar {
   position: sticky;
-  bottom: 12px;
+  bottom: 0;
   z-index: 20;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px 20px;
-  padding: 12px 14px 12px 20px;
-  border: 1px solid var(--line-strong);
-  border-radius: 20px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-strong);
   background: var(--paper);
 }
 .adm-savebar__status {
@@ -309,7 +308,8 @@
   color: var(--error);
   font-weight: 600;
 }
-.adm-savebar__dirty {
+.adm-savebar__dirty,
+.adm-savebar__clean {
   color: var(--ink-3);
 }
 
@@ -525,8 +525,18 @@
   min-width: 0;
   line-height: 1.25;
 }
-.adm-person__text .meta {
-  overflow-wrap: anywhere;
+/* email и slug не рвём посреди слова: одна строка с многоточием (полное значение — в title) */
+.adm-trunc {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 721px) {
+  /* ширина первой колонки задаётся th (~34%), содержимое под неё обрезается */
+  .adm-table--trunc .table td:first-child {
+    max-width: 0;
+  }
 }
 a.adm-person:hover strong {
   color: var(--red-ink);
@@ -647,6 +657,9 @@ a.adm-person:hover strong {
   display: grid;
   gap: 18px;
 }
+.adm-program__kz {
+  margin: 0;
+}
 .adm-module {
   overflow: hidden;
 }
@@ -743,6 +756,13 @@ a.adm-person:hover strong {
   margin-top: 4px;
   color: var(--ink-3);
   font-size: 14px;
+}
+/* пометка «RU»: у урока нет казахской версии (общая сводка — над программой) */
+.adm-lesson__lang {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 .adm-lesson__tools {
   grid-column: 2;

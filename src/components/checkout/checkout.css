@@ -12,8 +12,7 @@
   gap: 20px;
   grid-template-areas:
     'summary'
-    'form'
-    'steps';
+    'form';
 }
 .co-buy__main {
   grid-area: form;
@@ -26,9 +25,6 @@
 }
 .co-buy__aside > .co-summary {
   grid-area: summary;
-}
-.co-buy__aside > .co-steps-card {
-  grid-area: steps;
 }
 @media (min-width: 960px) {
   .co-buy {
@@ -45,8 +41,7 @@
     gap: 16px;
     align-content: start;
   }
-  .co-buy__aside > .co-summary,
-  .co-buy__aside > .co-steps-card {
+  .co-buy__aside > .co-summary {
     grid-area: auto;
   }
 }
@@ -195,11 +190,6 @@
   display: grid;
   gap: 16px;
 }
-.co-summary__title {
-  font-size: clamp(22px, 2.2vw, 28px);
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
 .co-summary__text {
   margin: 0;
   color: var(--ink-2);
@@ -211,17 +201,12 @@
   overflow: hidden;
 }
 .co-facts {
-  display: grid;
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.co-facts li {
-  padding: 10px 0;
-  border-top: 1px solid var(--line);
+  padding-block: 10px;
+  border-block: 1px solid var(--line);
   color: var(--ink-2);
   font-size: 15px;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 .co-summary__total {
   display: flex;
@@ -243,7 +228,7 @@
   font-size: 13px;
 }
 
-/* Шаги покупки и помощь */
+/* Шаги оплаты и помощь */
 .co-steps-card {
   display: grid;
   gap: 16px;
@@ -745,22 +730,18 @@
   margin-bottom: 5px;
   background: var(--ink-2);
 }
+/* Счёт аннулирован: плашка над таблицей, без поворота и прозрачности — одинаково на экране и в печати */
 .co-stamp {
-  position: absolute;
-  top: 28%;
-  right: 6%;
-  padding: 8px 18px;
-  border: 3px solid var(--error);
-  border-radius: 10px;
+  margin: 0;
+  padding: 10px 18px;
+  border: 2px solid var(--error);
   color: var(--error);
   font-family: var(--font-display);
-  font-size: clamp(22px, 3.4vw, 34px);
+  font-size: clamp(18px, 2.6vw, 24px);
   font-weight: 700;
   letter-spacing: 0.06em;
+  text-align: center;
   text-transform: uppercase;
-  transform: rotate(-12deg);
-  opacity: 0.85;
-  pointer-events: none;
 }
 
 @media print {
@@ -820,11 +801,6 @@
 .co-filters__count {
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
-}
-.co-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px clamp(24px, 4vw, 48px);
 }
 .co-notice {
   margin-bottom: 18px;
@@ -913,13 +889,7 @@
   font-size: 14px;
   line-height: 1.45;
 }
-.co-only-mobile {
-  display: none;
-}
 @media (max-width: 720px) {
-  .co-only-mobile {
-    display: block;
-  }
   .co-buyer {
     min-width: 0;
   }
@@ -937,21 +907,32 @@
   .co-orders td {
     vertical-align: top;
   }
-  /* 8 колонок в 1240 px: поуже поля ячеек, кнопки действий — столбиком одной ширины */
+  /* 6 колонок в основной колонке админки (~916 px): поуже поля, последняя колонка не режется */
   .co-orders .table :is(th, td) {
     padding-inline: 12px;
   }
   .co-orders .table :is(th, td):first-child {
-    padding-left: 18px;
+    padding-left: 16px;
   }
   .co-orders .table :is(th, td):last-child {
-    padding-right: 18px;
+    padding-right: 16px;
+    white-space: nowrap;
   }
+  .co-orders .co-buyer {
+    min-width: 150px;
+  }
+  .co-orders .co-course-cell {
+    min-width: 110px;
+  }
+  /* кнопки действий — столбиком, не переносятся и не сжимаются */
   .co-orders .co-actions {
     flex-direction: column;
     align-items: stretch;
+    flex-wrap: nowrap;
   }
+  /* подтверждение: ширина по тексту, но не шире 220 px; текст переносится */
   .co-orders .co-confirm {
-    width: 196px;
+    max-width: 220px;
+    white-space: normal;
   }
 }

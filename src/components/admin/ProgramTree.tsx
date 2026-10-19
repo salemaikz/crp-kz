@@ -27,9 +27,16 @@ export async function ProgramTree({ courseId, modules, locale }: Props) {
   const tEnum = await getTranslations('admin.enums');
 
   let lessonNo = 0;
+  const lessonsTotal = modules.reduce((n, m) => n + m.lessons.length, 0);
+  const withoutKz = modules.reduce((n, m) => n + m.lessons.filter((l) => !l.hasKz).length, 0);
 
   return (
     <div className="adm-program">
+      {withoutKz > 0 && (
+        <p className="meta adm-program__kz" data-testid="program-kz-summary">
+          {t('kzSummary', { missing: withoutKz, total: lessonsTotal })}
+        </p>
+      )}
       {modules.length === 0 ? (
         <EmptyState title={t('emptyTitle')} description={t('emptyText')} headingLevel="h3" />
       ) : (
@@ -90,7 +97,11 @@ export async function ProgramTree({ courseId, modules, locale }: Props) {
                           </Badge>
                           <span>{l.durationMin > 0 ? formatDuration(l.durationMin, locale) : t('lesson.noDuration')}</span>
                           <span>{t('lesson.blocks', { count: l.blocksRu })}</span>
-                          <Badge tone={l.hasKz ? 'info' : 'neutral'}>{l.hasKz ? t('lesson.kzReady') : t('lesson.kzMissing')}</Badge>
+                          {!l.hasKz && (
+                            <span className="adm-lesson__lang" title={t('lesson.ruOnlyTitle')}>
+                              {t('lesson.ruOnly')}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="adm-lesson__tools">

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { KeyRound } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/admin/ActionButton';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
@@ -173,7 +172,7 @@ export default async function AdminUserPage({ params }: Props) {
           </h2>
         </header>
         {enrollments.length === 0 ? (
-          <EmptyState icon={<KeyRound />} title={t('enrollments.empty')} description={t('enrollments.emptyText')} headingLevel="h3" />
+          <EmptyState title={t('enrollments.empty')} description={t('enrollments.emptyText')} headingLevel="h3" />
         ) : (
           <Table columns={columns} rows={enrollments} rowKey={(e) => e.id} caption={<span className="visually-hidden">{t('enrollments.title')}</span>} />
         )}

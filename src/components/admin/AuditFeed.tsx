@@ -28,7 +28,7 @@ export async function AuditFeed({ items, locale }: { items: AuditItem[]; locale:
               <p className="meta">{it.actorName ?? t('dashboard.feed.system')}</p>
             </div>
             <time className="adm-feed__time meta" dateTime={new Date(it.createdAt).toISOString()}>
-              {formatDate(it.createdAt, locale, { withTime: true, short: true })}
+              {formatDate(it.createdAt, locale, { withTime: true, short: true, omitCurrentYear: true })}
             </time>
           </li>
         );

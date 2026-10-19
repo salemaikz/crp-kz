@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { GraduationCap, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { Badge, Button, Chip, EmptyState, Input, Price, Table } from '@/components/ui';
@@ -53,7 +53,9 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
           <Link href={`/admin/courses/${c.id}`} className="adm-cell-title__link">
             {l10n(c.title, locale)}
           </Link>
-          <span className="meta">/{c.slug}</span>
+          <span className="meta adm-trunc" title={`/${c.slug}`}>
+            /{c.slug}
+          </span>
         </div>
       ),
     },
@@ -135,7 +137,6 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
 
       {courses.length === 0 ? (
         <EmptyState
-          icon={<GraduationCap />}
           title={filtered ? t('empty.filteredTitle') : t('empty.title')}
           description={filtered ? t('empty.filteredText') : t('empty.text')}
           action={
@@ -151,7 +152,7 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
           }
         />
       ) : (
-        <Table columns={columns} rows={courses} rowKey={(c) => c.id} caption={<span className="visually-hidden">{t('table.caption')}</span>} />
+        <Table className="adm-table--trunc" columns={columns} rows={courses} rowKey={(c) => c.id} caption={<span className="visually-hidden">{t('table.caption')}</span>} />
       )}
     </>
   );

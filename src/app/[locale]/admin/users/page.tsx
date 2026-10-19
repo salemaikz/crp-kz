@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Search, Users } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { Avatar, Badge, Button, Chip, EmptyState, Input, Table } from '@/components/ui';
@@ -52,12 +52,15 @@ export default async function AdminUsersPage({ params, searchParams }: Props) {
       key: 'name',
       header: t('table.name'),
       primary: true,
+      width: '34%',
       cell: (u: UserListItem) => (
         <Link href={`/admin/users/${u.id}`} className="adm-person">
           <Avatar name={u.name || u.email} size="sm" />
           <span className="adm-person__text">
             <strong>{u.name || u.email}</strong>
-            <span className="meta">{u.email}</span>
+            <span className="meta adm-trunc" title={u.email}>
+              {u.email}
+            </span>
           </span>
         </Link>
       ),
@@ -127,7 +130,6 @@ export default async function AdminUsersPage({ params, searchParams }: Props) {
 
       {list.rows.length === 0 ? (
         <EmptyState
-          icon={<Users />}
           title={t('empty.title')}
           description={t('empty.text')}
           action={
@@ -143,7 +145,7 @@ export default async function AdminUsersPage({ params, searchParams }: Props) {
           <p className="adm-count meta" aria-live="polite">
             {t('count', { count: list.total })}
           </p>
-          <Table columns={columns} rows={list.rows} rowKey={(u) => u.id} caption={<span className="visually-hidden">{t('table.caption')}</span>} />
+          <Table className="adm-table--trunc" columns={columns} rows={list.rows} rowKey={(u) => u.id} caption={<span className="visually-hidden">{t('table.caption')}</span>} />
           {pages > 1 && (
             <nav className="adm-pager" aria-label={t('pager.label')}>
               {page > 1 ? (

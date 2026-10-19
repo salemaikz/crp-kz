@@ -7,7 +7,7 @@ import { t as tl } from '@/lib/content/l10n';
 import { Link, redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { buyState, findOpenOrder, getCourseForSale } from '@/lib/orders/queries';
-import { BuyStepsCard, CheckoutForm, OrderSummaryCard } from '@/components/checkout';
+import { CheckoutForm, OrderSummaryCard } from '@/components/checkout';
 import { Alert, Breadcrumbs, Card, Container, PageHeader, Section } from '@/components/ui';
 import '@/components/checkout/checkout.css';
 
@@ -87,7 +87,6 @@ export default async function BuyPage({ params }: Props) {
           </div>
           <div className="co-buy__aside">
             <OrderSummaryCard course={course} locale={locale} />
-            <BuyStepsCard />
           </div>
         </Container>
       </Section>

@@ -68,7 +68,7 @@ export function ReportTable({ rows, locale, filtered }: Props) {
           <span className="meta">{t('noDue')}</span>
         ) : (
           <span className="team-due">
-            <span>{formatDate(r.dueAt, locale, { short: true })}</span>
+            <span className="team-due__date">{formatDate(r.dueAt, locale, { short: true, omitCurrentYear: true })}</span>
             {r.status !== 'done' && <span className="meta">{relativeDue(r.dueAt, locale)}</span>}
           </span>
         ),

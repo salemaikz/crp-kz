@@ -74,11 +74,6 @@ export default async function InvoicePage({ params, searchParams }: Props) {
           )}
 
           <article className="co-invoice" aria-labelledby="invoice-title">
-            {annulled && (
-              <span className="co-stamp" aria-hidden="true">
-                {t('stamp')}
-              </span>
-            )}
             <header className="co-invoice__head">
               {/* eslint-disable-next-line @next/next/no-img-element -- SVG-логотип для печати, без оптимизации */}
               <img className="co-invoice__logo" src="/brand/crp-logo.svg" alt={SELLER.name} width={168} height={35} />
@@ -115,6 +110,12 @@ export default async function InvoicePage({ params, searchParams }: Props) {
                 </p>
               </section>
             </div>
+
+            {annulled && (
+              <p className="co-stamp" aria-hidden="true">
+                {t('stamp')}
+              </p>
+            )}
 
             <div className="co-items-wrap">
               <table className="co-items">
