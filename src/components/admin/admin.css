@@ -951,6 +951,27 @@ a.adm-person:hover strong {
   margin: 0;
   font-size: 14.5px;
 }
+.adm-kzbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* Тесты ҚАЗ не совпадают с РУС: пояснение и исправление в один клик */
+.adm-kzquiz > div {
+  display: grid;
+  gap: 10px;
+}
+.adm-kzquiz__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+.adm-kzquiz__row p {
+  flex: 1 1 260px;
+  margin: 0;
+}
 .adm-blocks {
   display: grid;
   gap: 16px;

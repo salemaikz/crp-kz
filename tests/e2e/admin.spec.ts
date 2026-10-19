@@ -245,3 +245,62 @@ test('казахская версия урока: копия из RU сохра�
   await page.goto(coursePath);
   await expect(page.getByTestId('lesson-row')).toContainText('Есть казахская версия');
 });
+
+test('казахская версия урока: лишний тест после удаления в RU и недостающий тест — исправление в один клик', async ({ page }) => {
+  page.on('dialog', (d) => void d.accept());
+  await loginAsAdmin(page);
+  await createCourse(page, `E2E Тесты ҚАЗ ${Date.now()}`);
+  await addModule(page, 'Модуль');
+  await page.getByRole('button', { name: 'Добавить урок' }).click();
+  await page.getByTestId('add-lesson-form').getByLabel('Название урока — русский').fill('Урок с тестом');
+  await page.getByTestId('add-lesson-form').getByRole('button', { name: 'Добавить урок' }).click();
+  await page.getByTestId('lesson-row').getByRole('link', { name: 'Урок с тестом' }).first().click();
+
+  const visible = (sel: string) => page.locator(sel).filter({ visible: true });
+  const fillQuiz = async (text: string) => {
+    const quiz = visible('.adm-block[data-block-type="quiz"]').last();
+    await quiz.getByLabel('Текст вопроса').fill(text);
+    await quiz.getByLabel('Вариант 1', { exact: true }).fill('Да');
+    await quiz.getByLabel('Вариант 2', { exact: true }).fill('Нет');
+  };
+
+  // RU: выноска и тест; ҚАЗ — копия с переводом выноски
+  await page.getByTestId('add-block-callout').first().click();
+  await visible('.adm-block[data-block-type="callout"]').getByLabel('Текст выноски').fill('Важное правило');
+  await page.getByTestId('add-block-quiz').first().click();
+  await fillQuiz('Первый вопрос');
+  await page.getByRole('tab', { name: /ҚАЗ/ }).click();
+  await page.getByTestId('copy-from-ru').click();
+  await visible('.adm-block[data-block-type="callout"]').getByLabel('Текст выноски').fill('Маңызды ереже');
+  await page.getByTestId('lesson-save').click();
+  await expect(page.getByTestId('lesson-saved')).toBeVisible();
+
+  // тест удалили в RU → сохранение объясняет, что делать, и чинит в один клик
+  await page.getByRole('tab', { name: /РУС/ }).click();
+  await visible('.adm-block[data-block-type="quiz"]').getByRole('button', { name: 'Удалить блок' }).click();
+  await page.getByTestId('lesson-save').click();
+  const error = page.getByTestId('kz-quiz-error');
+  await expect(error).toContainText('удалите тест с тем же id в казахской версии');
+  await expect(page.getByRole('tab', { name: /ҚАЗ/ })).toHaveAttribute('aria-selected', 'true');
+  await page.getByTestId('kz-quiz-error-remove-extra').click();
+  await expect(error).toHaveCount(0);
+  await expect(visible('.adm-block[data-block-type="quiz"]')).toHaveCount(0);
+  await expect(visible('.adm-block[data-block-type="callout"]').getByLabel('Текст выноски')).toHaveValue('Маңызды ереже');
+  await page.getByTestId('lesson-save').click();
+  await expect(page.getByTestId('lesson-saved')).toBeVisible();
+
+  // новый тест в RU → на вкладке ҚАЗ подсказка и кнопка «Добавить недостающие тесты из RU»
+  await page.getByRole('tab', { name: /РУС/ }).click();
+  await page.getByTestId('add-block-quiz').first().click();
+  await fillQuiz('Новый вопрос');
+  await page.getByRole('tab', { name: /ҚАЗ/ }).click();
+  await expect(page.getByTestId('kz-quiz-hint')).toBeVisible();
+  await page.getByTestId('add-missing-quizzes').click();
+  await expect(page.getByTestId('kz-quiz-hint')).toHaveCount(0);
+  await expect(page.getByTestId('add-missing-quizzes')).toBeDisabled();
+  // перевод на месте, тест дописан с русским текстом как заготовкой
+  await expect(visible('.adm-block[data-block-type="callout"]').getByLabel('Текст выноски')).toHaveValue('Маңызды ереже');
+  await expect(visible('.adm-block[data-block-type="quiz"]').getByLabel('Текст вопроса')).toHaveValue('Новый вопрос');
+  await page.getByTestId('lesson-save').click();
+  await expect(page.getByTestId('lesson-saved')).toBeVisible();
+});

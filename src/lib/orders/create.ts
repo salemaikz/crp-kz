@@ -25,7 +25,21 @@ export type CreatedOrder = {
   accessKey: string;
   /** true — у пользователя уже был неоплаченный заказ на курс, вернули его (новый не создан). */
   existing: boolean;
+  /**
+   * Только при existing: открытый заказ оформлен иначе, чем в этой форме (тип покупателя, способ
+   * оплаты или БИН компании). Страница заказа скажет об этом и предложит отменить его (владельцу).
+   */
+  differs: boolean;
 };
+
+/** Отличается ли открытый заказ от данных новой формы — то, что меняет способ оплаты и документы. */
+export function orderDiffersFrom(
+  open: { buyerType: string; paymentMethod: string; companyBin: string | null },
+  input: Pick<CheckoutInput, 'buyerType' | 'paymentMethod' | 'companyBin'>,
+): boolean {
+  if (open.buyerType !== input.buyerType || open.paymentMethod !== input.paymentMethod) return true;
+  return input.buyerType === 'company' && (open.companyBin ?? null) !== (input.companyBin ?? null);
+}
 
 /** Вставить заказ с уникальным номером: при совпадении — новые цифры (ON CONFLICT без ошибки в транзакции). */
 async function insertWithNumber(
@@ -45,7 +59,8 @@ async function insertWithNumber(
  * Создать заказ вошедшего пользователя (D-020).
  * - Нет пользователя (гость или аккаунт удалён) → login_required. Пользователей по email не ищем.
  * - Курс не продаётся → not_for_sale; есть действующий доступ → has_access.
- * - Уже есть неоплаченный заказ на этот курс → возвращаем его (existing: true), второй не создаём.
+ * - Уже есть неоплаченный заказ на этот курс → возвращаем его (existing: true), второй не создаём;
+ *   differs — он оформлен иначе (владелец может отменить его сам: cancelOwnOrder).
  * - buyer_email — email аккаунта (не из формы); сумма и срок доступа — из предложения курса.
  * Согласия offer и pd_processing — к заказу.
  */
@@ -77,6 +92,7 @@ export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions
         userId: user.id,
         accessDays: open.accessDays,
         existing: true,
+        differs: orderDiffersFrom(open, input),
       };
     }
 
@@ -114,7 +130,7 @@ export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions
                 paymentMethod: input.paymentMethod,
                 buyerType: input.buyerType,
               })}, ${t})`;
-    return { id, number, amountKzt, userId: user.id, accessDays, existing: false };
+    return { id, number, amountKzt, userId: user.id, accessDays, existing: false, differs: false };
   });
 
   return { ...created, accessKey: orderAccessKey(created.id) };

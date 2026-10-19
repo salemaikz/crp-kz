@@ -2,10 +2,11 @@
 // Контент проверяет validateLessonContent (zod-схемы блоков); ошибки возвращаются путями к полям.
 import { getDb, isUniqueViolation, now } from '../db';
 import { validateLessonContent } from '../content/blocks';
-import type { L10n, LessonContent, LessonDoc } from '../content/types';
+import type { L10n, LessonContent } from '../content/types';
 import { writeAudit } from './audit';
 import { AdminError, type ContentIssue, type FieldErrors } from './errors';
 import { toContentIssues } from './contentIssues';
+import { kzQuizzesInSync } from './kzQuizzes';
 import { assertAdmin, type Actor } from './guard';
 import { fieldErrorsFromZod, lessonMetaSchema } from './schemas';
 import { SLUG_MAX } from './slug';
@@ -53,19 +54,13 @@ export function normalizeContent(input: unknown): unknown {
   return kzEmpty ? { ru } : { ru, kz };
 }
 
-function quizIds(doc: LessonDoc): string[] {
-  return doc.blocks.filter((b) => b.type === 'quiz').map((b) => b.id);
-}
-
 /**
  * Казахская версия (если она есть) содержит те же тесты, что русская: тот же набор id блоков-тестов.
  * Иначе слушатель в kz прошёл бы урок без обязательного теста или с другим тестом (D-020).
+ * Расхождение по отдельности (недостающие / лишние) — kzQuizDiff; редактор исправляет его кнопками.
  */
 export function kzQuizzesMatch(content: LessonContent): boolean {
-  if (!content.kz || content.kz.blocks.length === 0) return true;
-  const ru = [...new Set(quizIds(content.ru))].sort();
-  const kz = [...new Set(quizIds(content.kz))].sort();
-  return ru.length === kz.length && ru.every((id, i) => id === kz[i]);
+  return kzQuizzesInSync(content.ru.blocks, content.kz?.blocks ?? []);
 }
 
 export type LessonSaveInput = {

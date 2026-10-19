@@ -4,7 +4,7 @@ import { getDb, newId, now, type Sql } from '../db';
 import { attemptKey, quizBlocksOf } from './content';
 import { LearnError } from './errors';
 import { loadLessonForAction } from './gate';
-import { scoreQuiz, validateAnswers } from './scoring';
+import { gradeQuiz, validateAnswers } from './scoring';
 import type { QuizResult, QuizStatus } from './types';
 
 export type SubmitQuizInput = {
@@ -25,16 +25,19 @@ export async function submitQuiz(input: SubmitQuizInput): Promise<QuizResult> {
   if (!block) throw new LearnError('not_found');
   if (!validateAnswers(block, input.answers)) throw new LearnError('invalid');
 
-  const result = scoreQuiz(block, input.answers);
+  const grade = gradeQuiz(block, input.answers);
   const db = await getDb();
   await db.sql`
     INSERT INTO quiz_attempts (id, user_id, lesson_id, block_id, correct, total, passed, created_at)
     VALUES (${newId()}, ${input.userId}, ${input.lessonId}, ${attemptKey(picked.locale, block.id)},
-            ${result.correct}, ${result.total}, ${result.passed}, ${now()})`;
-  return result;
+            ${grade.correct}, ${grade.total}, ${grade.passed}, ${now()})`;
+  return grade.result;
 }
 
-/** Статус по каждому блоку теста урока: число попыток, сдан ли, лучший результат. Ключ — attemptKey. */
+/**
+ * Статус по каждому блоку теста урока: число попыток, сдан ли, лучший результат сданных попыток.
+ * Ключ — attemptKey. Счёт проваленных попыток сюда не попадает: статус уходит на клиент (D-020).
+ */
 export async function getQuizStatuses(userId: string, lessonId: string, sql?: Sql): Promise<Map<string, QuizStatus>> {
   const s = sql ?? (await getDb()).sql;
   const rows = await s<{ blockId: string; correct: number; total: number; passed: boolean }>`
@@ -46,7 +49,7 @@ export async function getQuizStatuses(userId: string, lessonId: string, sql?: Sq
     out.set(r.blockId, {
       attempts: cur.attempts + 1,
       passed: cur.passed || r.passed,
-      bestPct: cur.bestPct === null ? pct : Math.max(cur.bestPct, pct),
+      bestPct: !r.passed ? cur.bestPct : cur.bestPct === null ? pct : Math.max(cur.bestPct, pct),
     });
   }
   return out;

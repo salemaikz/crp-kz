@@ -6,7 +6,8 @@ import { seed, seedUserId } from '../../src/lib/db/seed';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import { cancelOrder, markPaid, refundOrder } from '../../src/lib/orders/admin';
 import { verifyOrderAccessKey } from '../../src/lib/orders/access-key';
-import { createOrder } from '../../src/lib/orders/create';
+import { createOrder, orderDiffersFrom } from '../../src/lib/orders/create';
+import { cancelOwnOrder } from '../../src/lib/orders/owner';
 import { orderNumberPrefix } from '../../src/lib/orders/number';
 import { buyState, getCourseForSale, getOrderByNumber, listOrders, orderStats } from '../../src/lib/orders/queries';
 import { OrderError, type Order } from '../../src/lib/orders/types';
@@ -172,6 +173,73 @@ test('повторный заказ при открытом неоплаченн
   const fresh = await createOrder(input(), { userId });
   assert.notEqual(fresh.id, first.id);
   assert.equal(fresh.existing, false);
+});
+
+test('открытый заказ с другими данными: differs; владелец отменяет свой заказ и оформляет новый', async () => {
+  const userId = await newUser();
+  const first = await createOrder(input({ paymentMethod: 'kaspi' }), { userId });
+  assert.equal(first.differs, false);
+  // те же тип покупателя и способ оплаты — открытый заказ без пометки
+  const same = await createOrder(input({ paymentMethod: 'kaspi', name: 'Другое имя' }), { userId });
+  assert.deepEqual([same.id, same.existing, same.differs], [first.id, true, false]);
+  // другой способ оплаты или тип покупателя — тот же заказ, но с пометкой differs
+  const otherMethod = await createOrder(input({ paymentMethod: 'invoice' }), { userId });
+  assert.deepEqual([otherMethod.id, otherMethod.existing, otherMethod.differs], [first.id, true, true]);
+  const company = await createOrder(
+    input({ buyerType: 'company', companyName: 'ТОО «Тест»', companyBin: '123456789012', paymentMethod: 'kaspi' }),
+    { userId },
+  );
+  assert.deepEqual([company.id, company.differs], [first.id, true]);
+
+  // чужой пользователь и администратор этим путём не отменяют: not_found, заказ не тронут
+  const stranger = await newUser();
+  assert.deepEqual(await cancelOwnOrder(first.id, stranger), { ok: false, reason: 'not_found' });
+  assert.deepEqual(await cancelOwnOrder(first.id, adminId), { ok: false, reason: 'not_found' });
+  assert.deepEqual(await cancelOwnOrder(first.id, ''), { ok: false, reason: 'not_found' });
+  assert.equal((await order(first.id)).status, 'pending');
+
+  // владелец отменяет: pending → cancelled, журнал order.cancel_by_owner от его имени
+  const res = await cancelOwnOrder(first.id, userId);
+  assert.ok(res.ok);
+  const o = await order(first.id);
+  assert.equal(o.status, 'cancelled');
+  assert.equal(o.decidedBy, userId);
+  const audit = await db.sql<{ actorId: string; meta: Record<string, unknown> }>`
+    SELECT actor_id, meta FROM audit_log WHERE action = 'order.cancel_by_owner' AND entity_id = ${first.id}`;
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0]?.actorId, userId);
+  assert.equal(audit[0]?.meta.number, first.number);
+  // повтор — отказ, второй записи в журнале нет; отменённый заказ не оплатить
+  assert.deepEqual(await cancelOwnOrder(first.id, userId), { ok: false, reason: 'not_pending', status: 'cancelled' });
+  assert.equal((await markPaid(first.id, adminId)).ok, false);
+
+  // теперь можно оформить новый — с новыми данными
+  const fresh = await createOrder(input({ paymentMethod: 'invoice' }), { userId });
+  assert.notEqual(fresh.id, first.id);
+  assert.deepEqual([fresh.existing, fresh.differs], [false, false]);
+  assert.equal((await order(fresh.id)).paymentMethod, 'invoice');
+});
+
+test('владелец не отменяет оплаченный заказ: already_paid, доступ остаётся', async () => {
+  const userId = await newUser();
+  const created = await createOrder(input(), { userId });
+  assert.ok((await markPaid(created.id, adminId)).ok);
+  assert.deepEqual(await cancelOwnOrder(created.id, userId), { ok: false, reason: 'already_paid', status: 'paid' });
+  assert.equal((await order(created.id)).status, 'paid');
+  assert.equal((await canAccessCourse(userId, salesId)).ok, true);
+});
+
+test('orderDiffersFrom: тип покупателя, способ оплаты, БИН компании; имя и телефон не в счёт', () => {
+  const open = { buyerType: 'company', paymentMethod: 'invoice', companyBin: '123456789012' };
+  const base = { buyerType: 'company', paymentMethod: 'invoice', companyBin: '123456789012' } as const;
+  assert.equal(orderDiffersFrom(open, base), false);
+  assert.equal(orderDiffersFrom(open, { ...base, paymentMethod: 'kaspi' }), true);
+  assert.equal(orderDiffersFrom(open, { ...base, companyBin: '999999999999' }), true);
+  assert.equal(orderDiffersFrom(open, { buyerType: 'person', paymentMethod: 'invoice', companyBin: null }), true);
+  assert.equal(
+    orderDiffersFrom({ buyerType: 'person', paymentMethod: 'kaspi', companyBin: null }, { buyerType: 'person', paymentMethod: 'kaspi', companyBin: null }),
+    false,
+  );
 });
 
 test('сумма берётся из предложения в момент заказа, а не из формы и не из прошлых заказов', async () => {

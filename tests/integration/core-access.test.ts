@@ -298,3 +298,27 @@ test('canSelfEnroll: internal своей организации с платны�
   await course('internalPaid', { visibility: 'internal', owner: 'orgA', price: 1000, active: false });
   assert.equal(await canSelfEnroll('uA', { id: 'internalPaid' }), false);
 });
+
+test('журнал enrollment.grant: явный expiresAt пишется им самим, а не как accessDays: null (бессрочно)', async () => {
+  await user('uR8');
+  const until = Date.now() + 10 * DAY_MS;
+  const moved = await enroll({ userId: 'uR8', courseId: 'paid', source: 'purchase', orderId: await paidOrder('paid'), expiresAt: until });
+  assert.equal(moved.expiresAt, until);
+  const [row] = await db.sql<{ meta: Record<string, unknown> }>`
+    SELECT meta FROM audit_log WHERE action = 'enrollment.grant' AND entity_id = ${moved.id}`;
+  assert.equal(row?.meta.expiresAt, until);
+  assert.equal('accessDays' in (row?.meta ?? {}), false, 'accessDays не пишется — иначе срок читался бы как бессрочный');
+
+  // явный бессрочный тоже пишется явно; обычная выдача — по-прежнему accessDays
+  await user('uR9');
+  const forever = await enroll({ userId: 'uR9', courseId: 'paid', source: 'purchase', orderId: await paidOrder('paid'), expiresAt: null });
+  const [f] = await db.sql<{ meta: Record<string, unknown> }>`
+    SELECT meta FROM audit_log WHERE action = 'enrollment.grant' AND entity_id = ${forever.id}`;
+  assert.equal(f?.meta.expiresAt, null);
+  assert.equal('accessDays' in (f?.meta ?? {}), false);
+  const days = await enroll({ userId: 'uR9', courseId: 'free', source: 'grant', accessDays: 7 });
+  const [d] = await db.sql<{ meta: Record<string, unknown> }>`
+    SELECT meta FROM audit_log WHERE action = 'enrollment.grant' AND entity_id = ${days.id}`;
+  assert.equal(d?.meta.accessDays, 7);
+  assert.equal('expiresAt' in (d?.meta ?? {}), false);
+});

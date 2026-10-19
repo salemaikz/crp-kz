@@ -20,7 +20,7 @@ type Props = {
 
 /**
  * Тест. Варианты приходят без правильных ответов; результат — из server action после отправки.
- * Провал — только счёт (без разбора по вопросам, D-020); сдан — разбор и пояснения.
+ * Провал — только «не сдан» (ни счёта, ни разбора по вопросам, D-020); сдан — счёт, разбор и пояснения.
  * Можно пересдавать без ограничений.
  */
 export function QuizBlock({ lessonId, locale, block, initial }: Props) {
@@ -141,18 +141,18 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
 
         {result ? (
           <div ref={resultRef} tabIndex={-1} className="lrn-result" data-passed={result.passed} aria-live="polite">
-            <div className="lrn-result__score">
-              <strong>{t('quiz.score', { correct: result.correct, total: result.total })}</strong>
-              <span>{result.scorePct}%</span>
-            </div>
+            {result.passed && (
+              <div className="lrn-result__score">
+                <strong>{t('quiz.score', { correct: result.correct, total: result.total })}</strong>
+                <span>{result.scorePct}%</span>
+              </div>
+            )}
             <div className="lrn-result__text">
               <Badge tone={result.passed ? 'success' : 'warning'} icon={result.passed ? <CircleCheck aria-hidden="true" /> : undefined}>
                 {result.passed ? t('quiz.passed') : t('quiz.failed')}
               </Badge>
               <p data-testid="quiz-result-text">
-                {result.passed
-                  ? t('quiz.passedText', { score: result.passScore })
-                  : t('quiz.failedText', { correct: result.correct, total: result.total, score: block.passScore })}
+                {result.passed ? t('quiz.passedText', { score: result.passScore }) : t('quiz.failedText')}
               </p>
             </div>
             <Button variant={result.passed ? 'ghost' : 'primary'} size="sm" onClick={retry}>

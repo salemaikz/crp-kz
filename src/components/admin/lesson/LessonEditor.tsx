@@ -1,17 +1,19 @@
 'use client';
 // Редактор урока: метаданные + контент ru/kz (блоки), живая проверка по схеме, сохранение через server action.
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { Check, Copy, Eye, Pencil } from 'lucide-react';
+import { Check, Copy, Eye, ListPlus, Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, Input, Select, Tabs, type TabItem } from '@/components/ui';
 import { toContentIssues } from '@/lib/admin/contentIssues';
 import type { ContentIssue, FieldErrors } from '@/lib/admin/errors';
+import { addMissingKzQuizzes, kzQuizDiff, removeExtraKzQuizzes } from '@/lib/admin/kzQuizzes';
 import type { ActionResult } from '@/lib/admin/result';
 import { validateLessonContent } from '@/lib/content/blocks';
 import type { Block } from '@/lib/content/types';
 import { ErrorAlert } from '../ErrorAlert';
 import { BlockListEditor } from './BlockListEditor';
 import { BlockPreview } from './BlockPreview';
+import { KzQuizMismatch } from './KzQuizMismatch';
 import { cloneBlocks, normalizeBlocks } from './blockModel';
 
 export type LessonEditorInitial = {
@@ -158,6 +160,20 @@ export function LessonEditor({ initial, save }: Props) {
     setKz(cloneBlocks(ru));
   };
 
+  // тесты kz против ru (D-020): недостающие дописываются копиями из ru, лишние убираются;
+  // остальные блоки казахской версии не трогаем
+  const kzDiff = useMemo(() => kzQuizDiff(ru, kz), [ru, kz]);
+  const kzMismatch = kzDiff.missing.length > 0 || kzDiff.extra.length > 0;
+  const kzMismatchError = errorCode === 'KZ_QUIZ_MISMATCH' && kzMismatch;
+  const addMissingQuizzes = () => {
+    touch();
+    setKz(addMissingKzQuizzes(ru, kz));
+  };
+  const removeExtraQuizzes = () => {
+    touch();
+    setKz(removeExtraKzQuizzes(ru, kz));
+  };
+
   const panel = (loc: Locale) => {
     const blocks = loc === 'ru' ? ru : kz;
     const setBlocks = (next: Block[]) => {
@@ -170,11 +186,33 @@ export function LessonEditor({ initial, save }: Props) {
         {loc === 'kz' && (
           <div className="adm-kzbar">
             <p className="muted">{t('content.kzHint')}</p>
-            <Button type="button" size="sm" variant="ghost" onClick={copyFromRu} disabled={ru.length === 0} data-testid="copy-from-ru">
-              <Copy aria-hidden="true" />
-              {t('content.copyFromRu')}
-            </Button>
+            <div className="adm-kzbar__actions">
+              <Button type="button" size="sm" variant="ghost" onClick={copyFromRu} disabled={ru.length === 0} data-testid="copy-from-ru">
+                <Copy aria-hidden="true" />
+                {t('content.copyFromRu')}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={addMissingQuizzes}
+                disabled={kzDiff.missing.length === 0}
+                data-testid="add-missing-quizzes"
+              >
+                <ListPlus aria-hidden="true" />
+                {t('content.addMissingQuizzes')}
+              </Button>
+            </div>
           </div>
+        )}
+        {loc === 'kz' && kzMismatch && !kzMismatchError && (
+          <KzQuizMismatch
+            diff={kzDiff}
+            tone="warning"
+            testId="kz-quiz-hint"
+            onAddMissing={addMissingQuizzes}
+            onRemoveExtra={removeExtraQuizzes}
+          />
         )}
         {mode === 'edit' ? (
           <BlockListEditor locale={loc} blocks={blocks} onChange={setBlocks} issues={issues} />
@@ -313,7 +351,15 @@ export function LessonEditor({ initial, save }: Props) {
 
       <div className="adm-savebar" role="region" aria-label={t('save.region')}>
         <div className="adm-savebar__status" aria-live="polite">
-          {errorCode && !(errorCode === 'VALIDATION' && issueCount > 0) ? (
+          {kzMismatchError ? (
+            <KzQuizMismatch
+              diff={kzDiff}
+              tone="error"
+              testId="kz-quiz-error"
+              onAddMissing={addMissingQuizzes}
+              onRemoveExtra={removeExtraQuizzes}
+            />
+          ) : errorCode && !(errorCode === 'VALIDATION' && issueCount > 0) ? (
             <ErrorAlert code={errorCode} />
           ) : justSaved ? (
             <span className="adm-savebar__ok" data-testid="lesson-saved">

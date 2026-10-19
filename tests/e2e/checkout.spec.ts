@@ -88,3 +88,51 @@ test('чужой заказ без ключа не открывается, бе�
   await page.goto('/ru/courses/razbor/buy');
   await expect(page).toHaveURL(/\/ru\/courses\/razbor$/);
 });
+
+test('открытый заказ с другим способом оплаты: пометка на странице заказа, владелец отменяет его и оформляет новый', async ({
+  page,
+}) => {
+  const email = `e2e-own-${Date.now()}@example.kz`;
+  await page.goto('/ru/register?next=%2Fru%2Fcourses%2Fsales-doubling%2Fbuy');
+  await page.getByLabel('Имя и фамилия').fill('Тест Владелец');
+  await page.getByLabel('Email').fill(email);
+  await page.locator('input[name="password"]').fill('e2e-password-123');
+  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click();
+  await expect(page).toHaveURL(/\/ru\/courses\/sales-doubling\/buy$/);
+
+  const order = async (method: 'Kaspi' | 'Счёт на оплату') => {
+    await page.getByLabel('Телефон').fill('8 701 100 09 29');
+    await page.getByRole('radio', { name: new RegExp(`^${method}`) }).check();
+    await page.getByLabel(/Принимаю условия публичной оферты/).check();
+    await page.getByRole('button', { name: /Оформить заказ/ }).click();
+    await expect(page).toHaveURL(/\/ru\/orders\/CRP-\d{6}-\d{4}\?/);
+    return /\/orders\/(CRP-\d{6}-\d{4})/.exec(page.url())?.[1] ?? '';
+  };
+
+  const first = await order('Kaspi');
+  await expect(page.getByTestId('order-notice')).toHaveCount(0);
+
+  // тот же курс, но счёт вместо Kaspi: открывается прежний заказ с пометкой
+  await page.goto('/ru/courses/sales-doubling/buy');
+  const again = await order('Счёт на оплату');
+  expect(again).toBe(first);
+  await expect(page).toHaveURL(/notice=existing_differs/);
+  await expect(page.getByTestId('order-notice')).toContainText('оформлен иначе');
+  await expect(page.getByRole('heading', { level: 1, name: 'Оплатите заказ через Kaspi' })).toBeVisible();
+
+  // владелец отменяет свой заказ (два шага)
+  await page.getByTestId('owner-cancel-order').click();
+  await page.getByTestId('owner-cancel-confirm').click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Заказ отменён' })).toBeVisible();
+  await expect(page.getByTestId('order-notice')).toContainText('Заказ отменён. Можно оформить новый.');
+  await expect(page.getByTestId('owner-cancel-order')).toHaveCount(0);
+
+  // и оформляет новый — со счётом
+  await page.getByRole('link', { name: 'Оформить заново' }).click();
+  await expect(page).toHaveURL(/\/ru\/courses\/sales-doubling\/buy$/);
+  const fresh = await order('Счёт на оплату');
+  expect(fresh).not.toBe(first);
+  await expect(page.getByRole('heading', { level: 1, name: 'Счёт на оплату готов' })).toBeVisible();
+  await expect(page.getByTestId('order-notice')).toHaveCount(0);
+});

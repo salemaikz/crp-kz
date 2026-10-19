@@ -5,11 +5,13 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { getCurrentUser } from '../auth';
-import { deriveClientIp, UNKNOWN_IP } from '../auth/clientIp';
-import { rateLimit } from '../auth/rateLimit';
+import { deriveClientIp } from '../auth/clientIp';
 import { redirect } from '../i18n/navigation';
 import { cancelOrder, markPaid, refundOrder } from './admin';
 import { createOrder } from './create';
+import { orderAllowed } from './limits';
+import { isOrderNumber } from './number';
+import { cancelOwnOrder } from './owner';
 import { OrderError, ORDER_STATUSES, type OrderDecision } from './types';
 import { CHECKOUT_FIELDS, parseCheckout, type CheckoutErrors, type CheckoutValues } from './validation';
 
@@ -23,27 +25,8 @@ export type CheckoutFormState =
     }
   | undefined;
 
-/**
- * Лимиты заказов (защита от спама): на аккаунт и на IP клиента (доверенная схема, D-018).
- * IP неизвестен (нет доверенного прокси) — общее ведро с порогом выше; аккаунт защищает лимит на него.
- */
-const ORDER_LIMITS = {
-  perUser: { limit: 10, windowMs: 60 * 60_000 },
-  perIp: { limit: 20, windowMs: 60 * 60_000 },
-  unknownIp: { limit: 300, windowMs: 60 * 60_000 },
-} as const;
-
 function localeOf(fd: FormData): 'ru' | 'kz' {
   return fd.get('locale') === 'kz' ? 'kz' : 'ru';
-}
-
-function orderAllowed(userId: string, ip: string): boolean {
-  const byIp =
-    ip === UNKNOWN_IP
-      ? rateLimit(`order:${UNKNOWN_IP}`, ORDER_LIMITS.unknownIp.limit, ORDER_LIMITS.unknownIp.windowMs)
-      : rateLimit(`order:ip:${ip}`, ORDER_LIMITS.perIp.limit, ORDER_LIMITS.perIp.windowMs);
-  if (!byIp.ok) return false;
-  return rateLimit(`order:user:${userId}`, ORDER_LIMITS.perUser.limit, ORDER_LIMITS.perUser.windowMs).ok;
 }
 
 /**
@@ -74,7 +57,11 @@ export async function createOrderAction(prev: CheckoutFormState, formData: FormD
   let target: { pathname: string; query?: Record<string, string> } | null = null;
   try {
     const created = await createOrder(parsed.data, { userId: user.id });
-    target = { pathname: `/orders/${created.number}`, query: { key: created.accessKey } };
+    const query: Record<string, string> = { key: created.accessKey };
+    // открыт уже существующий заказ: страница скажет об этом, а если он оформлен иначе —
+    // предложит отменить его и оформить заново
+    if (created.existing) query.notice = created.differs ? 'existing_differs' : 'existing';
+    target = { pathname: `/orders/${created.number}`, query };
   } catch (e) {
     if (e instanceof OrderError && e.code === 'has_access') {
       target = { pathname: `/learn/${parsed.data.courseSlug}` };
@@ -135,4 +122,33 @@ export async function adminOrderAction(formData: FormData): Promise<void> {
   if (filter !== 'all') query.status = filter;
   if (res.ok) query.order = res.order.number;
   redirect({ href: { pathname: '/admin/orders', query }, locale });
+}
+
+const ownerCancelSchema = z.object({
+  orderId: z.string().min(1).max(64),
+  number: z.string().max(40).refine(isOrderNumber),
+});
+
+/**
+ * Покупатель отменяет свой неоплаченный заказ (pending → cancelled), чтобы оформить новый.
+ * Только по сессии владельца: ключ из ссылки права отмены не даёт. Журнал: order.cancel_by_owner.
+ */
+export async function cancelOwnOrderAction(formData: FormData): Promise<void> {
+  const locale = localeOf(formData);
+  const parsed = ownerCancelSchema.safeParse({ orderId: formData.get('orderId'), number: formData.get('number') });
+  if (!parsed.success) notFound();
+  const { orderId, number } = parsed.data;
+
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect({ href: { pathname: '/login', query: { next: `/${locale}/orders/${number}` } }, locale });
+    return;
+  }
+  const res = await cancelOwnOrder(orderId, user.id);
+  if (!res.ok && res.reason === 'not_found') notFound();
+
+  revalidatePath('/[locale]/orders/[number]', 'page');
+  revalidatePath('/[locale]/admin/orders', 'page');
+  const notice = res.ok ? 'cancelled_by_owner' : 'cancel_refused';
+  redirect({ href: { pathname: `/orders/${res.ok ? res.order.number : number}`, query: { notice } }, locale });
 }

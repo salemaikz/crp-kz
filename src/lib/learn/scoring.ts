@@ -26,19 +26,40 @@ export function validateAnswers(block: QuizBlock, answers: readonly (readonly nu
   });
 }
 
+/** Оценка попытки для сервера: счёт хранится в quiz_attempts, клиенту уходит только result. */
+export type QuizGrade = {
+  correct: number;
+  total: number;
+  scorePct: number;
+  passed: boolean;
+  /** Ответ клиенту (D-020): провал — только { passed: false }; сдан — счёт, разбор и пояснения. */
+  result: QuizResult;
+};
+
 /**
- * Результат попытки: correct — число точно угаданных вопросов, scorePct = round(correct / total × 100),
- * passed = scorePct ≥ passScore. Провал — только счёт (D-020): какие вопросы неверны и пояснения
- * не возвращаются. Сдан — разбор по вопросам и пояснения (единственное место, где они уходят клиенту).
+ * Оценка попытки: correct — число точно угаданных вопросов, scorePct = round(correct / total × 100),
+ * passed = scorePct ≥ passScore. Провал — клиенту ни счёта, ни разбора: по счёту подбирают ответы,
+ * меняя по одному. Сдан — счёт, разбор по вопросам и пояснения (единственное место, где они уходят).
  */
-export function scoreQuiz(block: QuizBlock, answers: readonly (readonly number[])[]): QuizResult {
+export function gradeQuiz(block: QuizBlock, answers: readonly (readonly number[])[]): QuizGrade {
   const total = block.questions.length;
   const marks = block.questions.map((q, i) => sameSet(q.correct, answers[i] ?? []));
   const correct = marks.filter(Boolean).length;
   const scorePct = total === 0 ? 0 : Math.round((correct / total) * 100);
-  if (scorePct < block.passScore) return { passed: false, correct, total, scorePct };
+  if (scorePct < block.passScore) return { correct, total, scorePct, passed: false, result: { passed: false } };
   const perQuestion = block.questions.map((q, i) =>
     q.explain ? { correct: marks[i] as boolean, explain: q.explain } : { correct: marks[i] as boolean },
   );
-  return { passed: true, correct, total, scorePct, passScore: block.passScore, perQuestion };
+  return {
+    correct,
+    total,
+    scorePct,
+    passed: true,
+    result: { passed: true, correct, total, scorePct, passScore: block.passScore, perQuestion },
+  };
+}
+
+/** Ответ клиенту на попытку (см. gradeQuiz). */
+export function scoreQuiz(block: QuizBlock, answers: readonly (readonly number[])[]): QuizResult {
+  return gradeQuiz(block, answers).result;
 }

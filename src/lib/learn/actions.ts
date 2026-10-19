@@ -84,7 +84,7 @@ export async function lookupCertificateAction(formData: FormData): Promise<void>
   const raw = formData.get('number');
   const text = typeof raw === 'string' ? raw.trim().toUpperCase().slice(0, 40) : '';
   if (!text) redirect({ href: '/cert', locale: loc });
-  if (!(await certFormAllowed())) {
+  if (!(await certFormAllowed(text))) {
     redirect({ href: '/cert', locale: loc });
   }
   redirect({ href: `/cert/${encodeURIComponent(normalizeCertificateNumber(text) ?? text)}`, locale: loc });

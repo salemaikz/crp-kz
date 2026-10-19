@@ -162,12 +162,14 @@ export async function enroll(input: EnrollInput, sql?: Sql): Promise<Enrollment>
     }
     const t = now();
     const expiresAt = expiryOf(input, t);
+    // срок в журнале — так, как его задали: явный expiresAt (переход доступа на другой заказ)
+    // пишем им самим, иначе accessDays: null читался бы как «бессрочно»
     const meta = {
       source: input.source,
       courseId: input.courseId,
       userId: input.userId,
       orderId: input.orderId ?? null,
-      accessDays: input.accessDays ?? null,
+      ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : { accessDays: input.accessDays ?? null }),
     };
 
     const [inserted] = await s<Enrollment>`

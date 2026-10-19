@@ -70,16 +70,17 @@ test('клиент: Моё обучение → Целина → урок с т�
   const html = await page.content();
   for (const q of quiz.questions) if (q.explain) expect(html).not.toContain(q.explain.slice(0, 30));
 
-  // неверная попытка: только счёт и «не сдан» — без разбора по вопросам и пояснений (D-020)
+  // неверная попытка: только «не сдан» — ни счёта, ни разбора по вопросам, ни пояснений (D-020)
   const submit = page.getByRole('button', { name: 'Проверить ответы' });
   await expect(submit).toBeDisabled();
   const wrong = quiz.questions.map((q) => [q.correct.includes(0) ? 1 : 0]);
   await answer(page, quiz, wrong);
   await submit.click();
   await expect(page.getByText('Тест не сдан')).toBeVisible();
-  await expect(page.getByTestId('quiz-result-text')).toContainText(
-    new RegExp(`Правильных ответов: \\d из ${quiz.questions.length}\\. Нужно ${quiz.passScore}%\\. Перечитайте урок`),
-  );
+  await expect(page.getByTestId('quiz-result-text')).toHaveText('Перечитайте урок и попробуйте ещё раз — попыток сколько угодно.');
+  // счёта нет: ни «N из M», ни процента
+  await expect(page.getByTestId('quiz').getByText(/^\d+ из \d+$/)).toHaveCount(0);
+  await expect(page.getByTestId('quiz').getByText(/^\d+%$/)).toHaveCount(0);
   await expect(page.getByTestId('quiz').getByText('Неверно', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('quiz').getByText('Верно', { exact: true })).toHaveCount(0);
   for (const q of quiz.questions) if (q.explain) await expect(page.getByText(q.explain.slice(0, 30))).toHaveCount(0);

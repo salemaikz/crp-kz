@@ -29,7 +29,7 @@ export default async function CertVerifyPage({ params }: Props) {
   const number = routeParam(rawNumber).slice(0, 40);
   const t = await getTranslations('learn.verify');
 
-  if (!(await certLookupAllowed())) {
+  if (!(await certLookupAllowed(number))) {
     return (
       <>
         <PageHeader tone="night" eyebrow={t('eyebrow')} title={t('tooMany.title')} lead={t('tooMany.description')} />

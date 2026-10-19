@@ -7,7 +7,8 @@ import type { Order, OrderDecision, OrderStatus } from './types';
 
 type Op = 'paid' | 'cancel' | 'refund';
 
-async function audit(
+/** Запись order.* в журнал (без ПДн покупателя). */
+export async function audit(
   sql: Sql,
   json: (v: unknown) => unknown,
   actorId: string,
@@ -99,6 +100,8 @@ function orderExpiry(o: Pick<Order, 'paidAt' | 'accessDays'>): number | null {
  * заказу, назначению или выдаче админом не трогаем.
  * Если у покупателя есть другой оплаченный заказ на курс, срок которого ещё идёт, доступ
  * переходит на него (D-020): order_id — тот заказ, срок — от его оплаты (не продлевается).
+ * Возвращаемый заказ блокирует условный UPDATE, кандидаты на перенос — SELECT … FOR UPDATE:
+ * параллельные возвраты двух заказов одного покупателя не переносят доступ на возвращённый.
  * Прогресс и сертификаты сохраняются.
  */
 export async function refundOrder(orderId: string, adminId: string): Promise<OrderDecision> {
@@ -116,12 +119,19 @@ export async function refundOrder(orderId: string, adminId: string): Promise<Ord
     if (o.userId) {
       const revoked = await revokeEnrollment(o.userId, o.courseId, adminId, sql, { orderId: o.id });
       if (revoked) {
+        // Кандидаты блокируются (FOR UPDATE): параллельный возврат кандидата ждёт конца этой
+        // транзакции, а если он успел первым — после его коммита строка перечитывается и уже не
+        // проходит status = 'paid' (READ COMMITTED). Без блокировки два одновременных возврата
+        // A и B переносили бы доступ A на уже возвращённый B.
         const others = await sql<Order>`
           SELECT * FROM orders
-          WHERE user_id = ${o.userId} AND course_id = ${o.courseId} AND status = 'paid' AND id <> ${o.id}`;
+          WHERE user_id = ${o.userId} AND course_id = ${o.courseId} AND status = 'paid' AND id <> ${o.id}
+          ORDER BY id
+          FOR UPDATE`;
         // действующий заказ с самым поздним концом срока (бессрочный — дальше любого);
-        // остаток меньше минуты не в счёт
+        // остаток меньше минуты не в счёт; статус перепроверяем по заблокированной строке
         const live = others
+          .filter((x) => x.status === 'paid')
           .map((x) => ({ order: x, expiresAt: orderExpiry(x) }))
           .filter((x) => x.expiresAt === null || x.expiresAt > t + 60_000)
           .sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity))

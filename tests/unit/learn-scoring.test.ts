@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { QuizBlock } from '../../src/lib/content/types';
-import { sameSet, scoreQuiz, validateAnswers } from '../../src/lib/learn/scoring';
+import { gradeQuiz, sameSet, scoreQuiz, validateAnswers } from '../../src/lib/learn/scoring';
 import type { QuizResult } from '../../src/lib/learn/types';
 
 /** Разбор по вопросам есть только у сданной попытки. */
@@ -32,6 +32,7 @@ test('sameSet: порядок и повторы не важны, лишний и
 
 test('scoreQuiz: все верно — 100 %, сдан', () => {
   const r = scoreQuiz(quiz, [[1], [2, 0], [0]]);
+  assert.ok(r.passed);
   assert.deepEqual([r.correct, r.total, r.scorePct, r.passed], [3, 3, 100, true]);
   assert.deepEqual(marks(r), [true, true, true]);
 });
@@ -42,18 +43,32 @@ test('scoreQuiz: множественный выбор — только точн
   assert.equal(marks(scoreQuiz(quiz, [[1], [0, 2], [0]]))[1], true);
 });
 
-test('scoreQuiz: провал — только счёт, без разбора по вопросам и пояснений (D-020)', () => {
+test('scoreQuiz: провал — только «не сдан»: ни счёта, ни разбора, ни пояснений (D-020)', () => {
   const r = scoreQuiz(quiz, [[0], [0], [0]]); // 1 из 3 — не сдан
-  assert.deepEqual(r, { passed: false, correct: 1, total: 3, scorePct: 33 });
+  assert.deepEqual(r, { passed: false });
   const json = JSON.stringify(r);
-  for (const leak of ['perQuestion', 'explain', 'Потому что y', 'Да.', 'passScore']) assert.equal(json.includes(leak), false, leak);
+  for (const leak of ['correct', 'total', 'scorePct', 'perQuestion', 'explain', 'Потому что y', 'Да.', 'passScore']) {
+    assert.equal(json.includes(leak), false, leak);
+  }
+  // перебор по счёту невозможен: 0 и 1 верных из 3 дают один и тот же ответ
+  assert.deepEqual(scoreQuiz(quiz, [[0], [1], [1]]), r);
+});
+
+test('gradeQuiz: счёт для сервера (quiz_attempts) есть всегда; клиенту — только result', () => {
+  const fail = gradeQuiz(quiz, [[1], [0], [1]]); // 1 из 3
+  assert.deepEqual([fail.correct, fail.total, fail.scorePct, fail.passed], [1, 3, 33, false]);
+  assert.deepEqual(fail.result, { passed: false });
+  const pass = gradeQuiz(quiz, [[1], [0, 2], [1]]); // 2 из 3
+  assert.deepEqual([pass.correct, pass.total, pass.scorePct, pass.passed], [2, 3, 67, true]);
+  assert.ok(pass.result.passed);
+  assert.deepEqual([pass.result.correct, pass.result.total, pass.result.scorePct], [2, 3, 67]);
 });
 
 test('scoreQuiz: scorePct = round(correct / total × 100); passed = scorePct ≥ passScore', () => {
   const two = scoreQuiz(quiz, [[1], [0, 2], [1]]); // 2 из 3
+  assert.ok(two.passed);
   assert.deepEqual([two.correct, two.scorePct, two.passed], [2, 67, true]);
-  const one = scoreQuiz(quiz, [[1], [0], [1]]); // 1 из 3
-  assert.deepEqual([one.correct, one.scorePct, one.passed], [1, 33, false]);
+  assert.equal(scoreQuiz(quiz, [[1], [0], [1]]).passed, false); // 1 из 3
   // граница: ровно проходной балл — сдан
   const edge: QuizBlock = { ...quiz, passScore: 67 };
   assert.equal(scoreQuiz(edge, [[1], [0, 2], [1]]).passed, true);
@@ -61,7 +76,7 @@ test('scoreQuiz: scorePct = round(correct / total × 100); passed = scorePct ≥
 });
 
 test('scoreQuiz: вопрос без ответа считается неверным', () => {
-  const r = scoreQuiz(quiz, [[], [], []]);
+  const r = gradeQuiz(quiz, [[], [], []]);
   assert.deepEqual([r.correct, r.scorePct, r.passed], [0, 0, false]);
 });
 

@@ -184,12 +184,15 @@ test('нельзя завершить урок с тестом без сданн
   await refuses('quiz_required', completeLesson({ userId: 'u4', lessonId: 'f2', locale: 'ru' }));
 
   const fail = await submitQuiz({ userId: 'u4', lessonId: 'f2', blockId: 'quiz', answers: FAIL, locale: 'ru' });
-  // провал — только счёт: ни разбора по вопросам, ни пояснений (D-020)
-  assert.deepEqual(fail, { passed: false, correct: 0, total: 3, scorePct: 0 });
+  // провал — только «не сдан»: ни счёта, ни разбора по вопросам, ни пояснений (D-020)
+  assert.deepEqual(fail, { passed: false });
+  // счёт провала не уходит на клиент и через статус теста (initial в QuizBlock)
+  assert.deepEqual((await getQuizStatuses('u4', 'f2')).get('quiz'), { attempts: 1, passed: false, bestPct: null });
   assert.equal(JSON.stringify(fail).includes('Потому что'), false);
   await refuses('quiz_required', completeLesson({ userId: 'u4', lessonId: 'f2', locale: 'ru' }));
 
   const pass = await submitQuiz({ userId: 'u4', lessonId: 'f2', blockId: 'quiz', answers: PASS, locale: 'ru' });
+  assert.ok(pass.passed);
   assert.deepEqual([pass.correct, pass.scorePct, pass.passed], [3, 100, true]);
   const done = await completeLesson({ userId: 'u4', lessonId: 'f2', locale: 'ru' });
   assert.equal(done.done, 2);
