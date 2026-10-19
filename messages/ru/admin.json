@@ -68,22 +68,14 @@
       "pendingHint": "Откройте и отметьте оплату",
       "certificates": "Выдано сертификатов"
     },
-    "quick": {
-      "title": "Быстрые действия",
-      "createCourse": "Создать курс",
-      "orders": "Заказы",
-      "users": "Пользователи и доступы",
-      "catalog": "Каталог глазами слушателя"
-    },
-    "feed": {
-      "title": "Последние действия",
-      "lead": "Кто и что менял: курсы, уроки, доступы, оплаты.",
-      "empty": "Действий пока нет.",
-      "system": "Система"
-    },
     "actions": {
       "createCourse": "Создать курс",
       "catalog": "Каталог"
+    },
+    "feed": {
+      "title": "Последние действия",
+      "empty": "Действий пока нет.",
+      "system": "Система"
     }
   },
   "audit": {
@@ -120,11 +112,8 @@
         "create": "Создан заказ {number}",
         "paid": "Заказ {number} отмечен оплаченным",
         "cancel": "Заказ {number} отменён",
-        "refund": "По заказу {number} оформлен возврат",
-        "cancel_by_owner": "Покупатель отменил заказ {number}"
-      },
-      "cert": {
-        "issue": "Выдан сертификат {number}"
+        "cancel_by_owner": "Покупатель отменил заказ {number}",
+        "refund": "По заказу {number} оформлен возврат"
       },
       "certificate": {
         "issue": "Выдан сертификат {number}"
@@ -153,7 +142,6 @@
       "caption": "Список курсов",
       "title": "Курс",
       "status": "Статус",
-      "visibility": "Видимость",
       "price": "Цена",
       "lessons": "Уроки",
       "students": "Слушатели",
@@ -259,6 +247,7 @@
     }
   },
   "program": {
+    "moduleKz": "KZ: <kk>{title}</kk>",
     "emptyTitle": "В курсе пока нет модулей",
     "emptyText": "Добавьте первый модуль, например «Введение». Уроки добавляются внутри модуля.",
     "module": "Модуль {n}",
@@ -300,8 +289,6 @@
     "lesson": {
       "noDuration": "без длительности",
       "blocks": "{count, plural, one {# блок} few {# блока} many {# блоков} other {# блока}}",
-      "kzReady": "Есть казахская версия",
-      "kzMissing": "Нет казахской версии",
       "publish": "Опубликовать",
       "unpublish": "В черновик",
       "edit": "Редактировать урок",
@@ -312,7 +299,6 @@
       "ruOnly": "RU",
       "ruOnlyTitle": "Нет казахской версии"
     },
-    "moduleKz": "KZ: <kk>{title}</kk>",
     "kzSummary": "Без казахской версии: {missing} из {total, plural, one {# урока} other {# уроков}}"
   },
   "lessonEditor": {
