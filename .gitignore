@@ -1,0 +1,27 @@
+# зависимости и сборка
+node_modules/
+.next/
+.next-*/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# секреты — никогда не коммитить
+.env
+.env.*
+!.env.example
+
+# локальные настройки Claude Code
+.claude/settings.local.json
+CLAUDE.local.md
+
+# тесты
+test-results/
+playwright-report/
+coverage/
+
+# загрузки пользователей и ОС
+public/uploads/
+.DS_Store
+*.log
