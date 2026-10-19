@@ -12,7 +12,7 @@ export function HomeHero({ loggedIn }: Props) {
   const t = useTranslations('catalog.home.hero');
   return (
     <section className="cat-hero on-night" aria-labelledby="home-title">
-      <Circles animated={false} className="cat-hero__rings" />
+      <Circles className="cat-hero__rings" />
       <Container className="cat-hero__inner">
         <div className="cat-hero__copy">
           <h1 id="home-title" className="display cat-hero__title">
