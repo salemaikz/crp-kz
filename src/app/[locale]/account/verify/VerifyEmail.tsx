@@ -24,9 +24,12 @@ export function VerifyEmail() {
 
   const done = state?.status === 'done' ? state : null;
   const target = done?.loggedIn && done.next ? done.next : null;
+  const isDone = done !== null;
   useEffect(() => {
+    // плашка «Подтвердите email» живёт в общем layout: мягкая навигация его не перерисует, обновляем явно
+    if (isDone) router.refresh();
     if (target) router.replace(target);
-  }, [target, router]);
+  }, [isDone, target, router]);
 
   if (done) {
     return (

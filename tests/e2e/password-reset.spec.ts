@@ -77,7 +77,7 @@ test('сброс пароля: демо-аккаунт из сида получ�
   await expect(page).toHaveURL(/\/ru\/learn/);
 });
 
-test('подтверждение email: плашка, «Отправить ещё раз», ссылка из «Писем», «Подтвердить email», плашка исчезла', async ({ page, browser }) => {
+test('подтверждение email: плашка, «Отправить письмо», ссылка из «Писем», «Подтвердить email», плашка исчезла', async ({ page, browser }) => {
   const email = `e2e-verify-${Date.now()}@example.kz`;
   await page.goto('/ru/register');
   await page.getByLabel('Имя и фамилия').fill('Тест Подтверждение');
@@ -89,7 +89,7 @@ test('подтверждение email: плашка, «Отправить ещ�
 
   const notice = page.getByTestId('verify-notice');
   await expect(notice).toContainText(`Подтвердите email ${email}`);
-  await notice.getByRole('button', { name: 'Отправить ещё раз' }).click();
+  await notice.getByRole('button', { name: 'Отправить письмо' }).click();
   await expect(page.getByTestId('verify-resent')).toBeVisible();
 
   const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
@@ -99,6 +99,8 @@ test('подтверждение email: плашка, «Отправить ещ�
   await expect(page.getByRole('button', { name: 'Подтвердить email' })).toBeVisible();
   await page.getByRole('button', { name: 'Подтвердить email' }).click();
   await expect(page.getByTestId('verify-done')).toContainText('Email подтверждён');
+  // плашка в общем layout исчезает сразу, без полной перезагрузки
+  await expect(page.getByTestId('verify-notice')).toHaveCount(0);
 
   await page.goto('/ru/learn');
   await expect(page.getByTestId('verify-notice')).toHaveCount(0);

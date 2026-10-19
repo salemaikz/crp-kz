@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { resendVerificationAction, type RecoveryState } from '@/lib/auth/recoveryActions';
 import { SubmitButton } from '@/components/ui';
 
-/** Кнопка «Отправить ещё раз» в плашке подтверждения email. next возвращает по ссылке из письма. */
+/** Кнопка «Отправить письмо» в плашке подтверждения email. next возвращает по ссылке из письма. */
 export function ResendVerification({ next }: { next?: string }) {
   const t = useTranslations('auth');
   const locale = useLocale();

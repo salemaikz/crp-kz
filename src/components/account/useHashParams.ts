@@ -12,10 +12,15 @@ export function useHashParams(): URLSearchParams | null {
   const [params, setParams] = useState<URLSearchParams | null>(null);
   useEffect(() => {
     const raw = window.location.hash.replace(/^#/, '');
-    if (raw) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     // фрагмент доступен только в браузере, поэтому чтение — в эффекте
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setParams(new URLSearchParams(raw));
+    if (raw) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setParams(new URLSearchParams(raw));
+    } else {
+      // StrictMode в dev запускает эффект дважды: второй раз адрес уже очищен, прочитанное не затираем
+      setParams((prev) => prev ?? new URLSearchParams());
+    }
   }, []);
   return params;
 }

@@ -169,6 +169,30 @@ test('сброс: email сменили после выдачи — ссылка 
   assert.equal(t?.usedAt, null);
 });
 
+test('сброс: токен сид-аккаунта в демо расходуется, пароль и сессии не трогаются', async () => {
+  const seedEmail = 'seedcheck@crp.demo';
+  const seedUser = seedId('user', seedEmail);
+  await db.sql`DELETE FROM users WHERE id = ${seedUser}`;
+  await db.sql`INSERT INTO users (id, email, password_hash, name, locale, created_at)
+    VALUES (${seedUser}, ${seedEmail}, ${oldHash}, 'Сид', 'ru', 1)`;
+  try {
+    const session = await createSessionToken(seedUser);
+    const secret = await db.tx((sql) => issueToken(sql, { userId: seedUser, email: seedEmail, kind: 'password_reset', nowMs: T0 }));
+    assert.ok(secret);
+    assert.deepEqual(await resetPassword({ token: secret.raw, passwordHash: 'x', nowMs: T0 + MIN }), { ok: false, reason: 'invalid_token' });
+    const [u] = await db.sql<{ passwordHash: string }>`SELECT password_hash FROM users WHERE id = ${seedUser}`;
+    assert.equal(u?.passwordHash, oldHash, 'пароль не изменён');
+    assert.equal((await resolveSessionToken(session.token))?.id, seedUser, 'сессии не закрыты');
+    const [t] = await db.sql<{ usedAt: number | null }>`SELECT used_at FROM auth_tokens WHERE user_id = ${seedUser}`;
+    assert.equal(t?.usedAt, T0 + MIN, 'токен израсходован');
+  } finally {
+    await db.sql`DELETE FROM sessions WHERE user_id = ${seedUser}`;
+    await db.sql`DELETE FROM auth_tokens WHERE user_id = ${seedUser}`;
+    await db.sql`DELETE FROM mail_outbox WHERE user_id = ${seedUser}`;
+    await db.sql`DELETE FROM users WHERE id = ${seedUser}`;
+  }
+});
+
 test('5 запросов сброса, затем смена пароля: password_changed в очереди, лимит ссылок держится', async () => {
   for (let i = 0; i < 5; i++) await requestPasswordReset({ email: 'rec1@x.kz', locale: 'ru', nowMs: T0 + i * 1000 });
   const before6 = await counts();

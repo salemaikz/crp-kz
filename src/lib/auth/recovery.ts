@@ -1,7 +1,6 @@
 // Сброс пароля и подтверждение email: логика без Next (тестируется напрямую).
 // Нормативно: docs/lms/design/mail-account.md §3.3, §5; docs/lms/BUILD.md §5; D-031.
 // Токены — tokens.ts, письма — mail/outbox.ts. Ссылки собирает только mail/links.ts.
-import { seedId } from '../content/ids';
 import type { Locale } from '../content/types';
 import { getDb, now, type Sql } from '../db';
 import { writeAudit } from '../audit';
@@ -11,6 +10,7 @@ import { cancelSecrets, enqueueMail, normalizeRecipient } from '../mail/outbox';
 import type { EnqueueResult } from '../mail/types';
 import { consumeToken, issueToken } from './tokens';
 import { safeNext } from './safeNext';
+import { isSeedUser } from './session';
 
 /** Внутренний сигнал: транзакция, единственная цель которой письмо, не поставила его — откатить. */
 class MailNotQueued extends Error {}
@@ -21,8 +21,8 @@ class MailNotQueued extends Error {}
  * меняться: публичное демо сломалось бы. Для таких аккаунтов сброс молча не выполняется.
  */
 function isDemoSeedAccount(user: { id: string; email: string }): boolean {
-  // по id, а не по домену: самостоятельно зарегистрированный адрес @crp.demo — обычный аккаунт
-  return isDemo() && user.id === seedId('user', user.email);
+  // критерий общий с восстановлением сессий (isSeedUser): иначе проверки разойдутся
+  return isDemo() && isSeedUser(user);
 }
 
 /**
@@ -44,7 +44,7 @@ export async function requestPasswordReset(input: {
   try {
     await db.tx(async (sql) => {
       const [user] = await sql<{ id: string; email: string; name: string }>`
-        SELECT id, email, name FROM users WHERE email = ${email}`;
+        SELECT id, email, name FROM users WHERE email = ${email} FOR UPDATE`;
       if (!user || isDemoSeedAccount(user)) return;
       const secret = await issueToken(sql, { userId: user.id, email: user.email, kind: 'password_reset', nowMs: t });
       if (!secret) return; // лимит писем: отвечаем как при успехе, ничего не отправляем
@@ -88,7 +88,8 @@ export async function resetPassword(input: {
   return db.tx(async (sql) => {
     const tok = await consumeToken(sql, input.token, 'password_reset', t);
     if (!tok) return { ok: false, reason: 'invalid_token' } as const;
-    // защита вторым слоем: токены демо-аккаунтам не выдаются, но и расходовать их нельзя
+    // защита вторым слоем: токены демо-аккаунтам не выдаются; если такой всё же есть, он расходуется
+    // (consumeToken выше), а пароль и сессии не трогаются
     if (isDemoSeedAccount({ id: tok.userId, email: tok.email })) return { ok: false, reason: 'invalid_token' } as const;
     const [user] = await sql<{ name: string; locale: Locale }>`
       UPDATE users SET password_hash = ${input.passwordHash}, email_verified_at = COALESCE(email_verified_at, ${t})
@@ -169,7 +170,7 @@ export async function resendVerification(input: {
   try {
     return await db.tx(async (sql) => {
       const [user] = await sql<{ id: string; email: string; name: string; verified: boolean }>`
-        SELECT id, email, name, (email_verified_at IS NOT NULL) AS verified FROM users WHERE id = ${input.userId}`;
+        SELECT id, email, name, (email_verified_at IS NOT NULL) AS verified FROM users WHERE id = ${input.userId} FOR UPDATE`;
       if (!user) return { ok: false, reason: 'not_found' } as const;
       if (user.verified) return { ok: false, reason: 'already_verified' } as const;
       const res = await sendVerification(sql, {
