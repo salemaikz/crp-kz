@@ -83,6 +83,9 @@ export async function prepareDb(db: DbHandle, opts: { autoMigrate?: boolean; see
   }
 }
 
+/** Отказ скрипту, которому досталась БД в памяти: общий текст для openScriptDb, db:status и db:seed. */
+export const IN_MEMORY_MESSAGE = 'База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR.';
+
 /**
  * Открыть БД для скрипта (крон, CLI) по шаблону PLAN §2.5: драйвер → prepareDb без сида → setDb.
  * В production prepareDb только проверяет миграции. БД в памяти (нет DATABASE_URL и PGLITE_DIR)
@@ -92,7 +95,7 @@ export async function prepareDb(db: DbHandle, opts: { autoMigrate?: boolean; see
 export async function openScriptDb(opts: { allowInMemory?: boolean } = {}): Promise<() => Promise<void>> {
   const inMemory = !process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim();
   if (inMemory && !opts.allowInMemory) {
-    throw new Error('База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR.');
+    throw new Error(IN_MEMORY_MESSAGE);
   }
   const db = await openDriver();
   try {

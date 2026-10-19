@@ -12,7 +12,7 @@ function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx|mts)$/.test(name)) out.push(full);
+    else if (/\.(ts|tsx|mts|mjs|js|cjs)$/.test(name)) out.push(full);
   }
   return out;
 }

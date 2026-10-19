@@ -1,6 +1,6 @@
 // npm run db:seed — миграции + демо-данные, если таблица users пуста.
 // Только для демо и разработки: сид создаёт учётки с публичным паролем (README).
-import { openDriver } from '../src/lib/db';
+import { IN_MEMORY_MESSAGE, openDriver } from '../src/lib/db';
 import { migrate } from '../src/lib/db/migrate';
 import { seedRefusal } from '../src/lib/db/seed-guard';
 import { seed } from '../src/lib/db/seed';
@@ -10,6 +10,11 @@ async function main(): Promise<number> {
   const refusal = seedRefusal();
   if (refusal) {
     console.error(refusal);
+    return 1;
+  }
+  // Сид в БД в памяти исчез бы с выходом скрипта — это ложный успех
+  if (!process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim()) {
+    console.error(IN_MEMORY_MESSAGE);
     return 1;
   }
   const db = await openDriver();

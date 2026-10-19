@@ -1,4 +1,4 @@
-// db:seed и db:status: отказ вне демо, сид по SEED_DEMO=1, БД в памяти для status — код 2.
+// db:seed и db:status: отказ вне демо, сид в демо, БД в памяти — отказ; коды status 0/3/1.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -49,7 +49,7 @@ test('seedRefusal: настоящая БД без DEMO_MODE/SEED_DEMO — отк
   assert.equal(seedRefusal({}), null, 'локальная разработка без БД — демо');
 });
 
-test('db-seed: вне демо — код 1 и users пуста; с SEED_DEMO=1 (без production) — засевает', async () => {
+test('db-seed: вне демо — код 1 и users пуста; в демо (PGLITE_DIR без NODE_ENV) — засевает', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'crp-seed-'));
   try {
     const denied = run('db-seed.ts', [], { PGLITE_DIR: dir, NODE_ENV: 'production' });
@@ -58,7 +58,7 @@ test('db-seed: вне демо — код 1 и users пуста; с SEED_DEMO=1 
     assert.equal(denied.stderr.includes('demo12345'), false);
     assert.equal(await usersCount(dir), 0);
 
-    const ok = run('db-seed.ts', [], { PGLITE_DIR: dir, SEED_DEMO: '1' });
+    const ok = run('db-seed.ts', [], { PGLITE_DIR: dir });
     assert.equal(ok.status, 0, ok.stderr);
     assert.ok((await usersCount(dir)) > 0);
   } finally {
@@ -66,8 +66,30 @@ test('db-seed: вне демо — код 1 и users пуста; с SEED_DEMO=1 
   }
 });
 
-test('db-migrate --status: БД в памяти — код 2 и то же сообщение, что у openScriptDb', () => {
+test('db-seed: БД в памяти — код 1, без ложного «записаны»', () => {
+  const r = run('db-seed.ts', [], {});
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /База в памяти исчезнет после выхода скрипта/);
+  assert.equal(r.stdout.includes('записаны'), false);
+});
+
+test('db-migrate --status: ненакатанные — код 3, после накатки — 0; неверный аргумент — 1', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'crp-status-'));
+  try {
+    const pending = run('db-migrate.ts', ['--status'], { PGLITE_DIR: dir });
+    assert.equal(pending.status, 3, pending.stderr);
+    const applied = run('db-migrate.ts', [], { PGLITE_DIR: dir });
+    assert.equal(applied.status, 0, applied.stderr);
+    const clean = run('db-migrate.ts', ['--status'], { PGLITE_DIR: dir });
+    assert.equal(clean.status, 0, clean.stderr);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.equal(run('db-migrate.ts', ['--bogus'], {}).status, 1);
+});
+
+test('db-migrate --status: БД в памяти — код 1 и то же сообщение, что у openScriptDb', () => {
   const r = run('db-migrate.ts', ['--status'], {});
-  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.status, 1, r.stderr);
   assert.match(r.stderr, /База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR\./);
 });

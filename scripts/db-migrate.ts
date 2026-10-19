@@ -1,10 +1,11 @@
 // npm run db:migrate — накатить миграции на DATABASE_URL (или PGLITE_DIR).
 // npm run db:status (--status) — только чтение: накатанные, ненакатанные и незнакомые файлы.
-import { openDriver } from '../src/lib/db';
+// Коды выхода (контракт выкладки, docs/lms/design/ops.md §3.13): 0 — всё накатано,
+// 3 — есть ненакатанные, 1 — ошибка (в том числе настройки и неверные аргументы).
+import { IN_MEMORY_MESSAGE, openDriver } from '../src/lib/db';
 import { migrate, migrationStatus } from '../src/lib/db/migrate';
 import { isDemo } from '../src/lib/env';
 
-const IN_MEMORY_MESSAGE = 'База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR.';
 const DEFAULT_LOCK_TIMEOUT_MS = 5000;
 
 /** MIGRATE_LOCK_TIMEOUT_MS: целое положительное число миллисекунд. */
@@ -22,7 +23,7 @@ async function status(): Promise<number> {
   // БД в памяти пуста по определению: «не накатаны» было бы ошибкой настройки, а не состоянием
   if (!process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim()) {
     console.error(IN_MEMORY_MESSAGE);
-    return 2;
+    return 1;
   }
   const db = await openDriver(); // без prepareDb и накатки
   try {
@@ -32,7 +33,7 @@ async function status(): Promise<number> {
     list('Накатаны', st.applied.filter((n) => !st.unknown.includes(n)));
     list('Не накатаны', st.pending);
     list('Незнакомые (накатаны, файла нет)', st.unknown);
-    return st.pending.length > 0 ? 1 : 0;
+    return st.pending.length > 0 ? 3 : 0;
   } finally {
     await db.close();
   }
@@ -58,9 +59,9 @@ async function main(): Promise<number> {
   if (args.length === 0) return apply();
   if (args.length === 1 && args[0] === '--status') return status();
   console.error(
-    'Использование: db-migrate.ts [--status]\n  без аргументов — накатить миграции\n  --status — показать состояние, код 1 при ненакатанных',
+    'Использование: db-migrate.ts [--status]\n  без аргументов — накатить миграции\n  --status — показать состояние: код 0 — всё накатано, 3 — есть ненакатанные, 1 — ошибка',
   );
-  return 2;
+  return 1;
 }
 
 main().then(
