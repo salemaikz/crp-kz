@@ -1,0 +1,292 @@
+'use client';
+
+import { useActionState, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Building2, CircleAlert, CreditCard, FileText, Info, Lock, User } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
+import { createOrderAction, type CheckoutFormState } from '@/lib/orders/actions';
+import type { BuyerType, PaymentMethod } from '@/lib/orders/types';
+import type { CheckoutErrors, CheckoutField, CheckoutValues } from '@/lib/orders/validation';
+import { formatPrice } from '@/lib/format';
+import { Alert, Checkbox, Field, Input, SubmitButton } from '@/components/ui';
+
+type Props = {
+  courseSlug: string;
+  priceKzt: number;
+  /** Вошедший пользователь: имя и email подставляются в форму. */
+  user?: { name: string; email: string } | null;
+  /** Ссылка «Войдите» для гостя (уже с ?next). */
+  signIn?: ReactNode;
+};
+
+const EMPTY: CheckoutValues = {
+  buyerType: 'person',
+  name: '',
+  email: '',
+  phone: '',
+  companyName: '',
+  companyBin: '',
+  paymentMethod: 'kaspi',
+  consent: false,
+};
+
+/**
+ * Форма покупки: кто покупает, контакты, реквизиты компании, способ оплаты, согласие.
+ * После ошибки форма перемонтируется (key = номер попытки) и берёт введённые значения из ответа.
+ */
+export function CheckoutForm({ courseSlug, priceKzt, user, signIn }: Props) {
+  const [state, formAction, pending] = useActionState<CheckoutFormState, FormData>(createOrderAction, undefined);
+  const initial: CheckoutValues = state?.values ?? { ...EMPTY, name: user?.name ?? '', email: user?.email ?? '' };
+  return (
+    <CheckoutFields
+      key={state?.attempt ?? 0}
+      formAction={formAction}
+      pending={pending}
+      state={state}
+      initial={initial}
+      courseSlug={courseSlug}
+      priceKzt={priceKzt}
+      user={user}
+      signIn={signIn}
+    />
+  );
+}
+
+type FieldsProps = Props & {
+  formAction: (fd: FormData) => void;
+  pending: boolean;
+  state: CheckoutFormState;
+  initial: CheckoutValues;
+};
+
+function CheckoutFields({ formAction, pending, state, initial, courseSlug, priceKzt, user, signIn }: FieldsProps) {
+  const t = useTranslations('checkout.form');
+  const locale = useLocale();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [buyerType, setBuyerType] = useState<BuyerType>(initial.buyerType);
+  const [method, setMethod] = useState<PaymentMethod>(
+    initial.buyerType === 'company' ? 'invoice' : initial.paymentMethod,
+  );
+  const errors: CheckoutErrors = state?.errors ?? {};
+  const err = (field: CheckoutField) => (errors[field] ? t(`errors.${field}.${errors[field]}`) : undefined);
+  const company = buyerType === 'company';
+
+  // после ошибки — фокус на первое поле с ошибкой (форма только что перемонтировалась)
+  useEffect(() => {
+    if (!state?.errors) return;
+    const el = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    el?.focus();
+  }, [state]);
+
+  const chooseBuyer = (next: BuyerType) => {
+    setBuyerType(next);
+    if (next === 'company') setMethod('invoice');
+  };
+
+  const generalError = state && state.error !== 'validation' ? t(`alerts.${state.error}`) : null;
+  const generalField = errors.courseSlug ? err('courseSlug') : null;
+
+  return (
+    <form ref={formRef} action={formAction} className="co-form" noValidate>
+      <input type="hidden" name="locale" value={locale} />
+      <input type="hidden" name="courseSlug" value={courseSlug} />
+
+      {state?.error === 'validation' && <Alert tone="error">{generalField ?? t('alerts.validation')}</Alert>}
+      {generalError && <Alert tone="error">{generalError}</Alert>}
+      {signIn && <p className="co-signin">{signIn}</p>}
+
+      <div className="co-section">
+        <fieldset className="co-fieldset">
+          <legend className="co-legend">
+            <span className="co-step" aria-hidden="true">
+              1
+            </span>
+            {t('who.legend')}
+          </legend>
+          <div className="co-choices">
+            <Choice
+              name="buyerType"
+              value="person"
+              checked={buyerType === 'person'}
+              onChange={() => chooseBuyer('person')}
+              icon={<User />}
+              title={t('who.person')}
+              desc={t('who.personDesc')}
+            />
+            <Choice
+              name="buyerType"
+              value="company"
+              checked={company}
+              onChange={() => chooseBuyer('company')}
+              icon={<Building2 />}
+              title={t('who.company')}
+              desc={t('who.companyDesc')}
+            />
+          </div>
+        </fieldset>
+      </div>
+
+      <div className="co-section">
+        <fieldset className="co-fieldset">
+          <legend className="co-legend">
+            <span className="co-step" aria-hidden="true">
+              2
+            </span>
+            {t('contacts.legend')}
+          </legend>
+          <Field label={t('contacts.name')} hint={t('contacts.nameHint')} error={err('name')} required>
+            <Input name="name" autoComplete="name" maxLength={100} defaultValue={initial.name} />
+          </Field>
+          <div className="co-row co-row--2">
+            <Field
+              label={t('contacts.email')}
+              hint={user ? t('contacts.emailHintUser', { email: user.email }) : t('contacts.emailHint')}
+              error={err('email')}
+              required
+            >
+              <Input
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={254}
+                defaultValue={initial.email}
+              />
+            </Field>
+            <Field label={t('contacts.phone')} hint={t('contacts.phoneHint')} error={err('phone')} required>
+              <Input
+                name="phone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                placeholder="+7 700 123 45 67"
+                maxLength={32}
+                defaultValue={initial.phone}
+              />
+            </Field>
+          </div>
+          {company && (
+            <div className="co-row co-row--bin">
+              <Field label={t('company.name')} error={err('companyName')} required>
+                <Input
+                  name="companyName"
+                  autoComplete="organization"
+                  placeholder={t('company.namePlaceholder')}
+                  maxLength={200}
+                  defaultValue={initial.companyName}
+                />
+              </Field>
+              <Field label={t('company.bin')} hint={t('company.binHint')} error={err('companyBin')} required>
+                <Input
+                  name="companyBin"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="000000000000"
+                  maxLength={14}
+                  defaultValue={initial.companyBin}
+                />
+              </Field>
+            </div>
+          )}
+        </fieldset>
+      </div>
+
+      <div className="co-section">
+        <fieldset className="co-fieldset" aria-describedby={errors.paymentMethod ? 'payment-error' : undefined}>
+          <legend className="co-legend">
+            <span className="co-step" aria-hidden="true">
+              3
+            </span>
+            {t('payment.legend')}
+          </legend>
+          <div className="co-choices" aria-invalid={errors.paymentMethod ? true : undefined}>
+            <Choice
+              name="paymentMethod"
+              value="kaspi"
+              checked={method === 'kaspi'}
+              disabled={company}
+              onChange={() => setMethod('kaspi')}
+              icon={<CreditCard />}
+              title={t('payment.kaspi')}
+              desc={t('payment.kaspiDesc')}
+            />
+            <Choice
+              name="paymentMethod"
+              value="invoice"
+              checked={method === 'invoice'}
+              onChange={() => setMethod('invoice')}
+              icon={<FileText />}
+              title={t('payment.invoice')}
+              desc={t('payment.invoiceDesc')}
+            />
+          </div>
+          {errors.paymentMethod && (
+            <p id="payment-error" className="field__error">
+              <CircleAlert aria-hidden="true" />
+              <span>{err('paymentMethod')}</span>
+            </p>
+          )}
+          {company && (
+            <p className="co-hint">
+              <Info aria-hidden="true" />
+              {t('payment.companyNote')}
+            </p>
+          )}
+        </fieldset>
+      </div>
+
+      <div className="co-submit">
+        <Checkbox name="consent" label={t('consent')} defaultChecked={initial.consent} error={err('consent')} />
+        <SubmitButton size="lg" block pending={pending} pendingText={t('pending')}>
+          {t('submit', { price: formatPrice(priceKzt) })}
+        </SubmitButton>
+        <p className="co-hint">
+          <Lock aria-hidden="true" />
+          {t('note')}
+        </p>
+      </div>
+    </form>
+  );
+}
+
+type ChoiceProps = {
+  name: string;
+  value: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  icon: ReactNode;
+  title: string;
+  desc: string;
+};
+
+/** Карточка-радиокнопка: нативный input (клавиатура, скринридер) + оформление через :has(). */
+function Choice({ name, value, checked, disabled, onChange, icon, title, desc }: ChoiceProps) {
+  const id = `${name}-${value}`;
+  return (
+    <label className="co-choice" htmlFor={id}>
+      <input
+        id={id}
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-desc`}
+      />
+      <span className="co-choice__icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span id={`${id}-title`} className="co-choice__title">
+        {title}
+      </span>
+      <span id={`${id}-desc`} className="co-choice__desc">
+        {desc}
+      </span>
+      <span className="co-choice__dot" aria-hidden="true" />
+    </label>
+  );
+}
