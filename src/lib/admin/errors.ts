@@ -12,7 +12,10 @@ export type AdminErrorCode =
   | 'MODULE_NOT_EMPTY' // удалить можно только пустой модуль
   | 'LESSON_HAS_PROGRESS' // у урока есть прогресс слушателей — удаление запрещено
   | 'COURSE_HAS_DATA' // у курса есть заказы, зачисления или сертификаты
-  | 'CANNOT_CHANGE_SELF'; // администратор не меняет собственную роль
+  | 'CANNOT_CHANGE_SELF' // администратор не меняет собственную роль
+  | 'FEATURE_DISABLED' // функция выключена флагом (D-025)
+  | 'FILE_IN_USE' // файл используется в уроках или как обложка
+  | 'FILE_NOT_FOUND'; // файл не найден или удалён
 
 /** Ошибки по полям: имя поля → код ошибки (errors.field.<код>). */
 export type FieldErrors = Record<string, string>;

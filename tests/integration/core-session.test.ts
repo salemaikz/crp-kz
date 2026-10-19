@@ -59,6 +59,7 @@ test('сессия: создание, проверка, отзыв', async () =>
     name: 'Обычный',
     role: 'admin',
     locale: 'kz',
+    emailVerified: false,
   });
   await revokeSessionToken(token);
   assert.equal(await resolveSessionToken(token), null); // не пользователь сида — не восстанавливается

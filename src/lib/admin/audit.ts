@@ -1,16 +1,15 @@
-// Запись в журнал действий (audit_log). Вызывается внутри той же транзакции, что и сама правка.
-import { newId, now, type Sql } from '../db';
-import { jsonParam } from '../db/core';
+// Запись в журнал действий (audit_log) от имени администратора. Вызывается внутри той же
+// транзакции, что и сама правка. Вставку делает общий писатель src/lib/audit.ts.
+import { writeAudit as write, type AuditAction, type AuditEntity } from '../audit';
+import type { Sql } from '../db';
 
 export async function writeAudit(
   sql: Sql,
   actorId: string,
-  action: string,
-  entity: string,
+  action: AuditAction,
+  entity: AuditEntity,
   entityId: string,
   meta: Record<string, unknown> = {},
 ): Promise<void> {
-  await sql`
-    INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-    VALUES (${newId()}, ${actorId}, ${action}, ${entity}, ${entityId}, ${jsonParam(meta)}, ${now()})`;
+  await write(sql, { actorId, action, entity, entityId, meta });
 }

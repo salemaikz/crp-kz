@@ -14,7 +14,15 @@ const nextConfig: NextConfig = {
   // PGlite (встроенный Postgres для демо) — wasm и data-файлы, не бандлим
   serverExternalPackages: ['@electric-sql/pglite'],
   outputFileTracingIncludes: {
-    '/**': ['./migrations/**/*.sql', ...(demoBuild ? ['./.demo/**'] : []), './node_modules/@electric-sql/pglite/dist/**/*'],
+    '/**': [
+      './migrations/**/*.sql',
+      ...(demoBuild ? ['./.demo/**'] : []),
+      './node_modules/@electric-sql/pglite/dist/**/*',
+      // тексты юридических документов, шрифты и логотип для PDF сертификата — читаются с диска на сервере
+      './content/legal/**',
+      './assets/fonts/pdf/**',
+      './docs/brand/logo/crp-logo.png',
+    ],
   },
 };
 

@@ -11,6 +11,7 @@ export type User = {
   name: string;
   role: 'admin' | 'author' | 'learner';
   locale: 'ru' | 'kz';
+  emailVerified: boolean;
 };
 
 export type Membership = {

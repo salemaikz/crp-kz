@@ -1,7 +1,7 @@
 // Раннер миграций: migrations/*.sql по алфавиту, учёт в schema_migrations (D-012).
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { DbHandle } from './core';
+import type { Db, DbHandle } from './core';
 
 /** Ключ advisory-блокировки: параллельные процессы не накатывают миграции одновременно. */
 const MIGRATION_LOCK_KEY = 72_026_101_901;
@@ -16,11 +16,73 @@ export async function listMigrations(dir = migrationsDir()): Promise<string[]> {
   return files.filter((f) => NAME_RE.test(f)).sort();
 }
 
-/** Применяет ненакатанные миграции в одной транзакции. Возвращает имена применённых. */
-export async function migrate(db: DbHandle, dir = migrationsDir()): Promise<string[]> {
+export type MigrationStatus = {
+  /** На диске, по алфавиту. */
+  files: string[];
+  /** В schema_migrations. */
+  applied: string[];
+  /** На диске, но не накатаны. */
+  pending: string[];
+  /** Накатаны, но файла нет (БД новее кода — норма после отката релиза). */
+  unknown: string[];
+};
+
+/** Чистое сравнение списков: дубликаты не размножаются, результат отсортирован. */
+export function diffMigrations(files: string[], applied: string[]): MigrationStatus {
+  const f = [...new Set(files)].sort();
+  const a = [...new Set(applied)].sort();
+  const onDisk = new Set(f);
+  const done = new Set(a);
+  return {
+    files: f,
+    applied: a,
+    pending: f.filter((n) => !done.has(n)),
+    unknown: a.filter((n) => !onDisk.has(n)),
+  };
+}
+
+/**
+ * Состояние миграций. Только SELECT: работает от роли приложения без права на DDL.
+ * Нет таблицы schema_migrations — все файлы pending.
+ */
+export async function migrationStatus(db: Pick<Db, 'sql'>, dir = migrationsDir()): Promise<MigrationStatus> {
+  const files = await listMigrations(dir);
+  const [t] = await db.sql<{ ok: boolean }>`SELECT to_regclass('schema_migrations') IS NOT NULL AS ok`;
+  const applied = t?.ok ? (await db.sql<{ name: string }>`SELECT name FROM schema_migrations`).map((r) => r.name) : [];
+  return diffMigrations(files, applied);
+}
+
+export class MigrationsPendingError extends Error {
+  constructor(readonly pending: string[]) {
+    super(`pending migrations: ${pending.length}`);
+    this.name = 'MigrationsPendingError';
+  }
+}
+
+/** Fail closed: есть ненакатанные миграции — ошибка со списком. Лишние накатанные (БД новее) — не ошибка. */
+export async function assertMigrated(db: Pick<Db, 'sql'>, dir = migrationsDir()): Promise<void> {
+  const { pending } = await migrationStatus(db, dir);
+  if (pending.length > 0) throw new MigrationsPendingError(pending);
+}
+
+/**
+ * Применяет ненакатанные миграции в одной транзакции. Возвращает имена применённых.
+ * lockTimeoutMs — сколько ждать блокировку таблицы (lock_timeout действует до конца транзакции).
+ */
+export async function migrate(
+  db: DbHandle,
+  dir = migrationsDir(),
+  opts: { lockTimeoutMs?: number } = {},
+): Promise<string[]> {
   const files = await listMigrations(dir);
   return db.withTx(async (c) => {
     await c.sql`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`;
+    if (opts.lockTimeoutMs !== undefined) {
+      if (!Number.isSafeInteger(opts.lockTimeoutMs) || opts.lockTimeoutMs < 0) {
+        throw new Error('lockTimeoutMs must be a non-negative integer');
+      }
+      await c.sql`SELECT set_config('lock_timeout', ${String(opts.lockTimeoutMs)}, true)`;
+    }
     await c.exec(
       'CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at BIGINT NOT NULL)',
     );

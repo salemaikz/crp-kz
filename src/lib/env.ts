@@ -4,9 +4,16 @@
 const DEMO_SESSION_SECRET = 'crp-demo-session-secret--not-for-production--2026-10-19';
 const MIN_SECRET_LENGTH = 32;
 
-function env(name: string): string | undefined {
-  const v = process.env[name];
+/** Окружение как словарь: совместимо с process.env, а тестам можно передать любой объект. */
+export type Env = Record<string, string | undefined>;
+
+function read(e: Env, name: string): string | undefined {
+  const v = e[name];
   return v && v.trim() ? v.trim() : undefined;
+}
+
+function env(name: string): string | undefined {
+  return read(process.env, name);
 }
 
 /**
@@ -16,10 +23,10 @@ function env(name: string): string | undefined {
  * В production на своём сервере без DATABASE_URL и без DEMO_MODE=1 приложение
  * не стартует (getDb бросает ошибку, см. assertDbConfigured) — «тихого» демо в проде нет.
  */
-export function isDemo(): boolean {
-  if (env('DEMO_MODE') === '1') return true;
-  if (env('DATABASE_URL')) return false;
-  return process.env.NODE_ENV !== 'production' || isVercelPreviewHost();
+export function isDemo(e: Env = process.env): boolean {
+  if (read(e, 'DEMO_MODE') === '1') return true;
+  if (read(e, 'DATABASE_URL')) return false;
+  return e.NODE_ENV !== 'production' || isVercelPreviewHost(e);
 }
 
 /**
@@ -27,8 +34,8 @@ export function isDemo(): boolean {
  * с DATABASE_URL. Поэтому на Vercel без DATABASE_URL демо включается само — импорт
  * репозитория в Vercel работает без ручной настройки переменных.
  */
-function isVercelPreviewHost(): boolean {
-  return process.env.VERCEL === '1';
+function isVercelPreviewHost(e: Env): boolean {
+  return e.VERCEL === '1';
 }
 
 /**
@@ -69,4 +76,22 @@ export function siteUrl(): string {
   const vercel = env('VERCEL_PROJECT_PRODUCTION_URL') ?? env('VERCEL_URL');
   if (vercel) return `https://${vercel.replace(/\/+$/, '')}`;
   return 'http://localhost:3000';
+}
+
+/**
+ * Публичный адрес задан явно (NEXT_PUBLIC_SITE_URL) и пригоден для ссылок в письмах и QR:
+ * корректный URL; вне демо — только https:// (D-025). Запасные адреса siteUrl() (Vercel,
+ * localhost) сюда не считаются: в проде ссылка на localhost в письме — ошибка конфигурации.
+ */
+export function siteUrlConfigured(e: Env = process.env): boolean {
+  const explicit = read(e, 'NEXT_PUBLIC_SITE_URL');
+  if (!explicit) return false;
+  let url: URL;
+  try {
+    url = new URL(explicit);
+  } catch {
+    return false;
+  }
+  if (url.protocol === 'https:') return true;
+  return url.protocol === 'http:' && isDemo(e);
 }

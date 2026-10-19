@@ -1,6 +1,7 @@
 // Чтение каталога: курсы, программа, прогресс зрителя. Только SELECT, без побочных эффектов.
 import { enrollmentState, listEnrollments } from '../access';
 import { getDb } from '../db';
+import { visibleCover } from '../files/url';
 import type {
   CatalogCourse,
   CourseDetail,
@@ -41,7 +42,7 @@ function toCourse(r: CourseRow): CatalogCourse {
     slug: r.slug,
     title: r.title,
     summary: r.summary,
-    cover: r.cover,
+    cover: visibleCover(r.cover),
     level: r.level,
     durationMin: Number(r.durationMin) || 0,
     visibility: r.visibility,

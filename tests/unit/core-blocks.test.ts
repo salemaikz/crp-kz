@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import { LIMITS, lessonContentSchema, lessonDocSchema, toPublicBlocks, validateLessonContent } from '../../src/lib/content/blocks';
 import type { Block, LessonDoc } from '../../src/lib/content/types';
 
+const FILE_ID = '3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b';
+
 const quiz: Block = {
   id: 'q1',
   type: 'quiz',
@@ -23,6 +25,8 @@ const doc: LessonDoc = {
     { id: 'c', type: 'callout', tone: 'warn', text: 'Важно' },
     { id: 'd', type: 'divider' },
     quiz,
+    { id: 'img', type: 'image', fileId: FILE_ID, alt: 'Схема', caption: 'Рис. 1', width: 1200, height: 800 },
+    { id: 'f', type: 'file', fileId: FILE_ID, label: 'Шаблон', name: 'sheet.xlsx', ext: 'xlsx', sizeBytes: 2048 },
   ],
 };
 
@@ -52,6 +56,17 @@ test('невалидные блоки', () => {
     { id: 'x', type: 'video', provider: 'vimeo' },
     { id: 'x', type: 'callout', tone: 'danger', text: 'a' },
     { id: '', type: 'divider' },
+    { id: 'x', type: 'image', fileId: FILE_ID, alt: '', width: 10, height: 10 }, // alt обязателен
+    { id: 'x', type: 'image', fileId: 'not-a-uuid', alt: 'a', width: 10, height: 10 },
+    { id: 'x', type: 'image', fileId: FILE_ID, alt: 'a'.repeat(LIMITS.imageAlt + 1), width: 10, height: 10 },
+    { id: 'x', type: 'image', fileId: FILE_ID, alt: 'a', width: 0, height: 10 },
+    { id: 'x', type: 'image', fileId: FILE_ID, alt: 'a', width: 10, height: LIMITS.imageSide + 1 },
+    { id: 'x', type: 'image', fileId: FILE_ID, alt: 'a', width: 1.5, height: 10 },
+    { id: 'x', type: 'file', fileId: 'x', name: 'a.pdf', ext: 'pdf', sizeBytes: 1 },
+    { id: 'x', type: 'file', fileId: FILE_ID, name: 'a.exe', ext: 'exe', sizeBytes: 1 }, // ext из списка
+    { id: 'x', type: 'file', fileId: FILE_ID, name: '', ext: 'pdf', sizeBytes: 1 },
+    { id: 'x', type: 'file', fileId: FILE_ID, name: 'a.pdf', ext: 'pdf', sizeBytes: 0 },
+    { id: 'x', type: 'file', fileId: FILE_ID, label: 'a'.repeat(LIMITS.fileLabel + 1), name: 'a.pdf', ext: 'pdf', sizeBytes: 1 },
     { ...quiz, passScore: 0 },
     { ...quiz, passScore: 101 },
     { ...quiz, questions: [] },
@@ -96,4 +111,6 @@ test('toPublicBlocks убирает correct и explain, не меняя исхо
   assert.equal(q.passScore, 70);
   // остальные блоки без изменений
   assert.deepEqual(pub.slice(0, 6), doc.blocks.slice(0, 6));
+  // image и file проходят как есть: секретов в них нет
+  assert.deepEqual(pub.slice(7), doc.blocks.slice(7));
 });

@@ -6,7 +6,7 @@ import { routing, type AppLocale } from './routing';
  * Пространства имён сообщений: messages/<locale>/<ns>.json → ключ верхнего уровня <ns>.
  * Новый файл — добавить сюда. Отсутствующий файл не ломает сборку: вместо него {}.
  */
-export const NAMESPACES = ['common', 'auth', 'catalog', 'learn', 'checkout', 'team', 'admin'] as const;
+export const NAMESPACES = ['common', 'auth', 'catalog', 'learn', 'checkout', 'team', 'admin', 'files', 'legal'] as const;
 export type Namespace = (typeof NAMESPACES)[number];
 
 export const TIME_ZONE = 'Asia/Almaty';

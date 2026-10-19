@@ -5,7 +5,9 @@ import type {
   Block,
   CalloutBlock,
   DividerBlock,
+  FileBlock,
   HeadingBlock,
+  ImageBlock,
   L10n,
   LessonContent,
   LessonDoc,
@@ -23,6 +25,10 @@ export const LIMITS = {
   markdown: 20_000,
   caption: 500,
   calloutText: 2_000,
+  imageAlt: 300,
+  fileLabel: 200,
+  fileName: 160,
+  imageSide: 20_000,
   questionText: 1_000,
   optionText: 500,
   explain: 2_000,
@@ -70,6 +76,26 @@ export const calloutBlockSchema = z.object({
 export const dividerBlockSchema = z.object({
   id: blockId,
   type: z.literal('divider'),
+});
+
+export const imageBlockSchema = z.object({
+  id: blockId,
+  type: z.literal('image'),
+  fileId: z.string().uuid(),
+  alt: z.string().min(1).max(LIMITS.imageAlt),
+  caption: z.string().max(LIMITS.caption).optional(),
+  width: z.number().int().min(1).max(LIMITS.imageSide),
+  height: z.number().int().min(1).max(LIMITS.imageSide),
+});
+
+export const fileBlockSchema = z.object({
+  id: blockId,
+  type: z.literal('file'),
+  fileId: z.string().uuid(),
+  label: z.string().max(LIMITS.fileLabel).optional(),
+  name: z.string().min(1).max(LIMITS.fileName),
+  ext: z.enum(['png', 'jpg', 'webp', 'pdf', 'docx', 'xlsx']),
+  sizeBytes: z.number().int().min(1),
 });
 
 export const quizQuestionSchema = z.object({
@@ -125,6 +151,8 @@ const blockShapeSchema = z.discriminatedUnion('type', [
   calloutBlockSchema,
   dividerBlockSchema,
   quizBlockSchema,
+  imageBlockSchema,
+  fileBlockSchema,
 ]);
 
 export const blockSchema = blockShapeSchema.superRefine(refineBlock);
@@ -167,7 +195,7 @@ export function validateLessonContent(input: unknown) {
   return lessonContentSchema.safeParse(input);
 }
 
-/** Блоки без правильных ответов и пояснений — только это уходит на клиент до сдачи. */
+/** Блоки без правильных ответов и пояснений — только это уходит на клиент до сдачи. Блоки image и file проходят как есть: секретов в них нет, доступ проверяется при скачивании. */
 export function toPublicBlocks(blocks: readonly Block[]): PublicBlock[] {
   return blocks.map((b): PublicBlock => {
     if (b.type !== 'quiz') return b;
@@ -190,6 +218,8 @@ export type _SchemaTypeChecks = [
   Assert<Same<z.infer<typeof videoBlockSchema>, VideoBlock>>,
   Assert<Same<z.infer<typeof calloutBlockSchema>, CalloutBlock>>,
   Assert<Same<z.infer<typeof dividerBlockSchema>, DividerBlock>>,
+  Assert<Same<z.infer<typeof imageBlockSchema>, ImageBlock>>,
+  Assert<Same<z.infer<typeof fileBlockSchema>, FileBlock>>,
   Assert<Same<z.infer<typeof quizQuestionSchema>, QuizQuestion>>,
   Assert<Same<z.infer<typeof quizBlockSchema>, QuizBlock>>,
   Assert<Same<z.infer<typeof blockSchema>, Block>>,

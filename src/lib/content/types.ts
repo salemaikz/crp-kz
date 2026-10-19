@@ -1,6 +1,8 @@
 // Общие типы контента курсов. Нормативно: docs/lms/BUILD.md §3.
 // zod-схемы в blocks.ts обязаны соответствовать этим типам.
 
+import type { FileExt } from '../storage/limits';
+
 export const LOCALES = ['ru', 'kz'] as const;
 export type Locale = (typeof LOCALES)[number];
 
@@ -28,7 +30,28 @@ export type QuizQuestion = {
 };
 export type QuizBlock = { id: string; type: 'quiz'; passScore: number; questions: QuizQuestion[] };
 
-export type Block = HeadingBlock | TextBlock | VideoBlock | CalloutBlock | DividerBlock | QuizBlock;
+/** Изображение из загруженных файлов (D-034). width/height — снимок; при сохранении сервер переписывает его из БД. */
+export type ImageBlock = {
+  id: string;
+  type: 'image';
+  fileId: string;
+  alt: string;
+  caption?: string;
+  width: number;
+  height: number;
+};
+/** Файл для скачивания. name/ext/sizeBytes — снимок; при сохранении сервер переписывает его из БД. */
+export type FileBlock = {
+  id: string;
+  type: 'file';
+  fileId: string;
+  label?: string;
+  name: string;
+  ext: FileExt;
+  sizeBytes: number;
+};
+
+export type Block = HeadingBlock | TextBlock | VideoBlock | CalloutBlock | DividerBlock | QuizBlock | ImageBlock | FileBlock;
 
 /** Контент одной локали урока. */
 export type LessonDoc = { v: 1; blocks: Block[] };

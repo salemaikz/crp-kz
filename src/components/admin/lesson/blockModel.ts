@@ -3,9 +3,11 @@
 import type { Block, QuizBlock, QuizQuestion } from '@/lib/content/types';
 
 export type BlockType = Block['type'];
+/** Типы, которые создаются кнопкой «Добавить блок». Блоки image и file появляются из загруженного файла (D-034). */
+export type AddableBlockType = Exclude<BlockType, 'image' | 'file'>;
 
 /** Порядок кнопок «Добавить блок». */
-export const BLOCK_TYPES: readonly BlockType[] = ['heading', 'text', 'video', 'callout', 'quiz', 'divider'];
+export const BLOCK_TYPES: readonly AddableBlockType[] = ['heading', 'text', 'video', 'callout', 'quiz', 'divider'];
 
 /** Короткий id для блока или вопроса (в браузере без crypto.randomUUID — запасной вариант). */
 export function uid(prefix = 'b'): string {
@@ -21,7 +23,7 @@ export function newQuestion(): QuizQuestion {
   return { id: uid('q'), text: '', options: ['', ''], correct: [0], multiple: false };
 }
 
-export function newBlock(type: BlockType): Block {
+export function newBlock(type: AddableBlockType): Block {
   const id = uid('b');
   switch (type) {
     case 'heading':

@@ -42,6 +42,9 @@ export function Blocks({ blocks, lessonId, lessonTitle, locale, quizStatus }: Pr
             return <hr key={b.id} className="lrn-rule" />;
           case 'quiz':
             return <QuizBlock key={b.id} lessonId={lessonId} locale={locale} block={b} initial={quizStatus[b.id] ?? null} />;
+          case 'image':
+          case 'file':
+            return null; // показ появится вместе с загрузкой файлов (D-034)
         }
       })}
     </div>

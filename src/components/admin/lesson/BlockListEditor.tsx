@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ContentIssue } from '@/lib/admin/errors';
 import type { Block } from '@/lib/content/types';
-import { BLOCK_TYPES, moved, newBlock, type BlockType } from './blockModel';
+import { BLOCK_TYPES, moved, newBlock, type AddableBlockType } from './blockModel';
 import { CalloutEditor, DividerEditor, HeadingEditor, QuizEditor, TextEditor, VideoEditor } from './BlockEditors';
 import { describeIssue, issuesForBlock } from './issueText';
 
@@ -30,6 +30,9 @@ function BlockBody({ block, onChange, autoFocus }: { block: Block; onChange: (b:
       return <QuizEditor block={block} onChange={onChange} autoFocus={autoFocus} />;
     case 'divider':
       return <DividerEditor />;
+    case 'image':
+    case 'file':
+      return null; // редактор появится вместе с загрузкой файлов (D-034)
   }
 }
 
@@ -38,7 +41,7 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
   const ti = useTranslations('admin.lessonEditor.issue');
   const [focusId, setFocusId] = useState<string | null>(null);
 
-  const add = (type: BlockType) => {
+  const add = (type: AddableBlockType) => {
     const b = newBlock(type);
     setFocusId(b.id);
     onChange([...blocks, b]);

@@ -91,6 +91,9 @@ export function BlockPreview({ blocks }: { blocks: readonly Block[] }) {
                 </ol>
               </section>
             );
+          case 'image':
+          case 'file':
+            return null; // показ появится вместе с загрузкой файлов (D-034)
         }
       })}
     </div>

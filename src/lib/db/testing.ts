@@ -25,10 +25,11 @@ async function createPostgresTestDb(url: string): Promise<DbHandle> {
   };
 }
 
-export async function createTestDb(opts: { register?: boolean } = {}): Promise<TestDb> {
+/** migrate: false — пустая база без миграций (проверки состояния миграций). */
+export async function createTestDb(opts: { register?: boolean; migrate?: boolean } = {}): Promise<TestDb> {
   const url = process.env.TEST_DATABASE_URL?.trim();
   const db = url ? await createPostgresTestDb(url) : await createPgliteDb();
-  await migrate(db);
+  if (opts.migrate !== false) await migrate(db);
   if (opts.register !== false) setDb(db);
   return db;
 }

@@ -14,6 +14,8 @@ export type SessionUserRow = {
   name: string;
   role: 'admin' | 'author' | 'learner';
   locale: 'ru' | 'kz';
+  /** users.email_verified_at заполнен (подтверждение по ссылке или сброс пароля, D-031). */
+  emailVerified: boolean;
 };
 
 /** Пользователь из сида: id детерминирован от email (seedId('user', email)). */
@@ -45,7 +47,8 @@ export async function resolveSessionToken(token: string | null | undefined): Pro
   if (!payload) return null;
   const db = await getDb();
   const [row] = await db.sql<SessionUserRow & { userId: string; expiresAt: number }>`
-    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.role, u.locale
+    SELECT s.user_id, s.expires_at, u.id, u.email, u.name, u.role, u.locale,
+           (u.email_verified_at IS NOT NULL) AS email_verified
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.id = ${payload.sid}`;
   if (row) {
@@ -54,7 +57,8 @@ export async function resolveSessionToken(token: string | null | undefined): Pro
   }
   if (!isDemo()) return null;
   const [user] = await db.sql<SessionUserRow>`
-    SELECT id, email, name, role, locale FROM users WHERE id = ${payload.uid}`;
+    SELECT id, email, name, role, locale, (email_verified_at IS NOT NULL) AS email_verified
+    FROM users WHERE id = ${payload.uid}`;
   if (!user || !isSeedUser(user)) return null;
   // срок восстановленной строки — не дальше обычного TTL от «сейчас», даже если exp в токене больше
   const t = now();
@@ -80,7 +84,7 @@ export async function revokeSessionToken(token: string | null | undefined): Prom
 }
 
 function pickUser(r: SessionUserRow): SessionUserRow {
-  return { id: r.id, email: r.email, name: r.name, role: r.role, locale: r.locale };
+  return { id: r.id, email: r.email, name: r.name, role: r.role, locale: r.locale, emailVerified: r.emailVerified };
 }
 
 // ---------- Cookie (только в server actions и route handlers) ----------

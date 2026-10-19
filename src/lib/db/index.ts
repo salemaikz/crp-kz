@@ -7,9 +7,9 @@
 // - внутри db.tx(fn) используйте sql из колбэка (вызовы db.sql тоже попадут в транзакцию).
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { assertDbConfigured, isDemo } from '../env';
+import { assertDbConfigured, isDemo, type Env } from '../env';
 import type { Db, DbHandle } from './core';
-import { migrate } from './migrate';
+import { assertMigrated, migrate } from './migrate';
 import { refreshSnapshotTime } from './snapshot';
 
 export type { Db, DbHandle, Row, Sql } from './core';
@@ -54,20 +54,42 @@ function shouldSeed(): boolean {
   return isDemo() || process.env.SEED_DEMO === '1';
 }
 
+/**
+ * Накатывать миграции при старте (D-026). DB_MIGRATE_ON_START=1 — да, 0 — нет; иначе да в демо,
+ * разработке и тестах, нет в production: там миграции применяет выкладка, приложение только
+ * проверяет их (у роли приложения нет права на DDL).
+ */
+export function autoMigrateEnabled(env: Env = process.env): boolean {
+  const v = env.DB_MIGRATE_ON_START?.trim();
+  if (v === '1') return true;
+  if (v === '0') return false;
+  return isDemo(env) || env.NODE_ENV !== 'production';
+}
+
+/**
+ * Подготовка открытого драйвера: migrate (autoMigrate) или assertMigrated, затем сид, если нужен
+ * (по умолчанию isDemo() или SEED_DEMO=1; сид идёт только в пустую БД). Для getDb(), скриптов и тестов.
+ * В production с выключенной автонакаткой DDL не выполняется вовсе.
+ */
+export async function prepareDb(db: DbHandle, opts: { autoMigrate?: boolean; seed?: boolean } = {}): Promise<void> {
+  if (opts.autoMigrate ?? autoMigrateEnabled()) await migrate(db);
+  else await assertMigrated(db);
+  if (opts.seed ?? shouldSeed()) {
+    const [row] = await db.sql<{ has: boolean }>`SELECT EXISTS (SELECT 1 FROM users) AS has`;
+    if (!row?.has) {
+      const { seed } = await import('./seed');
+      await seed(db);
+    }
+  }
+}
+
+/** Драйвер → (демо-снимок: сдвиг времени) → prepareDb. Сдвиг идёт до миграций и проверки users. */
 async function init(): Promise<DbHandle> {
   const db = await openDriver();
   try {
-    // снимок с сидом: сдвигаем даты до текущего момента, ДО migrate() и проверки users
     const snap = !process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim() ? demoSnapshotPath() : undefined;
     if (snap) await refreshSnapshotTime(db, snap);
-    await migrate(db);
-    if (shouldSeed()) {
-      const [row] = await db.sql<{ has: boolean }>`SELECT EXISTS (SELECT 1 FROM users) AS has`;
-      if (!row?.has) {
-        const { seed } = await import('./seed');
-        await seed(db);
-      }
-    }
+    await prepareDb(db);
     return db;
   } catch (e) {
     await db.close().catch(() => {});
@@ -76,7 +98,7 @@ async function init(): Promise<DbHandle> {
 }
 
 /**
- * Ленивая инициализация: драйвер → миграции → сид (если users пуста и демо или SEED_DEMO=1).
+ * Ленивая инициализация: драйвер → миграции (в production — только проверка) → сид (если users пуста и демо или SEED_DEMO=1).
  * Один экземпляр на процесс (переживает hot reload); параллельные вызовы ждут один промис.
  */
 export function getDb(): Promise<Db> {
