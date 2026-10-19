@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS files_course_active_idx ON files (course_id) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS files_status_created_idx ON files (status, created_at);
+-- Индексы под внешние ключи: SET NULL при удалении урока или пользователя иначе сканирует files.
+CREATE INDEX IF NOT EXISTS files_lesson_idx ON files (lesson_id);
+CREATE INDEX IF NOT EXISTS files_uploaded_by_idx ON files (uploaded_by);
 
 -- Какие файлы реально используются в контенте урока (обе локали). Пересобирается при сохранении урока.
 CREATE TABLE IF NOT EXISTS lesson_files (

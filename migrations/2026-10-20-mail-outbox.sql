@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
 );
 CREATE INDEX IF NOT EXISTS auth_tokens_user_kind_idx ON auth_tokens (user_id, kind) WHERE used_at IS NULL;
 CREATE INDEX IF NOT EXISTS auth_tokens_expires_idx ON auth_tokens (expires_at);
+-- Полный индекс под внешний ключ (частичный выше не покрывает использованные токены при удалении пользователя).
+CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id);
 
 -- Очередь писем (outbox). Письмо хранит шаблон и параметры, текст собирается при показе и отправке.
 -- status: held — сохранено без отправки (транспорт outbox: демо или почта не подключена);
@@ -50,3 +52,5 @@ CREATE INDEX IF NOT EXISTS mail_outbox_due_idx ON mail_outbox (status, next_atte
 CREATE INDEX IF NOT EXISTS mail_outbox_recipient_idx ON mail_outbox (to_email, created_at);
 CREATE INDEX IF NOT EXISTS mail_outbox_created_idx ON mail_outbox (created_at);
 CREATE INDEX IF NOT EXISTS mail_outbox_user_idx ON mail_outbox (user_id);
+-- Очистка секретов: ищем только письма, где токен ещё лежит.
+CREATE INDEX IF NOT EXISTS mail_outbox_secret_expires_idx ON mail_outbox (secret_expires_at) WHERE secret IS NOT NULL;

@@ -26,6 +26,8 @@ ALTER TABLE consents ADD COLUMN IF NOT EXISTS withdrawn_at BIGINT;   -- отзы
 
 CREATE INDEX IF NOT EXISTS consents_order_idx ON consents (order_id);
 CREATE INDEX IF NOT EXISTS consents_user_kind_idx ON consents (user_id, kind, created_at);
+-- Внешний ключ text_sha256: без индекса проверка RESTRICT при удалении текста сканирует consents.
+CREATE INDEX IF NOT EXISTS consents_text_sha256_idx ON consents (text_sha256);
 
 -- Вид согласия — из закрытого списка. Существующие строки: только offer и pd_processing.
 DO $$
@@ -38,6 +40,22 @@ BEGIN
   ) THEN
     ALTER TABLE consents ADD CONSTRAINT consents_kind_check
       CHECK (kind IN ('offer', 'pd_processing', 'cross_border'));
+  END IF;
+END
+$$;
+
+-- Согласие, привязанное к тексту, обязано знать язык и контекст (иначе по хэшу не восстановить,
+-- что и где видел человек). Старые строки (text_sha256 IS NULL) ограничение не затрагивает.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE c.conname = 'consents_text_context_check' AND t.relname = 'consents' AND n.nspname = current_schema()
+  ) THEN
+    ALTER TABLE consents ADD CONSTRAINT consents_text_context_check
+      CHECK (text_sha256 IS NULL OR (locale IS NOT NULL AND context IS NOT NULL));
   END IF;
 END
 $$;

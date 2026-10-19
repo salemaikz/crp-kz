@@ -1,5 +1,7 @@
 // Миграции волны 0 (почта, файлы, согласия): таблицы, ограничения, типы колонок.
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 
@@ -86,8 +88,56 @@ test('legal_texts: адресация по хэшу, повторная вста
   await db.sql`INSERT INTO consents (id, user_id, kind, version, locale, context, text_sha256, created_at)
                VALUES ('c5', 'u1', 'offer', '2026-10-20', 'ru', 'checkout', ${'b'.repeat(64)}, 1)`;
   await assert.rejects(
-    db.sql`INSERT INTO consents (id, user_id, kind, version, text_sha256, created_at)
-           VALUES ('c6', 'u1', 'offer', '2026-10-20', ${'c'.repeat(64)}, 1)`,
+    db.sql`INSERT INTO consents (id, user_id, kind, version, locale, context, text_sha256, created_at)
+           VALUES ('c6', 'u1', 'offer', '2026-10-20', 'ru', 'checkout', ${'c'.repeat(64)}, 1)`,
     (e: { code?: string }) => e.code === '23503',
   );
+});
+
+test('consents: хэш текста требует язык и контекст', async () => {
+  const sha = 'd'.repeat(64);
+  await db.sql`INSERT INTO legal_texts (sha256, kind, version, locale, title, body, draft, created_at)
+               VALUES (${sha}, 'privacy', '2026-10-20', 'ru', 'Политика', 'Текст', true, 1) ON CONFLICT (sha256) DO NOTHING`;
+  const ins = (id: string, locale: string | null, context: string | null) =>
+    db.sql`INSERT INTO consents (id, user_id, kind, version, locale, context, text_sha256, created_at)
+           VALUES (${id}, 'u1', 'offer', '2026-10-20', ${locale}, ${context}, ${sha}, 1)`;
+  await assert.rejects(ins('c7', null, 'checkout'), (e: { code?: string }) => e.code === '23514', 'без языка');
+  await assert.rejects(ins('c8', 'ru', null), (e: { code?: string }) => e.code === '23514', 'без контекста');
+  await assert.rejects(ins('c9', null, null), (e: { code?: string }) => e.code === '23514');
+  await ins('c10', 'kz', 'register');
+  // строка без хэша (до #17) остаётся допустимой и без языка
+  await db.sql`INSERT INTO consents (id, user_id, kind, version, created_at) VALUES ('c11', 'u1', 'offer', '2026-10-19', 1)`;
+});
+
+test('повторный прогон файлов волны 0 не дублирует индексы и ограничения', async () => {
+  const dir = path.join(import.meta.dirname, '..', '..', 'migrations');
+  const names = ['2026-10-20-legal-consents.sql', '2026-10-20-mail-outbox.sql', '2026-10-20-uploads.sql'];
+  const count = async () => {
+    const [i] = await db.sql<{ n: number }>`
+      SELECT count(*) AS n FROM pg_indexes WHERE schemaname = current_schema()`;
+    const [c] = await db.sql<{ n: number }>`
+      SELECT count(*) AS n FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+      WHERE n.nspname = current_schema()`;
+    return [i?.n, c?.n];
+  };
+  const before = await count();
+  for (const name of names) {
+    const script = await readFile(path.join(dir, name), 'utf8');
+    await db.withTx(async (c) => {
+      await c.exec(script);
+    });
+  }
+  assert.deepEqual(await count(), before);
+  const idx = (
+    await db.sql<{ indexname: string }>`SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()`
+  ).map((r) => r.indexname);
+  for (const name of [
+    'files_lesson_idx',
+    'files_uploaded_by_idx',
+    'auth_tokens_user_idx',
+    'consents_text_sha256_idx',
+    'mail_outbox_secret_expires_idx',
+  ]) {
+    assert.ok(idx.includes(name), name);
+  }
 });
