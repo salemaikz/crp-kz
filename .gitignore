@@ -35,3 +35,6 @@ coverage/
 public/uploads/
 .DS_Store
 *.log
+
+# рабочие копии агентов (git worktree)
+.claude/worktrees/
