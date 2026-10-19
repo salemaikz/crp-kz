@@ -174,18 +174,21 @@ export function generateToken(): { raw: string; hash: string };
 export function hashToken(raw: string): string;
 export function isTokenShape(raw: unknown): raw is string;   // /^[A-Za-z0-9_-]{43}$/
 /**
- * Выдать токен: сначала гасит неиспользованные токены этого вида у пользователя
- * (used_at = now) и снимает с отправки их письма (mail_outbox: secret = NULL, held/queued → cancelled).
- * Вызывать внутри транзакции вместе с enqueueMail.
+ * Выдать токен (реализовано в волне 1, порядок уточнён ревью). Вызывать в транзакции с enqueueMail.
+ * Порядок: SELECT … FROM users FOR UPDATE (выдачи одного пользователя идут по очереди) →
+ * проверка лимитов писем (checkAuthMailCaps) → гашение неиспользованных токенов этого вида и
+ * снятие их писем (secret = NULL, held/queued → cancelled) → вставка нового. В токен пишется email из users.
+ * null — сработал лимит (recipient_cap или global_cap): ничего не изменено, прежняя ссылка жива;
+ * вызывающий ничего не отправляет и отвечает так же, как при успехе (без перечисления аккаунтов).
+ * Если после успешного issueToken enqueueMail вернул queued: false — транзакцию откатить.
  */
 export async function issueToken(sql: Sql, input: { userId: string; email: string; kind: TokenKind; nowMs?: number })
-  : Promise<{ raw: string; expiresAt: number }>;
+  : Promise<{ raw: string; expiresAt: number } | null>;
 /**
- * Атомарно израсходовать токен:
- *   UPDATE auth_tokens SET used_at = $now
- *   WHERE token_hash = $hash AND kind = $kind AND used_at IS NULL AND expires_at > $now
- *   RETURNING user_id, email
- * Затем SELECT id, email FROM users WHERE id = $userId FOR UPDATE; email не совпал → null.
+ * Атомарно израсходовать токен. Задача 2A: блокировки — в том же порядке, что у issueToken (users,
+ * затем auth_tokens), иначе возможна взаимоблокировка. В коде волны 1 порядок пока обратный: сначала строка пользователя по token_hash
+ * FOR UPDATE, затем UPDATE auth_tokens … WHERE used_at IS NULL AND expires_at > $now RETURNING;
+ * email аккаунта не совпал с email токена → null.
  */
 export async function consumeToken(sql: Sql, raw: string, kind: TokenKind, nowMs?: number)
   : Promise<{ userId: string; email: string } | null>;

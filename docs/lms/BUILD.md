@@ -319,7 +319,7 @@ isManagerOf(userId, orgId): Promise<boolean>
   (~10⁹ на год), страница не индексируется и не показывает email, но при
   тысячах выданных сертификатов долгий перебор находит ФИО и курс. Поэтому на
   проде за прокси настройка доверенного IP обязательна (#24).
-- **Лимиты новых потоков (волны 1 и 3).** Письма для входа и подтверждения (сброс, подтверждение
+- **Лимиты новых потоков (PDF — волна 2, файлы — волна 3).** Письма для входа и подтверждения (сброс, подтверждение
   email): на получателя — `MAIL_AUTH_RECIPIENT_HOURLY` (5 в час), общий предохранитель —
   `MAIL_AUTH_HOURLY_CAP` (по умолчанию 300 в час). PDF сертификата — 10 в минуту на
   пользователя (D-036). Загрузка и выдача файлов — `UPLOAD_LIMITS`
@@ -361,11 +361,11 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/admin/courses`, `/new`, `/[id]`, `/[id]/lessons/[lessonId]` | admin | **admin** — конструктор |
 | `/[locale]/admin/orders` | admin | **checkout** — заказы: «Оплачено» / «Отменить» / «Возврат» |
 | `/[locale]/admin/users` | admin | **admin** — пользователи, выдать или отозвать доступ |
-| `/[locale]/admin/mail`, `/[locale]/admin/mail/[id]` | admin | **mail** — страница «Письма» (D-030; волна 1) |
+| `/[locale]/admin/mail`, `/[locale]/admin/mail/[id]` | admin | **mail** — страница «Письма» (D-030) |
 | `/[locale]/admin/courses/[id]/files` | admin | **files** — файлы курса (волна 4) |
 | `/[locale]/login`, `/register` | гость | **foundation** |
 | `/[locale]/password/forgot`, `/[locale]/password/reset`, `/[locale]/account/verify` | гость / вошедший | **foundation** (волна 2) |
-| `/[locale]/legal`, `/[locale]/legal/[doc]`, `/[locale]/legal/[doc]/[version]` | все | **legal** — юридические документы (волна 1) |
+| `/[locale]/legal`, `/[locale]/legal/[doc]`, `/[locale]/legal/[doc]/[version]` | все | **legal** — юридические документы (тексты — черновики до юриста ЦРП) |
 | `/api/uploads` | admin | **files** — загрузка файлов (POST; волна 3) |
 | `/api/files/[id]` | по доступу к файлу | **files** — выдача файла (GET; волна 3) |
 | `/api/health` | все | **ops** — статус БД, миграций и релиза (волна 5) |
@@ -492,7 +492,7 @@ D-016); на своём сервере без `DATABASE_URL` нужен явны
 
 Netlify (D-024): `netlify.toml` в корне, переменные сайта `DEMO_MODE=1`, `NODE_VERSION=22`.
 
-В демо почта (волна 1) — только `outbox`: ссылки из писем видно в админке, «Письма» (D-030).
+В демо почта — только `outbox`: ссылки из писем видно в админке, «Письма» (D-030).
 Файлы (волна 3) лежат во временном каталоге экземпляра; на Vercel и Netlify лимит 4 МБ. PDF
 сертификата (волна 2) генерируется в функции (D-036).
 
