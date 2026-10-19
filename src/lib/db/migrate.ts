@@ -2,18 +2,22 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Db, DbHandle } from './core';
+import { MIGRATION_LOCK_KEY } from './locks';
 
-/** Ключ advisory-блокировки: параллельные процессы не накатывают миграции одновременно. */
-const MIGRATION_LOCK_KEY = 72_026_101_901;
 const NAME_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9-]+\.sql$/;
 
 export function migrationsDir(): string {
-  return process.env.MIGRATIONS_DIR || path.join(process.cwd(), 'migrations');
+  // Подмена каталога — только вне production: на сервере миграции берутся из выложенного релиза
+  const override = process.env.NODE_ENV !== 'production' ? process.env.MIGRATIONS_DIR : undefined;
+  return override || path.join(process.cwd(), 'migrations');
 }
 
 export async function listMigrations(dir = migrationsDir()): Promise<string[]> {
   const files = await readdir(dir);
-  return files.filter((f) => NAME_RE.test(f)).sort();
+  const list = files.filter((f) => NAME_RE.test(f)).sort();
+  // Пустой каталог — это неверный путь или битая выкладка, а не «всё накатано»
+  if (list.length === 0) throw new Error(`В каталоге миграций нет ни одного файла: ${dir}`);
+  return list;
 }
 
 export type MigrationStatus = {
@@ -54,7 +58,10 @@ export async function migrationStatus(db: Pick<Db, 'sql'>, dir = migrationsDir()
 
 export class MigrationsPendingError extends Error {
   constructor(readonly pending: string[]) {
-    super(`pending migrations: ${pending.length}`);
+    super(
+      `Не накатаны миграции (${pending.length}): ${pending.join(', ')}. ` +
+        'Выполните npm run db:migrate от роли с правом на DDL.',
+    );
     this.name = 'MigrationsPendingError';
   }
 }
@@ -74,6 +81,9 @@ export async function migrate(
   dir = migrationsDir(),
   opts: { lockTimeoutMs?: number } = {},
 ): Promise<string[]> {
+  // Нечего накатывать — ни транзакции, ни блокировки, ни DDL: роль без права CREATE
+  // не должна падать на актуальной схеме
+  if ((await migrationStatus(db, dir)).pending.length === 0) return [];
   const files = await listMigrations(dir);
   return db.withTx(async (c) => {
     await c.sql`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY})`;

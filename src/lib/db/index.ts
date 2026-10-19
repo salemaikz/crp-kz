@@ -55,15 +55,15 @@ function shouldSeed(): boolean {
 }
 
 /**
- * Накатывать миграции при старте (D-026). DB_MIGRATE_ON_START=1 — да, 0 — нет; иначе да в демо,
- * разработке и тестах, нет в production: там миграции применяет выкладка, приложение только
- * проверяет их (у роли приложения нет права на DDL).
+ * Накатывать миграции при старте (D-026). DB_MIGRATE_ON_START=1 — да, 0 — нет; иначе да только в
+ * демо, development и test. Всё остальное (в том числе скрипт под tsx без NODE_ENV с DATABASE_URL)
+ * только проверяет миграции: DDL применяет выкладка (db:migrate), у роли приложения права на него нет.
  */
 export function autoMigrateEnabled(env: Env = process.env): boolean {
   const v = env.DB_MIGRATE_ON_START?.trim();
   if (v === '1') return true;
   if (v === '0') return false;
-  return isDemo(env) || env.NODE_ENV !== 'production';
+  return isDemo(env) || env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
 }
 
 /**
@@ -81,6 +81,31 @@ export async function prepareDb(db: DbHandle, opts: { autoMigrate?: boolean; see
       await seed(db);
     }
   }
+}
+
+/**
+ * Открыть БД для скрипта (крон, CLI) по шаблону PLAN §2.5: драйвер → prepareDb без сида → setDb.
+ * В production prepareDb только проверяет миграции. БД в памяти (нет DATABASE_URL и PGLITE_DIR)
+ * скрипту бесполезна: данные исчезнут при выходе, поэтому отказ (allowInMemory — для тестов).
+ * Возвращает функцию закрытия.
+ */
+export async function openScriptDb(opts: { allowInMemory?: boolean } = {}): Promise<() => Promise<void>> {
+  const inMemory = !process.env.DATABASE_URL?.trim() && !process.env.PGLITE_DIR?.trim();
+  if (inMemory && !opts.allowInMemory) {
+    throw new Error('База в памяти исчезнет после выхода скрипта: задайте DATABASE_URL или PGLITE_DIR.');
+  }
+  const db = await openDriver();
+  try {
+    await prepareDb(db, { seed: false });
+  } catch (e) {
+    await db.close().catch(() => {});
+    throw e;
+  }
+  setDb(db);
+  return async () => {
+    setDb(null);
+    await db.close();
+  };
 }
 
 /** Драйвер → (демо-снимок: сдвиг времени) → prepareDb. Сдвиг идёт до миграций и проверки users. */

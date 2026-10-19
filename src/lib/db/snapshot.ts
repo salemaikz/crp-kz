@@ -43,7 +43,7 @@ export async function shiftTimestamps(db: DbHandle, delta: number): Promise<numb
       FROM information_schema.columns c
       JOIN information_schema.tables t
         ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
-      WHERE c.table_schema = 'public' AND c.data_type = 'bigint'
+      WHERE c.table_schema = current_schema() AND c.data_type = 'bigint'
         AND c.column_name LIKE '%\\_at' ESCAPE '\\' AND c.table_name <> 'schema_migrations'
       ORDER BY c.table_name, c.column_name`;
     const byTable = new Map<string, string[]>();

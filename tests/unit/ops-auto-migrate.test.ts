@@ -19,7 +19,11 @@ test('демо и разработка: да', () => {
   assert.equal(autoMigrateEnabled({ ...prod, DEMO_MODE: '1' }), true);
   assert.equal(autoMigrateEnabled({ NODE_ENV: 'test' }), true);
   assert.equal(autoMigrateEnabled({ NODE_ENV: 'development' }), true);
-  assert.equal(autoMigrateEnabled({}), true);
+});
+
+test('скрипт под tsx без NODE_ENV с DATABASE_URL: не накатывает (D-026)', () => {
+  assert.equal(autoMigrateEnabled({ DATABASE_URL: 'postgres://x@h/db' }), false);
+  assert.equal(autoMigrateEnabled({ DATABASE_URL: 'postgres://x@h/db', DB_MIGRATE_ON_START: '1' }), true);
 });
 
 test('DB_MIGRATE_ON_START=0 выключает и в разработке, и в демо', () => {

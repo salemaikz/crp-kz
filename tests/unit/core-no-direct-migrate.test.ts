@@ -31,7 +31,12 @@ test('вызов migrate( — только в разрешённых файла�
       const rel = path.relative(ROOT, file).split(path.sep).join('/');
       // комментарии не считаем
       const code = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-      if (/(?<![\w.])migrate\(/.test(code)) found.push(rel);
+      // вызов (в т.ч. «migrate (»), импорт символа migrate (в т.ч. с псевдонимом) и передача как значения
+      const call = /(?<![\w.])migrate\s*\(/.test(code);
+      const imp = /import\s*(?:type\s*)?\{[^}]*\bmigrate\b[^}]*\}\s*from\s*['"][^'"]*\/migrate['"]/.test(code);
+      const ref = /\.then\(\s*migrate\s*[,)]/.test(code);
+      const dyn = /\{[^}]*\bmigrate\b[^}]*\}\s*=\s*await\s+import\(/.test(code);
+      if (call || imp || ref || dyn) found.push(rel);
     }
   }
   const unexpected = found.filter((f) => !ALLOWED.has(f));

@@ -5,11 +5,9 @@ import type { SeedCourse } from '../../content/types';
 import type { Db } from '../core';
 import { seedActivity } from './activity';
 import { insertCourses, validateSeedCourses } from './courses';
+import { SEED_LOCK_KEY } from '../locks';
 import { seedPeople } from './people';
 import { seedBase } from './time';
-
-/** Ключ advisory-блокировки сида (параллельные экземпляры не сидируют дважды). */
-const SEED_LOCK_KEY = 72_026_101_902;
 
 export type SeedResult = { seeded: boolean };
 
