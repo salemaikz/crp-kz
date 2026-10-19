@@ -65,14 +65,20 @@ export type CourseAccess =
 
 export type QuizQuestionResult = { correct: boolean; explain?: string };
 
-export type QuizResult = {
-  correct: number;
-  total: number;
-  scorePct: number;
-  passed: boolean;
-  passScore: number;
-  perQuestion: QuizQuestionResult[];
-};
+/**
+ * Результат попытки (D-020). Провал — только счёт: без разбора по вопросам и пояснений
+ * (иначе ответы подбираются перебором по разбору). Сдан — разбор по вопросам и пояснения.
+ */
+export type QuizResult =
+  | { passed: false; correct: number; total: number; scorePct: number }
+  | {
+      passed: true;
+      correct: number;
+      total: number;
+      scorePct: number;
+      passScore: number;
+      perQuestion: QuizQuestionResult[];
+    };
 
 export type QuizStatus = { attempts: number; passed: boolean; bestPct: number | null };
 

@@ -2,7 +2,7 @@
 // Сообщения ошибок — стабильные коды: UI переводит их через errors.field.<код>.
 import { z } from 'zod';
 import { AdminError, type FieldErrors } from './errors';
-import { SLUG_MAX, SLUG_RE } from './slug';
+import { isReservedLessonSlug, SLUG_MAX, SLUG_RE } from './slug';
 
 /** Коды, которые задаём сами в схемах (остальные сообщения zod заменяются кодом по типу проблемы). */
 const KNOWN_CODES = new Set([
@@ -14,6 +14,7 @@ const KNOWN_CODES = new Set([
   'notInteger',
   'invalid',
   'slugFormat',
+  'slugReserved',
   'ownerRequired',
 ]);
 
@@ -103,6 +104,18 @@ const slugField = z.preprocess(
     .refine((s) => s === '' || SLUG_RE.test(s), 'slugFormat'),
 );
 
+/** Адрес урока: как slugField, плюс зарезервированные адреса страниц курса (RESERVED_LESSON_SLUGS). */
+const lessonSlugField = z.preprocess(
+  (v) => (v == null ? '' : v),
+  z
+    .string({ invalid_type_error: 'invalid' })
+    .trim()
+    .toLowerCase()
+    .max(SLUG_MAX, 'tooLong')
+    .refine((s) => s === '' || SLUG_RE.test(s), 'slugFormat')
+    .refine((s) => !isReservedLessonSlug(s), 'slugReserved'),
+);
+
 // ---------- курс ----------
 
 export const COURSE_LEVELS = ['start', 'base', 'pro'] as const;
@@ -158,8 +171,8 @@ export const lessonCreateSchema = z.object({
 export const lessonMetaSchema = z.object({
   titleRu: reqText(200),
   titleKz: optText(200),
-  /** Пусто — адрес не меняется. */
-  slug: slugField,
+  /** Пусто — адрес не меняется. Зарезервированные адреса (certificate) запрещены. */
+  slug: lessonSlugField,
   durationMin: intOr(0, 1000, 0),
   /** Не передан — статус урока не меняется. */
   status: enumField(PUBLISH_STATUSES).optional(),

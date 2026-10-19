@@ -12,10 +12,8 @@ import { Alert, Checkbox, Field, Input, SubmitButton } from '@/components/ui';
 type Props = {
   courseSlug: string;
   priceKzt: number;
-  /** Вошедший пользователь: имя и email подставляются в форму. */
-  user?: { name: string; email: string } | null;
-  /** Ссылка «Войдите» для гостя (уже с ?next). */
-  signIn?: ReactNode;
+  /** Вошедший пользователь (покупка только после входа, D-020): имя подставляется, email — аккаунта. */
+  user: { name: string; email: string };
 };
 
 const EMPTY: CheckoutValues = {
@@ -33,9 +31,9 @@ const EMPTY: CheckoutValues = {
  * Форма покупки: кто покупает, контакты, реквизиты компании, способ оплаты, согласие.
  * После ошибки форма перемонтируется (key = номер попытки) и берёт введённые значения из ответа.
  */
-export function CheckoutForm({ courseSlug, priceKzt, user, signIn }: Props) {
+export function CheckoutForm({ courseSlug, priceKzt, user }: Props) {
   const [state, formAction, pending] = useActionState<CheckoutFormState, FormData>(createOrderAction, undefined);
-  const initial: CheckoutValues = state?.values ?? { ...EMPTY, name: user?.name ?? '', email: user?.email ?? '' };
+  const initial: CheckoutValues = state?.values ?? { ...EMPTY, name: user.name, email: user.email };
   return (
     <CheckoutFields
       key={state?.attempt ?? 0}
@@ -46,7 +44,6 @@ export function CheckoutForm({ courseSlug, priceKzt, user, signIn }: Props) {
       courseSlug={courseSlug}
       priceKzt={priceKzt}
       user={user}
-      signIn={signIn}
     />
   );
 }
@@ -58,7 +55,7 @@ type FieldsProps = Props & {
   initial: CheckoutValues;
 };
 
-function CheckoutFields({ formAction, pending, state, initial, courseSlug, priceKzt, user, signIn }: FieldsProps) {
+function CheckoutFields({ formAction, pending, state, initial, courseSlug, priceKzt, user }: FieldsProps) {
   const t = useTranslations('checkout.form');
   const locale = useLocale();
   const formRef = useRef<HTMLFormElement>(null);
@@ -92,7 +89,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
 
       {state?.error === 'validation' && <Alert tone="error">{generalField ?? t('alerts.validation')}</Alert>}
       {generalError && <Alert tone="error">{generalError}</Alert>}
-      {signIn && <p className="co-signin">{signIn}</p>}
 
       <div className="co-section">
         <fieldset className="co-fieldset">
@@ -137,22 +133,9 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
             <Input name="name" autoComplete="name" maxLength={100} defaultValue={initial.name} />
           </Field>
           <div className="co-row co-row--2">
-            <Field
-              label={t('contacts.email')}
-              hint={user ? t('contacts.emailHintUser', { email: user.email }) : t('contacts.emailHint')}
-              error={err('email')}
-              required
-            >
-              <Input
-                name="email"
-                type="email"
-                autoComplete="email"
-                inputMode="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                maxLength={254}
-                defaultValue={initial.email}
-              />
+            <Field label={t('contacts.email')} hint={t('contacts.emailHintUser')} error={err('email')} required>
+              {/* email аккаунта: заказ привязывается к нему, сервер берёт email из сессии */}
+              <Input name="email" type="email" autoComplete="email" readOnly value={user.email} />
             </Field>
             <Field label={t('contacts.phone')} hint={t('contacts.phoneHint')} error={err('phone')} required>
               <Input

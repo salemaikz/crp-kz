@@ -1,8 +1,7 @@
 // Решения администратора по заказу: «Оплачено», «Отменить», «Возврат». Каждое — одна транзакция.
 // Переход статуса — условный UPDATE … WHERE status = <ожидаемый> RETURNING: двойной клик и
 // параллельные вызовы не создают дублей (второй получит отказ), возвращённый заказ не оплатить.
-import { enroll, getEnrollment, revokeEnrollment } from '../access';
-import { normalizeEmail } from '../auth';
+import { DAY_MS, enroll, revokeEnrollment } from '../access';
 import { getDb, newId, now, type Sql } from '../db';
 import type { Order, OrderDecision, OrderStatus } from './types';
 
@@ -21,19 +20,24 @@ async function audit(
     VALUES (${newId()}, ${actorId}, ${action}, 'order', ${entityId}, ${json(meta)}, ${now()})`;
 }
 
-/** Почему переход не состоялся: заказа нет или статус уже другой. */
+/** Почему переход не состоялся: заказа нет, статус уже другой или у заказа нет покупателя. */
 async function refusal(sql: Sql, orderId: string, op: Op): Promise<OrderDecision> {
-  const [cur] = await sql<{ status: OrderStatus }>`SELECT status FROM orders WHERE id = ${orderId}`;
+  const [cur] = await sql<{ status: OrderStatus; userId: string | null }>`
+    SELECT status, user_id FROM orders WHERE id = ${orderId}`;
   if (!cur) return { ok: false, reason: 'not_found' };
   if (op === 'refund') return { ok: false, reason: 'not_paid', status: cur.status };
   if (cur.status === 'paid') return { ok: false, reason: 'already_paid', status: cur.status };
+  if (op === 'paid' && cur.status === 'pending' && !cur.userId) {
+    return { ok: false, reason: 'no_user', status: cur.status };
+  }
   return { ok: false, reason: 'not_pending', status: cur.status };
 }
 
 /**
- * pending → paid. В одной транзакции: статус (только из pending) → покупатель (владелец заказа,
- * иначе пользователь с этим email, иначе новый аккаунт без пароля) → order.user_id →
- * зачисление purchase со сроком из предложения → audit order.paid.
+ * pending → paid. В одной транзакции: статус (только из pending и только при заданном
+ * order.user_id) → зачисление purchase владельцу заказа со сроком, зафиксированным в заказе →
+ * audit order.paid. Пользователей не ищет по email и не создаёт (D-020): заказ без аккаунта
+ * (аккаунт удалён) — отказ no_user.
  */
 export async function markPaid(orderId: string, adminId: string): Promise<OrderDecision> {
   const db = await getDb();
@@ -41,41 +45,11 @@ export async function markPaid(orderId: string, adminId: string): Promise<OrderD
     const t = now();
     const [o] = await sql<Order>`
       UPDATE orders SET status = 'paid', paid_at = ${t}, decided_by = ${adminId}, updated_at = ${t}
-      WHERE id = ${orderId} AND status = 'pending'
+      WHERE id = ${orderId} AND status = 'pending' AND user_id IS NOT NULL
       RETURNING *`;
     if (!o) return refusal(sql, orderId, 'paid');
+    const userId = o.userId as string;
 
-    let userId: string | null = null;
-    let userCreated = false;
-    if (o.userId) {
-      const [owner] = await sql<{ id: string }>`SELECT id FROM users WHERE id = ${o.userId}`;
-      userId = owner?.id ?? null;
-    }
-    if (!userId) {
-      const email = normalizeEmail(o.buyerEmail);
-      const [created] = await sql<{ id: string }>`
-        INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
-        VALUES (${newId()}, ${email}, NULL, ${o.buyerName}, 'learner', 'ru', ${t})
-        ON CONFLICT (email) DO NOTHING
-        RETURNING id`;
-      if (created) {
-        userId = created.id;
-        userCreated = true;
-        await sql`
-          INSERT INTO audit_log (id, actor_id, action, entity, entity_id, meta, created_at)
-          VALUES (${newId()}, ${adminId}, 'user.create_from_order', 'user', ${created.id},
-                  ${db.json({ orderId: o.id, number: o.number })}, ${t})`;
-      } else {
-        const [existing] = await sql<{ id: string }>`SELECT id FROM users WHERE email = ${email}`;
-        if (!existing) throw new Error('markPaid: buyer user vanished');
-        userId = existing.id;
-      }
-    }
-
-    await sql`UPDATE orders SET user_id = ${userId} WHERE id = ${o.id}`;
-    // срок — из предложения курса на момент оплаты; нет предложения — бессрочно
-    const [offer] = await sql<{ accessDays: number | null }>`
-      SELECT access_days FROM course_offers WHERE course_id = ${o.courseId}`;
     const enrollment = await enroll(
       {
         userId,
@@ -83,18 +57,18 @@ export async function markPaid(orderId: string, adminId: string): Promise<OrderD
         source: 'purchase',
         orderId: o.id,
         grantedBy: adminId,
-        accessDays: offer?.accessDays ?? null,
+        accessDays: o.accessDays,
       },
       sql,
     );
     await audit(sql, db.json, adminId, 'order.paid', o.id, {
       number: o.number,
       amountKzt: o.amountKzt,
+      accessDays: o.accessDays,
       userId,
-      userCreated,
       enrollmentId: enrollment.id,
     });
-    return { ok: true, order: { ...o, userId }, userId, userCreated };
+    return { ok: true, order: o, userId };
   });
 }
 
@@ -113,10 +87,19 @@ export async function cancelOrder(orderId: string, adminId: string): Promise<Ord
   });
 }
 
+/** Конец доступа по оплаченному заказу: от оплаты + срок заказа; null — бессрочно. */
+function orderExpiry(o: Pick<Order, 'paidAt' | 'accessDays'>): number | null {
+  if (o.accessDays === null) return null;
+  return (o.paidAt ?? 0) + o.accessDays * DAY_MS;
+}
+
 /**
- * paid → refunded + отзыв доступа. Отзываем, только если зачисление выдано именно этим заказом
- * (source purchase, order_id = заказ): доступ по другому заказу или выдаче админом не трогаем.
- * Прогресс и сертификаты сохраняются (revokeEnrollment).
+ * paid → refunded. Доступ снимается, только если держится на этом заказе: фильтр orderId
+ * проверяется внутри UPDATE (revokeEnrollment), без гонки «прочитал — отозвал». Доступ по другому
+ * заказу, назначению или выдаче админом не трогаем.
+ * Если у покупателя есть другой оплаченный заказ на курс, срок которого ещё идёт, доступ
+ * переходит на него (D-020): order_id — тот заказ, срок — от его оплаты (не продлевается).
+ * Прогресс и сертификаты сохраняются.
  */
 export async function refundOrder(orderId: string, adminId: string): Promise<OrderDecision> {
   const db = await getDb();
@@ -127,19 +110,46 @@ export async function refundOrder(orderId: string, adminId: string): Promise<Ord
       WHERE id = ${orderId} AND status = 'paid'
       RETURNING *`;
     if (!o) return refusal(sql, orderId, 'refund');
+
     let accessRevoked = false;
+    let accessMovedTo: string | undefined;
     if (o.userId) {
-      const e = await getEnrollment(o.userId, o.courseId, sql);
-      if (e && e.source === 'purchase' && e.orderId === o.id && e.revokedAt === null) {
-        await revokeEnrollment(o.userId, o.courseId, adminId, sql);
-        accessRevoked = true;
+      const revoked = await revokeEnrollment(o.userId, o.courseId, adminId, sql, { orderId: o.id });
+      if (revoked) {
+        const others = await sql<Order>`
+          SELECT * FROM orders
+          WHERE user_id = ${o.userId} AND course_id = ${o.courseId} AND status = 'paid' AND id <> ${o.id}`;
+        // действующий заказ с самым поздним концом срока (бессрочный — дальше любого);
+        // остаток меньше минуты не в счёт
+        const live = others
+          .map((x) => ({ order: x, expiresAt: orderExpiry(x) }))
+          .filter((x) => x.expiresAt === null || x.expiresAt > t + 60_000)
+          .sort((a, b) => (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity))
+          .at(-1);
+        if (live) {
+          await enroll(
+            {
+              userId: o.userId,
+              courseId: o.courseId,
+              source: 'purchase',
+              orderId: live.order.id,
+              grantedBy: adminId,
+              expiresAt: live.expiresAt,
+            },
+            sql,
+          );
+          accessMovedTo = live.order.number;
+        } else {
+          accessRevoked = true;
+        }
       }
     }
     await audit(sql, db.json, adminId, 'order.refund', o.id, {
       number: o.number,
       amountKzt: o.amountKzt,
       accessRevoked,
+      ...(accessMovedTo ? { accessMovedTo } : {}),
     });
-    return { ok: true, order: o, accessRevoked };
+    return { ok: true, order: o, accessRevoked, ...(accessMovedTo ? { accessMovedTo } : {}) };
   });
 }

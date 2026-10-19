@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { QuizBlock } from '../../src/lib/content/types';
 import { sameSet, scoreQuiz, validateAnswers } from '../../src/lib/learn/scoring';
+import type { QuizResult } from '../../src/lib/learn/types';
+
+/** Разбор по вопросам есть только у сданной попытки. */
+function marks(r: QuizResult): boolean[] {
+  assert.equal(r.passed, true, 'разбор есть только у сданной попытки');
+  return r.passed ? r.perQuestion.map((p) => p.correct) : [];
+}
 
 const quiz: QuizBlock = {
   id: 'quiz',
@@ -26,16 +33,20 @@ test('sameSet: порядок и повторы не важны, лишний и
 test('scoreQuiz: все верно — 100 %, сдан', () => {
   const r = scoreQuiz(quiz, [[1], [2, 0], [0]]);
   assert.deepEqual([r.correct, r.total, r.scorePct, r.passed], [3, 3, 100, true]);
-  assert.deepEqual(
-    r.perQuestion.map((p) => p.correct),
-    [true, true, true],
-  );
+  assert.deepEqual(marks(r), [true, true, true]);
 });
 
 test('scoreQuiz: множественный выбор — только точное совпадение (подмножество и надмножество не засчитываются)', () => {
-  assert.equal(scoreQuiz(quiz, [[1], [0], [0]]).perQuestion[1]?.correct, false); // не все верные
-  assert.equal(scoreQuiz(quiz, [[1], [0, 1, 2], [0]]).perQuestion[1]?.correct, false); // лишний вариант
-  assert.equal(scoreQuiz(quiz, [[1], [0, 2], [0]]).perQuestion[1]?.correct, true);
+  assert.equal(marks(scoreQuiz(quiz, [[1], [0], [0]]))[1], false); // не все верные (2 из 3 — сдан)
+  assert.equal(marks(scoreQuiz(quiz, [[1], [0, 1, 2], [0]]))[1], false); // лишний вариант
+  assert.equal(marks(scoreQuiz(quiz, [[1], [0, 2], [0]]))[1], true);
+});
+
+test('scoreQuiz: провал — только счёт, без разбора по вопросам и пояснений (D-020)', () => {
+  const r = scoreQuiz(quiz, [[0], [0], [0]]); // 1 из 3 — не сдан
+  assert.deepEqual(r, { passed: false, correct: 1, total: 3, scorePct: 33 });
+  const json = JSON.stringify(r);
+  for (const leak of ['perQuestion', 'explain', 'Потому что y', 'Да.', 'passScore']) assert.equal(json.includes(leak), false, leak);
 });
 
 test('scoreQuiz: scorePct = round(correct / total × 100); passed = scorePct ≥ passScore', () => {
@@ -54,9 +65,11 @@ test('scoreQuiz: вопрос без ответа считается невер�
   assert.deepEqual([r.correct, r.scorePct, r.passed], [0, 0, false]);
 });
 
-test('scoreQuiz: пояснение есть только у вопросов, где оно задано', () => {
-  const r = scoreQuiz(quiz, [[0], [0], [0]]);
-  assert.equal(r.perQuestion[0]?.explain, 'Потому что y');
+test('scoreQuiz: сдан — разбор и пояснения только у вопросов, где они заданы', () => {
+  const r = scoreQuiz(quiz, [[0], [0, 2], [0]]); // 2 из 3 — сдан, первый неверен
+  assert.ok(r.passed);
+  assert.equal(r.passScore, 60);
+  assert.deepEqual(r.perQuestion[0], { correct: false, explain: 'Потому что y' });
   assert.equal('explain' in (r.perQuestion[1] ?? {}), false);
   assert.equal(r.perQuestion[2]?.explain, 'Да.');
 });

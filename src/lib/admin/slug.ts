@@ -15,6 +15,16 @@ export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const SLUG_MAX = 60;
 
+/**
+ * Адреса уроков, занятые статическими страницами под /learn/[курс]/…: урок с таким slug
+ * перекрыл бы страницу (или страница — урок). Сейчас это только сертификат.
+ */
+export const RESERVED_LESSON_SLUGS: readonly string[] = ['certificate'];
+
+export function isReservedLessonSlug(slug: string): boolean {
+  return RESERVED_LESSON_SLUGS.includes(slug);
+}
+
 /** «Целина: основы бизнеса» → «tselina-osnovy-biznesa». Пустая строка, если букв и цифр нет. */
 export function slugify(input: string, max: number = SLUG_MAX): string {
   let out = '';

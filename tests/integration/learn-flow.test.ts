@@ -184,7 +184,9 @@ test('нельзя завершить урок с тестом без сданн
   await refuses('quiz_required', completeLesson({ userId: 'u4', lessonId: 'f2', locale: 'ru' }));
 
   const fail = await submitQuiz({ userId: 'u4', lessonId: 'f2', blockId: 'quiz', answers: FAIL, locale: 'ru' });
-  assert.deepEqual([fail.correct, fail.total, fail.scorePct, fail.passed], [0, 3, 0, false]);
+  // провал — только счёт: ни разбора по вопросам, ни пояснений (D-020)
+  assert.deepEqual(fail, { passed: false, correct: 0, total: 3, scorePct: 0 });
+  assert.equal(JSON.stringify(fail).includes('Потому что'), false);
   await refuses('quiz_required', completeLesson({ userId: 'u4', lessonId: 'f2', locale: 'ru' }));
 
   const pass = await submitQuiz({ userId: 'u4', lessonId: 'f2', blockId: 'quiz', answers: PASS, locale: 'ru' });
@@ -193,7 +195,7 @@ test('нельзя завершить урок с тестом без сданн
   assert.equal(done.done, 2);
 });
 
-test('попытки сохраняются как есть; пояснения — только в ответе на попытку', async () => {
+test('попытки сохраняются как есть; разбор и пояснения — только в ответе на сданную попытку', async () => {
   const rows = await db.sql<{ blockId: string; correct: number; total: number; passed: boolean }>`
     SELECT block_id, correct, total, passed FROM quiz_attempts
     WHERE user_id = 'u4' AND lesson_id = 'f2' ORDER BY created_at, id`;
@@ -205,6 +207,7 @@ test('попытки сохраняются как есть; пояснения 
     ].sort(),
   );
   const half = await submitQuiz({ userId: 'u4', lessonId: 'f2', blockId: 'quiz', answers: HALF, locale: 'ru' });
+  assert.ok(half.passed);
   assert.deepEqual([half.correct, half.scorePct, half.passed, half.passScore], [2, 67, true, 60]);
   assert.equal(half.perQuestion[0]?.explain, 'Потому что b');
   assert.equal(half.perQuestion[2]?.correct, false);
@@ -235,11 +238,29 @@ test('несколько тестов в одном уроке учитываю�
 
 // ---------- локали ----------
 
-test('kz-документ без теста: урок завершается без теста; в ru тест обязателен', async () => {
+test('kz-документ без теста из ru не показывается: в kz тот же обязательный тест, обойти локалью нельзя', async () => {
   await enroll({ userId: 'u1', courseId: 'free', source: 'self' });
   await refuses('quiz_required', completeLesson({ userId: 'u1', lessonId: 'f3', locale: 'ru' }));
+  // перевод без теста → показывается ru (fallback), его тест обязателен и в kz
+  await refuses('quiz_required', completeLesson({ userId: 'u1', lessonId: 'f3', locale: 'kz' }));
+  const fail = await submitQuiz({ userId: 'u1', lessonId: 'f3', blockId: 'quiz', answers: FAIL, locale: 'kz' });
+  assert.equal(fail.passed, false);
+  await refuses('quiz_required', completeLesson({ userId: 'u1', lessonId: 'f3', locale: 'kz' }));
+  await submitQuiz({ userId: 'u1', lessonId: 'f3', blockId: 'quiz', answers: PASS, locale: 'kz' });
+  const keys = await db.sql<{ blockId: string }>`
+    SELECT DISTINCT block_id FROM quiz_attempts WHERE user_id = 'u1' AND lesson_id = 'f3'`;
+  assert.deepEqual(keys.map((k) => k.blockId), ['quiz']); // засчитан как тест ru-документа
   const r = await completeLesson({ userId: 'u1', lessonId: 'f3', locale: 'kz' });
   assert.equal(r.alreadyCompleted, false);
+});
+
+test('kz-документ с другим тестом (не тем id, что в ru) тоже не показывается: требуется тест ru', async () => {
+  await addLesson({ id: 'f7', course: 'free', module: 'free-m2', pos: 4, ru: [text(), quiz('quiz')], kz: [text(), quiz('kz-only')] });
+  await refuses('quiz_required', completeLesson({ userId: 'u1', lessonId: 'f7', locale: 'kz' }));
+  // тест kz-документа недоступен: показан ru
+  await refuses('not_found', submitQuiz({ userId: 'u1', lessonId: 'f7', blockId: 'kz-only', answers: PASS, locale: 'kz' }));
+  await submitQuiz({ userId: 'u1', lessonId: 'f7', blockId: 'quiz', answers: PASS, locale: 'kz' });
+  assert.equal((await completeLesson({ userId: 'u1', lessonId: 'f7', locale: 'kz' })).alreadyCompleted, false);
 });
 
 test('перевода нет: в kz показан запасной ru-документ, его тест обязателен и сдаётся как русский', async () => {

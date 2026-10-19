@@ -19,15 +19,16 @@ test('лендинг: первый экран, витрина курсов и б
   await expect(page.getByRole('heading', { level: 3, name: 'Для сотрудников ЦРП' })).toBeVisible();
 });
 
-test('гость: каталог → «Целина» → на странице курса кнопка «Купить»', async ({ page }) => {
+test('гость: каталог → «Целина» → на странице курса «Войти и купить» (покупка после входа, D-020)', async ({ page }) => {
   await page.goto('/ru/courses');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Курсы');
   await page.getByRole('link', { name: 'Целина', exact: true }).click();
   await expect(page).toHaveURL(/\/ru\/courses\/celina$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Целина' })).toBeVisible();
-  const buy = page.getByRole('link', { name: 'Купить' }).first();
+  const buy = page.getByRole('link', { name: 'Войти и купить' }).first();
   await expect(buy).toBeVisible();
-  await expect(buy).toHaveAttribute('href', '/ru/courses/celina/buy');
+  await expect(buy).toHaveAttribute('href', '/ru/login?next=%2Fru%2Fcourses%2Fcelina%2Fbuy');
+  await expect(page.getByText('Курс откроется в вашем аккаунте').first()).toBeVisible();
   // программа — только названия уроков; описание из markdown
   await expect(page.getByRole('heading', { level: 2, name: 'Программа курса' })).toBeVisible();
   await expect(page.getByText('Бизнес как система: продукт, клиент, деньги')).toBeVisible();
@@ -82,7 +83,8 @@ test('платный курс: вместо «Начать бесплатно» 
   await demoLogin(page, 'operator');
   await page.goto('/ru/courses/sales-doubling');
   await expect(page.getByRole('button', { name: 'Начать бесплатно' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Купить' }).first()).toHaveAttribute('href', '/ru/courses/sales-doubling/buy');
+  await expect(page.getByRole('link', { name: 'Купить', exact: true }).first()).toHaveAttribute('href', '/ru/courses/sales-doubling/buy');
+  await expect(page.getByRole('link', { name: 'Войти и купить' })).toHaveCount(0);
 });
 
 test('казахская версия: заголовок и lang="kk"', async ({ page }) => {
@@ -90,5 +92,8 @@ test('казахская версия: заголовок и lang="kk"', async (
   await expect(page.locator('html')).toHaveAttribute('lang', 'kk');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Бизнес пен команданың өсуіне арналған курстар');
   await page.goto('/kz/courses/celina');
-  await expect(page.getByRole('link', { name: 'Сатып алу' }).first()).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Кіріп, сатып алу' }).first()).toHaveAttribute(
+    'href',
+    '/kz/login?next=%2Fkz%2Fcourses%2Fcelina%2Fbuy',
+  );
 });

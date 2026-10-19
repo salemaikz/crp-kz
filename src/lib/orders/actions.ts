@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { getCurrentUser } from '../auth';
+import { deriveClientIp, UNKNOWN_IP } from '../auth/clientIp';
 import { rateLimit } from '../auth/rateLimit';
 import { redirect } from '../i18n/navigation';
 import { cancelOrder, markPaid, refundOrder } from './admin';
@@ -22,40 +23,63 @@ export type CheckoutFormState =
     }
   | undefined;
 
-/** Лимит заказов с одного IP: защита от спама заказами и перебора. */
-const ORDER_LIMIT = { limit: 10, windowMs: 60 * 60_000 };
+/**
+ * Лимиты заказов (защита от спама): на аккаунт и на IP клиента (доверенная схема, D-018).
+ * IP неизвестен (нет доверенного прокси) — общее ведро с порогом выше; аккаунт защищает лимит на него.
+ */
+const ORDER_LIMITS = {
+  perUser: { limit: 10, windowMs: 60 * 60_000 },
+  perIp: { limit: 20, windowMs: 60 * 60_000 },
+  unknownIp: { limit: 300, windowMs: 60 * 60_000 },
+} as const;
 
 function localeOf(fd: FormData): 'ru' | 'kz' {
   return fd.get('locale') === 'kz' ? 'kz' : 'ru';
 }
 
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || 'local';
-  return ip.slice(0, 64);
+function orderAllowed(userId: string, ip: string): boolean {
+  const byIp =
+    ip === UNKNOWN_IP
+      ? rateLimit(`order:${UNKNOWN_IP}`, ORDER_LIMITS.unknownIp.limit, ORDER_LIMITS.unknownIp.windowMs)
+      : rateLimit(`order:ip:${ip}`, ORDER_LIMITS.perIp.limit, ORDER_LIMITS.perIp.windowMs);
+  if (!byIp.ok) return false;
+  return rateLimit(`order:user:${userId}`, ORDER_LIMITS.perUser.limit, ORDER_LIMITS.perUser.windowMs).ok;
 }
 
-/** Оформление заказа: проверка формы → лимит → заказ → страница заказа с ключом доступа. */
+/**
+ * Оформление заказа — только вошедшему (D-020): форма → лимит → заказ на аккаунт из сессии →
+ * страница заказа с ключом доступа. Гостя — на вход с возвратом к покупке.
+ * Email заказа — email аккаунта: значение поля формы не используется.
+ */
 export async function createOrderAction(prev: CheckoutFormState, formData: FormData): Promise<CheckoutFormState> {
   const locale = localeOf(formData);
   const attempt = (prev?.attempt ?? 0) + 1;
-  const raw = Object.fromEntries(CHECKOUT_FIELDS.map((f) => [f, formData.get(f)]));
+  const raw: Record<string, unknown> = Object.fromEntries(CHECKOUT_FIELDS.map((f) => [f, formData.get(f)]));
+
+  const user = await getCurrentUser();
+  if (!user) {
+    const slug = typeof raw.courseSlug === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(raw.courseSlug) ? raw.courseSlug : null;
+    const next = slug ? `/${locale}/courses/${slug}/buy` : `/${locale}/courses`;
+    return redirect({ href: { pathname: '/login', query: { next } }, locale });
+  }
+  raw.email = user.email;
+
   const parsed = parseCheckout(raw);
   if (!parsed.ok) return { attempt, error: 'validation', errors: parsed.errors, values: parsed.values };
 
-  const ip = await clientIp();
-  if (!rateLimit(`order:${ip}`, ORDER_LIMIT.limit, ORDER_LIMIT.windowMs).ok) {
+  if (!orderAllowed(user.id, deriveClientIp(await headers()))) {
     return { attempt, error: 'rate_limited', values: parsed.values };
   }
 
-  const user = await getCurrentUser();
   let target: { pathname: string; query?: Record<string, string> } | null = null;
   try {
-    const created = await createOrder(parsed.data, { userId: user?.id ?? null });
+    const created = await createOrder(parsed.data, { userId: user.id });
     target = { pathname: `/orders/${created.number}`, query: { key: created.accessKey } };
   } catch (e) {
     if (e instanceof OrderError && e.code === 'has_access') {
       target = { pathname: `/learn/${parsed.data.courseSlug}` };
+    } else if (e instanceof OrderError && e.code === 'login_required') {
+      target = { pathname: '/login', query: { next: `/${locale}/courses/${parsed.data.courseSlug}/buy` } };
     } else if (e instanceof OrderError && e.code === 'not_for_sale') {
       return { attempt, error: 'not_for_sale', values: parsed.values };
     } else {
@@ -77,7 +101,7 @@ const adminActionSchema = z.object({
 
 function noticeOf(op: 'paid' | 'cancel' | 'refund', res: OrderDecision): string {
   if (!res.ok) return res.reason;
-  if (op === 'paid') return res.userCreated ? 'paid_new_user' : 'paid';
+  if (op === 'paid') return 'paid';
   if (op === 'cancel') return 'cancelled';
   return res.accessRevoked ? 'refunded' : 'refunded_no_access';
 }

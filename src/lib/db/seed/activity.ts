@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { seedId } from '../../content/ids';
 import type { Sql } from '../core';
 import { isFreeCourse, type SeededCourse, type SeededLesson } from './courses';
-import { demoEmail, SEED_PEOPLE, seedOrgId, seedUserId } from './people';
+import { demoEmail, SEED_BUYERS, SEED_PEOPLE, seedOrgId, seedUserId } from './people';
 import { DAY, HOUR } from './time';
 
 type Ctx = { sql: Sql; json: (v: unknown) => unknown; base: number };
@@ -117,6 +117,8 @@ type SeedOrder = {
   number: string;
   courseId: string;
   amountKzt: number;
+  /** Срок доступа из предложения курса на момент заказа (снимок, D-020). */
+  accessDays: number | null;
   status: 'pending' | 'paid';
   buyerType: 'person' | 'company';
   buyerName: string;
@@ -125,7 +127,8 @@ type SeedOrder = {
   companyName?: string;
   companyBin?: string;
   paymentMethod: 'kaspi' | 'invoice';
-  userId?: string;
+  /** Владелец заказа — всегда аккаунт (D-020). */
+  userId: string;
   paidAt?: number;
   decidedBy?: string;
   at: number;
@@ -134,10 +137,10 @@ type SeedOrder = {
 async function order(ctx: Ctx, o: SeedOrder): Promise<string> {
   const id = seedId('order', o.number);
   await ctx.sql`
-    INSERT INTO orders (id, number, user_id, course_id, amount_kzt, status, buyer_type, buyer_name, buyer_email,
-                        buyer_phone, company_name, company_bin, payment_method, paid_at, decided_by,
+    INSERT INTO orders (id, number, user_id, course_id, amount_kzt, access_days, status, buyer_type, buyer_name,
+                        buyer_email, buyer_phone, company_name, company_bin, payment_method, paid_at, decided_by,
                         created_at, updated_at)
-    VALUES (${id}, ${o.number}, ${o.userId ?? null}, ${o.courseId}, ${o.amountKzt}, ${o.status}, ${o.buyerType},
+    VALUES (${id}, ${o.number}, ${o.userId}, ${o.courseId}, ${o.amountKzt}, ${o.accessDays}, ${o.status}, ${o.buyerType},
             ${o.buyerName}, ${o.buyerEmail}, ${o.buyerPhone}, ${o.companyName ?? null}, ${o.companyBin ?? null},
             ${o.paymentMethod}, ${o.paidAt ?? null}, ${o.decidedBy ?? null}, ${o.at}, ${o.paidAt ?? o.at})`;
   await consent(ctx, `order:${o.number}`, { userId: o.userId, orderId: id, at: o.at });
@@ -202,6 +205,7 @@ export async function seedActivity(ctx: Ctx, seeded: readonly SeededCourse[]): P
       number: 'DEMO-1001',
       courseId: course.id,
       amountKzt: course.priceKzt ?? 0,
+      accessDays: course.accessDays ?? null,
       status: 'paid',
       buyerType: 'person',
       buyerName: client?.name ?? 'Клиент',
@@ -257,12 +261,14 @@ export async function seedActivity(ctx: Ctx, seeded: readonly SeededCourse[]): P
       number: 'DEMO-1002',
       courseId: roles.sales.course.id,
       amountKzt: roles.sales.course.priceKzt ?? 0,
+      accessDays: roles.sales.course.accessDays ?? null,
       status: 'pending',
       buyerType: 'person',
-      buyerName: 'Сауле Омарова',
-      buyerEmail: 'saule.omarova@example.com',
+      buyerName: SEED_BUYERS.person.name,
+      buyerEmail: SEED_BUYERS.person.email,
       buyerPhone: '+7 700 000 00 01',
       paymentMethod: 'kaspi',
+      userId: seedUserId(SEED_BUYERS.person.email),
       at: base - DAY + 16 * HOUR,
     });
   }
@@ -271,14 +277,16 @@ export async function seedActivity(ctx: Ctx, seeded: readonly SeededCourse[]): P
       number: 'DEMO-1003',
       courseId: roles.tselina.course.id,
       amountKzt: roles.tselina.course.priceKzt ?? 0,
+      accessDays: roles.tselina.course.accessDays ?? null,
       status: 'pending',
       buyerType: 'company',
-      buyerName: 'Бауыржан Алиев',
-      buyerEmail: 'b.aliev@example.com',
+      buyerName: SEED_BUYERS.company.name,
+      buyerEmail: SEED_BUYERS.company.email,
       buyerPhone: '+7 700 000 00 02',
       companyName: 'ТОО «Дала Трейд» (демо)',
       companyBin: '123456789012',
       paymentMethod: 'invoice',
+      userId: seedUserId(SEED_BUYERS.company.email),
       at: base - 2 * DAY + 12 * HOUR,
     });
   }

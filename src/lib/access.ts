@@ -37,6 +37,12 @@ export type EnrollInput = {
   dueAt?: number | null;
   /** Срок доступа в днях от момента зачисления; null/не задан — бессрочно. */
   accessDays?: number | null;
+  /**
+   * Точный момент окончания доступа (epoch-мс, null — бессрочно) вместо accessDays.
+   * Для перепривязки доступа к ранее оплаченному заказу при возврате: срок того заказа
+   * считается от его оплаты, а не от «сейчас». Должен быть в будущем.
+   */
+  expiresAt?: number | null;
 };
 
 async function q(sql?: Sql): Promise<Sql> {
@@ -123,6 +129,18 @@ async function audit(sql: Sql, actorId: string | null, action: string, entityId:
     VALUES (${newId()}, ${actorId}, ${action}, 'enrollment', ${entityId}, ${jsonParam(meta)}, ${now()})`;
 }
 
+/** Срок новой выдачи: явный expiresAt (если передан) или от accessDays. */
+function expiryOf(input: EnrollInput, nowMs: number): number | null {
+  if (input.expiresAt !== undefined) {
+    const e = input.expiresAt;
+    if (e !== null && (!Number.isSafeInteger(e) || e <= nowMs)) {
+      throw new RangeError(`expiresAt must be a future epoch-ms integer or null, got ${String(e)}`);
+    }
+    return e;
+  }
+  return expiryFor(input.accessDays, nowMs);
+}
+
 /**
  * Зачислить пользователя (upsert по (user_id, course_id)).
  * - Повтор того же заказа (input.orderId совпадает с order_id строки) — no-op в любом
@@ -130,19 +148,20 @@ async function audit(sql: Sql, actorId: string | null, action: string, entityId:
  *   (повторная доставка «оплачено» после возврата не возвращает доступ).
  * - Иначе это новая выдача: снимает revoked, source/org/order/grantedBy/due берутся из input
  *   (не переданы — null, без «хвостов» прежнего источника), срок — см. mergeExpiry.
- * - accessDays — целое > 0 или null/не задан (бессрочно); иначе RangeError.
+ * - accessDays — целое > 0 или null/не задан (бессрочно); иначе RangeError. expiresAt — точный
+ *   конец срока вместо accessDays (в будущем или null).
  * Пишет enrollment.grant в audit_log, когда состояние изменилось.
  * source 'self' разрешён только при canSelfEnroll — иначе ошибка SELF_ENROLL_FORBIDDEN.
  */
 export async function enroll(input: EnrollInput, sql?: Sql): Promise<Enrollment> {
-  expiryFor(input.accessDays, now()); // RangeError до любых запросов
+  expiryOf(input, now()); // RangeError до любых запросов
   const run = async (s: Sql): Promise<Enrollment> => {
     // защита в глубину: self только там, где его разрешает canSelfEnroll (платный — никогда)
     if (input.source === 'self' && !(await canSelfEnroll(input.userId, { id: input.courseId }, s))) {
       throw new Error('SELF_ENROLL_FORBIDDEN');
     }
     const t = now();
-    const expiresAt = expiryFor(input.accessDays, t);
+    const expiresAt = expiryOf(input, t);
     const meta = {
       source: input.source,
       courseId: input.courseId,
@@ -216,6 +235,8 @@ export type RevokeFilter = {
 /**
  * Отозвать доступ (идемпотентно). Прогресс и сертификаты сохраняются.
  * opts — фильтр по источнику (см. RevokeFilter); без него отзывается любое действующее зачисление.
+ * Условие фильтра проверяется внутри UPDATE (без гонки «прочитал — отозвал»).
+ * Возвращает true, если доступ был отозван этим вызовом.
  */
 export async function revokeEnrollment(
   userId: string,
@@ -223,7 +244,7 @@ export async function revokeEnrollment(
   actorId: string | null,
   sql?: Sql,
   opts: RevokeFilter = {},
-): Promise<void> {
+): Promise<boolean> {
   const orderId = opts.orderId ?? null;
   const orgId = opts.orgId ?? null;
   const run = async (s: Sql) => {
@@ -243,6 +264,7 @@ export async function revokeEnrollment(
         ...(orgId ? { orgId } : {}),
       });
     }
+    return Boolean(row);
   };
   if (sql) return run(sql);
   return (await getDb()).tx(run);

@@ -21,23 +21,49 @@ function hasBlocks(raw: unknown): boolean {
   return Array.isArray(blocks) && blocks.length > 0;
 }
 
+/** Id блоков-тестов «сырого» документа (без полной проверки схемы). */
+function rawQuizIds(raw: unknown): string[] {
+  if (!hasBlocks(raw)) return [];
+  return (raw as { blocks: Array<{ type?: unknown; id?: unknown }> }).blocks
+    .filter((b) => b?.type === 'quiz' && typeof b.id === 'string')
+    .map((b) => b.id as string);
+}
+
 /**
- * Документ урока для локали: свой, если в нём есть блоки, иначе русский (fallback).
+ * Можно ли показывать перевод вместо ru: в нём есть блоки и все тесты русского документа
+ * (по id блока). Иначе слушатель в этой локали увидел бы урок без обязательного теста и
+ * засчитал бы его без проверки — поэтому такой перевод не показываем, берём ru.
+ */
+function translationUsable(content: unknown, locale: Locale): boolean {
+  if (locale === 'ru') return false;
+  const own = rawDoc(content, locale);
+  if (!hasBlocks(own)) return false;
+  const ids = new Set(rawQuizIds(own));
+  return rawQuizIds(rawDoc(content, 'ru')).every((id) => ids.has(id));
+}
+
+/**
+ * Документ урока для локали — единственная точка выбора (страница, тест, «Урок пройден»).
+ * Свой документ, если в нём есть блоки и все тесты русского (translationUsable) и он проходит
+ * схему; иначе русский (fallback). Тесты, обязательные для завершения, — тесты именно этого
+ * документа, поэтому выбор локали не позволяет обойти тест.
  * Документ проходит zod-схему: неизвестные поля отбрасываются, битый контент → null.
  */
 export function pickLessonDoc(content: unknown, locale: Locale): PickedDoc | null {
-  const docLocale: Locale = locale !== 'ru' && hasBlocks(rawDoc(content, locale)) ? locale : 'ru';
-  const raw = rawDoc(content, docLocale) ?? { v: 1, blocks: [] };
+  if (translationUsable(content, locale)) {
+    const own = lessonDocSchema.safeParse(rawDoc(content, locale));
+    if (own.success) return { doc: own.data, locale, fallback: false };
+  }
+  const raw = rawDoc(content, 'ru') ?? { v: 1, blocks: [] };
   const parsed = lessonDocSchema.safeParse(raw);
   if (!parsed.success) return null;
-  return { doc: parsed.data, locale: docLocale, fallback: docLocale !== locale };
+  return { doc: parsed.data, locale: 'ru', fallback: locale !== 'ru' };
 }
 
-/** Есть ли в уроке тест (для пометки в оглавлении) — без полной проверки схемы. */
+/** Есть ли в уроке тест (для пометки в оглавлении) — без полной проверки схемы, тот же выбор документа. */
 export function contentHasQuiz(content: unknown, locale: Locale): boolean {
-  const own = locale !== 'ru' && hasBlocks(rawDoc(content, locale)) ? rawDoc(content, locale) : rawDoc(content, 'ru');
-  if (!hasBlocks(own)) return false;
-  return (own as { blocks: Array<{ type?: unknown }> }).blocks.some((b) => b?.type === 'quiz');
+  const docLocale: Locale = translationUsable(content, locale) ? locale : 'ru';
+  return rawQuizIds(rawDoc(content, docLocale)).length > 0;
 }
 
 export function quizBlocksOf(doc: LessonDoc): QuizBlock[] {

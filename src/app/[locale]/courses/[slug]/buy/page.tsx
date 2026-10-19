@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
-import { getCurrentUser } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { t as tl } from '@/lib/content/l10n';
 import { Link, redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
@@ -24,7 +24,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 /**
  * Покупка курса (Фаза 0, D-007). Продаётся только опубликованный public-курс с активным
- * предложением и ценой > 0; иначе 404 или страница курса. Есть доступ — сразу к обучению.
+ * предложением и ценой > 0; иначе 404 или страница курса. Покупка — только после входа
+ * (D-020): гостя ведём на вход с возвратом сюда. Есть доступ — сразу к обучению.
  */
 export default async function BuyPage({ params }: Props) {
   const { locale: raw, slug } = await params;
@@ -37,16 +38,15 @@ export default async function BuyPage({ params }: Props) {
   if (sale.kind === 'not_for_sale') return redirect({ href: `/courses/${sale.slug}`, locale });
   const course = sale.course;
 
-  const user = await getCurrentUser();
-  if (user && (await buyState(user.id, course.id)) === 'has_access') {
+  const user = await requireUser(locale, `/${locale}/courses/${course.slug}/buy`);
+  if ((await buyState(user.id, course.id)) === 'has_access') {
     return redirect({ href: `/learn/${course.slug}`, locale });
   }
-  const openOrder = user ? await findOpenOrder(user.id, course.id) : null;
+  const openOrder = await findOpenOrder(user.id, course.id);
 
   const t = await getTranslations('checkout.buy');
   const a11y = await getTranslations('common.a11y');
   const title = tl(course.title, locale);
-  const buyPath = `/courses/${course.slug}/buy`;
 
   return (
     <>
@@ -83,21 +83,7 @@ export default async function BuyPage({ params }: Props) {
               <CheckoutForm
                 courseSlug={course.slug}
                 priceKzt={course.priceKzt}
-                user={user ? { name: user.name, email: user.email } : null}
-                signIn={
-                  user
-                    ? undefined
-                    : t.rich('signIn', {
-                        login: (chunks) => (
-                          <Link
-                            href={{ pathname: '/login', query: { next: `/${locale}${buyPath}` } }}
-                            className="text-link"
-                          >
-                            {chunks}
-                          </Link>
-                        ),
-                      })
-                }
+                user={{ name: user.name, email: user.email }}
               />
             </Card>
           </div>

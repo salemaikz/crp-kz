@@ -9,8 +9,11 @@ export type CourseCta =
   | { kind: 'continue' }
   /** Бесплатный public или internal своей организации → server action startCourseAction. */
   | { kind: 'start'; audience: 'free' | 'staff'; needsLogin: boolean }
-  /** Платный → /courses/[slug]/buy. renew — доступ был, но закончился. */
-  | { kind: 'buy'; renew: boolean }
+  /**
+   * Платный → /courses/[slug]/buy. renew — доступ был, но закончился. needsLogin — гость:
+   * покупка только после входа (D-020), ведём на вход с возвратом к покупке.
+   */
+  | { kind: 'buy'; renew: boolean; needsLogin: boolean }
   /** Платный, но продажи на паузе (offer.active = false). */
   | { kind: 'paused' }
   /** Курс не открывается этому зрителю (internal не для него, private). */
@@ -41,7 +44,7 @@ export function resolveCourseCta(input: CtaInput): CourseCta {
   if (input.visibility === 'public') {
     if (!paid) return { kind: 'start', audience: 'free', needsLogin };
     if (!input.offerActive) return { kind: 'paused' };
-    return { kind: 'buy', renew: input.access?.reason === 'expired' };
+    return { kind: 'buy', renew: input.access?.reason === 'expired', needsLogin };
   }
   return { kind: 'unavailable' };
 }

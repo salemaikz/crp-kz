@@ -37,18 +37,18 @@ export type Order = {
   companyName: string | null;
   companyBin: string | null;
   paymentMethod: PaymentMethod;
+  /** Срок доступа в днях, зафиксированный при оформлении (D-020); null — бессрочно. */
+  accessDays: number | null;
   paidAt: number | null;
   decidedBy: string | null;
   createdAt: number;
   updatedAt: number;
 };
 
-/** Заказ с данными курса — для страниц статуса, счёта и админки. */
+/** Заказ с данными курса — для страниц статуса, счёта и админки. Срок доступа — из заказа. */
 export type OrderView = Order & {
   courseSlug: string;
   courseTitle: L10nField;
-  /** Срок доступа из текущего предложения курса (null — бессрочно или предложения нет). */
-  accessDays: number | null;
 };
 
 /** Курс, который можно купить: опубликован, public, активное предложение с ценой > 0. */
@@ -65,7 +65,7 @@ export type BuyableCourse = {
   lessonsCount: number;
 };
 
-export type OrderErrorCode = 'not_for_sale' | 'has_access' | 'number_exhausted';
+export type OrderErrorCode = 'login_required' | 'not_for_sale' | 'has_access' | 'number_exhausted';
 
 /** Ожидаемая ошибка бизнес-логики заказа (не баг): показываем пользователю понятный текст. */
 export class OrderError extends Error {
@@ -77,5 +77,18 @@ export class OrderError extends Error {
 
 /** Результат действия администратора над заказом. */
 export type OrderDecision =
-  | { ok: true; order: Order; userId?: string; userCreated?: boolean; accessRevoked?: boolean }
-  | { ok: false; reason: 'not_found' | 'already_paid' | 'not_pending' | 'not_paid'; status?: OrderStatus };
+  | {
+      ok: true;
+      order: Order;
+      userId?: string;
+      /** Возврат: доступ по этому заказу закрыт. */
+      accessRevoked?: boolean;
+      /** Возврат: доступ держался на этом заказе и перешёл на другой оплаченный заказ (его номер). */
+      accessMovedTo?: string;
+    }
+  | {
+      ok: false;
+      /** no_user — у заказа нет аккаунта покупателя (аккаунт удалён): оплату не отмечаем. */
+      reason: 'not_found' | 'already_paid' | 'not_pending' | 'not_paid' | 'no_user';
+      status?: OrderStatus;
+    };

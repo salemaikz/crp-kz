@@ -13,7 +13,7 @@ import {
   toL10n,
   type Direction,
 } from './schemas';
-import { pickFreeSlug, slugify } from './slug';
+import { isReservedLessonSlug, pickFreeSlug, slugify } from './slug';
 
 export type LessonNode = {
   id: string;
@@ -67,7 +67,9 @@ async function lockModule(sql: Sql, moduleId: string) {
   return m;
 }
 
+/** Адрес урока занят другим уроком курса или зарезервирован страницей курса (certificate → certificate-2). */
 async function lessonSlugTaken(sql: Sql, courseId: string, slug: string, exceptId: string | null): Promise<boolean> {
+  if (isReservedLessonSlug(slug)) return true;
   const rows = await sql`
     SELECT 1 FROM lessons WHERE course_id = ${courseId} AND slug = ${slug}
       AND (${exceptId}::text IS NULL OR id <> ${exceptId})`;

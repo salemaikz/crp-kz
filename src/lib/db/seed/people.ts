@@ -68,9 +68,19 @@ const EMPLOYEES: SeedPerson[] = [
   },
 ];
 
+/**
+ * Покупатели ожидающих заказов сида. Заказ всегда привязан к аккаунту (D-020), поэтому у них
+ * есть аккаунты (не сотрудники ЦРП, без демо-кнопки входа).
+ */
+export const SEED_BUYERS = {
+  person: { email: 'saule.omarova@example.com', name: 'Сауле Омарова' },
+  company: { email: 'b.aliev@example.com', name: 'Бауыржан Алиев' },
+} as const;
+
 export const SEED_PEOPLE: SeedPerson[] = [
   ...DEMO_ACCOUNTS.map((a) => ({ email: a.email, name: a.name, ...DEMO_EXTRA[a.role] })),
   ...EMPLOYEES,
+  ...Object.values(SEED_BUYERS).map((b) => ({ ...b, role: 'learner' as const, member: null })),
 ];
 
 export const demoEmail = (role: DemoRole): string => DEMO_ACCOUNTS.find((a) => a.role === role)?.email as string;

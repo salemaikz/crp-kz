@@ -28,15 +28,17 @@ export function validateAnswers(block: QuizBlock, answers: readonly (readonly nu
 
 /**
  * Результат попытки: correct — число точно угаданных вопросов, scorePct = round(correct / total × 100),
- * passed = scorePct ≥ passScore. Пояснения возвращаются только здесь — после попытки.
+ * passed = scorePct ≥ passScore. Провал — только счёт (D-020): какие вопросы неверны и пояснения
+ * не возвращаются. Сдан — разбор по вопросам и пояснения (единственное место, где они уходят клиенту).
  */
 export function scoreQuiz(block: QuizBlock, answers: readonly (readonly number[])[]): QuizResult {
   const total = block.questions.length;
-  const perQuestion = block.questions.map((q, i) => {
-    const ok = sameSet(q.correct, answers[i] ?? []);
-    return q.explain ? { correct: ok, explain: q.explain } : { correct: ok };
-  });
-  const correct = perQuestion.filter((p) => p.correct).length;
+  const marks = block.questions.map((q, i) => sameSet(q.correct, answers[i] ?? []));
+  const correct = marks.filter(Boolean).length;
   const scorePct = total === 0 ? 0 : Math.round((correct / total) * 100);
-  return { correct, total, scorePct, passed: scorePct >= block.passScore, passScore: block.passScore, perQuestion };
+  if (scorePct < block.passScore) return { passed: false, correct, total, scorePct };
+  const perQuestion = block.questions.map((q, i) =>
+    q.explain ? { correct: marks[i] as boolean, explain: q.explain } : { correct: marks[i] as boolean },
+  );
+  return { passed: true, correct, total, scorePct, passScore: block.passScore, perQuestion };
 }

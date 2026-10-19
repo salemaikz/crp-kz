@@ -233,12 +233,12 @@ test('CTA: internal — «Начать» только члену организ�
   assert.deepEqual(resolveCourseCta({ ...input, priceKzt: 1000, isMember: true }), { kind: 'unavailable' });
 });
 
-test('CTA: платный → «Купить»; истёкший доступ → «Продлить»; продажи на паузе → без покупки', () => {
+test('CTA: платный → «Купить» (гостю — сначала вход, D-020); истёкший доступ → «Продлить»; пауза → без покупки', () => {
   const input = { visibility: 'public', priceKzt: 99000, offerActive: true, isMember: false, loggedIn: true } as const;
-  assert.deepEqual(resolveCourseCta({ ...input, access: NONE }), { kind: 'buy', renew: false });
-  assert.deepEqual(resolveCourseCta({ ...input, access: null, loggedIn: false }), { kind: 'buy', renew: false });
-  assert.deepEqual(resolveCourseCta({ ...input, access: { ok: false, reason: 'expired' } }), { kind: 'buy', renew: true });
-  assert.deepEqual(resolveCourseCta({ ...input, access: { ok: false, reason: 'revoked' } }), { kind: 'buy', renew: false });
+  assert.deepEqual(resolveCourseCta({ ...input, access: NONE }), { kind: 'buy', renew: false, needsLogin: false });
+  assert.deepEqual(resolveCourseCta({ ...input, access: null, loggedIn: false }), { kind: 'buy', renew: false, needsLogin: true });
+  assert.deepEqual(resolveCourseCta({ ...input, access: { ok: false, reason: 'expired' } }), { kind: 'buy', renew: true, needsLogin: false });
+  assert.deepEqual(resolveCourseCta({ ...input, access: { ok: false, reason: 'revoked' } }), { kind: 'buy', renew: false, needsLogin: false });
   assert.deepEqual(resolveCourseCta({ ...input, offerActive: false, access: NONE }), { kind: 'paused' });
 });
 
@@ -355,6 +355,6 @@ test('getViewerStates: истёкший доступ виден как expired, 
       loggedIn: true,
       access: s?.access ?? NONE,
     }),
-    { kind: 'buy', renew: true },
+    { kind: 'buy', renew: true, needsLogin: false },
   );
 });

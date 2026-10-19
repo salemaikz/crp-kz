@@ -95,3 +95,35 @@ test('целостность курса: модуль урока и курс п�
   await db.sql`DELETE FROM lessons WHERE id = 'l-ok'`;
   assert.equal((await db.sql`SELECT 1 FROM lesson_progress WHERE lesson_id = 'l-ok'`).length, 0);
 });
+
+test('orders.access_days: старые заказы заполняются сроком предложения ровно один раз', async () => {
+  const script = await readFile(path.join(migrationsDir(), '2026-10-19-orders-access-days.sql'), 'utf8');
+  // база до миграции: колонки нет, есть заказы на курсы со сроком и без предложения
+  await db.exec('ALTER TABLE orders DROP COLUMN access_days');
+  for (const id of ['ad1', 'ad2']) {
+    await db.sql`
+      INSERT INTO courses (id, slug, title, created_at, updated_at) VALUES (${id}, ${id}, ${db.json({ ru: id })}, 1, 1)`;
+  }
+  await db.sql`INSERT INTO course_offers (id, course_id, price_kzt, access_days, active, created_at)
+               VALUES ('of-ad1', 'ad1', 1000, 90, true, 1)`;
+  for (const [id, course] of [['ad-o1', 'ad1'], ['ad-o2', 'ad2']] as const) {
+    await db.sql`
+      INSERT INTO orders (id, number, course_id, amount_kzt, buyer_type, buyer_name, buyer_email, buyer_phone,
+                          payment_method, created_at, updated_at)
+      VALUES (${id}, ${id}, ${course}, 1000, 'person', 'B', 'b@x.kz', '+7', 'kaspi', 1, 1)`;
+  }
+  await db.exec(script);
+  const days = async () =>
+    Object.fromEntries(
+      (await db.sql<{ id: string; accessDays: number | null }>`
+        SELECT id, access_days FROM orders WHERE id IN ('ad-o1', 'ad-o2') ORDER BY id`).map((r) => [r.id, r.accessDays]),
+    );
+  assert.deepEqual(await days(), { 'ad-o1': 90, 'ad-o2': null });
+
+  // повторный прогон не перезаписывает снимок: «бессрочно» у старого заказа остаётся, даже если предложение изменилось
+  await db.sql`UPDATE orders SET access_days = NULL WHERE id = 'ad-o1'`;
+  await db.sql`UPDATE course_offers SET access_days = 30 WHERE id = 'of-ad1'`;
+  await db.exec(script);
+  assert.deepEqual(await days(), { 'ad-o1': null, 'ad-o2': null });
+  await assert.rejects(db.sql`UPDATE orders SET access_days = 0 WHERE id = 'ad-o1'`); // CHECK > 0
+});

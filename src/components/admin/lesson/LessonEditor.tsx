@@ -143,6 +143,11 @@ export function LessonEditor({ initial, save }: Props) {
         setServerIssues(res.issues ?? []);
         setServerFields(res.fields ?? {});
         jumpToFirstIssue(res.issues ?? []);
+        // тесты казахской версии не совпадают с русскими — показать казахскую вкладку
+        if (res.error === 'KZ_QUIZ_MISMATCH') {
+          setMode('edit');
+          setTab('kz');
+        }
       }
     });
   };

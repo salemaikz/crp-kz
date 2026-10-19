@@ -19,8 +19,9 @@ type Props = {
 };
 
 /**
- * Тест. Варианты приходят без правильных ответов; результат и пояснения — из server action
- * после отправки. Можно пересдавать без ограничений.
+ * Тест. Варианты приходят без правильных ответов; результат — из server action после отправки.
+ * Провал — только счёт (без разбора по вопросам, D-020); сдан — разбор и пояснения.
+ * Можно пересдавать без ограничений.
  */
 export function QuizBlock({ lessonId, locale, block, initial }: Props) {
   const t = useTranslations('learn');
@@ -96,7 +97,7 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
 
         <ol className="lrn-quiz__list">
           {block.questions.map((q, qi) => {
-            const r = result?.perQuestion[qi];
+            const r = result?.passed ? result.perQuestion[qi] : undefined;
             return (
               <li key={q.id} className="lrn-q" data-result={r ? (r.correct ? 'ok' : 'bad') : undefined}>
                 <fieldset disabled={locked}>
@@ -148,10 +149,10 @@ export function QuizBlock({ lessonId, locale, block, initial }: Props) {
               <Badge tone={result.passed ? 'success' : 'warning'} icon={result.passed ? <CircleCheck aria-hidden="true" /> : undefined}>
                 {result.passed ? t('quiz.passed') : t('quiz.failed')}
               </Badge>
-              <p>
+              <p data-testid="quiz-result-text">
                 {result.passed
                   ? t('quiz.passedText', { score: result.passScore })
-                  : t('quiz.failedText', { score: result.passScore })}
+                  : t('quiz.failedText', { correct: result.correct, total: result.total, score: block.passScore })}
               </p>
             </div>
             <Button variant={result.passed ? 'ghost' : 'primary'} size="sm" onClick={retry}>

@@ -125,7 +125,7 @@ lesson_progress(user_id, lesson_id → lessons ON DELETE CASCADE, course_id, com
       (lesson_id, course_id) → lessons(id, course_id) ON DELETE/UPDATE CASCADE)
 quiz_attempts(id, user_id, lesson_id, block_id TEXT, correct INT, total INT, passed BOOLEAN, created_at)
 certificates(id, number UNIQUE, user_id, course_id, holder_name, locale, issued_at, UNIQUE(user_id, course_id))
-orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT,
+orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT, access_days INT NULL,
       status TEXT CHECK(status IN ('pending','paid','cancelled','refunded')),
       buyer_type TEXT CHECK(buyer_type IN ('person','company')), buyer_name, buyer_email, buyer_phone,
       company_name NULL, company_bin NULL, payment_method TEXT CHECK(payment_method IN ('kaspi','invoice')),
@@ -135,7 +135,13 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 ```
 
 Целостность: модуль урока — из того же курса, `course_id` прогресса — курс
-урока (составные FK). `email_verified_at` — NULL, пока email не подтверждён
+урока (составные FK).
+
+Заказ (D-020): `user_id` — аккаунт из сессии при оформлении, NULL только если
+аккаунт потом удалили (такой заказ оплатить нельзя). `amount_kzt` и
+`access_days` (NULL — бессрочно) — снимок предложения курса при оформлении.
+Оплата берёт срок из заказа. Миграция `2026-10-19-orders-access-days.sql`
+один раз заполняет старые заказы сроком текущего предложения. `email_verified_at` — NULL, пока email не подтверждён
 (поток подтверждения — позже; у демо-пользователей сида заполнено).
 
 Индексы: `enrollments(user_id)`, `enrollments(course_id)`, `lessons(module_id, position)`,
@@ -167,8 +173,8 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 ```ts
 canAccessCourse(userId, courseId): Promise<{ ok: boolean; enrollment?: Enrollment; reason?: 'none'|'expired'|'revoked' }>
 canSelfEnroll(userId, course): Promise<boolean>   // опубликованный public без offer или с price_kzt = 0, или internal своей организации
-enroll(input: { userId, courseId, source, orgId?, orderId?, grantedBy?, dueAt?, accessDays? }, sql?): Promise<Enrollment>  // upsert
-revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): Promise<void>
+enroll(input: { userId, courseId, source, orgId?, orderId?, grantedBy?, dueAt?, accessDays?, expiresAt? }, sql?): Promise<Enrollment>  // upsert
+revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): Promise<boolean>  // true — отозвано этим вызовом
 ```
 
 - **Бесплатный курс** — у него нет offer или `price_kzt = 0`. Offer с ценой > 0
@@ -181,17 +187,36 @@ revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): 
   зачисления — max(текущий, новый), бессрочный длиннее любого (назначение или
   self не сокращают купленный доступ); у отозванного или истёкшего — новый.
   `accessDays` — целое > 0 или null (бессрочно), иначе `RangeError`.
+  `expiresAt` — точный конец срока вместо `accessDays` (в будущем или null).
+  Нужен для перехода доступа на другой оплаченный заказ при возврате: срок —
+  от оплаты того заказа, без продления.
 - **`revokeEnrollment` с фильтром:** `opts.orderId` — отзыв, только если доступ
   держится на этом заказе (возврат заказа A не отзывает доступ по заказу B);
   `opts.orgId` — только если `org_id` совпадает и `source` ∈
   (`assignment`, `self`, `seat`). Без `opts` — отзыв любого источника.
+  Условие фильтра — внутри `UPDATE`, без гонки «прочитал — отозвал».
+- **Возврат заказа:** `revokeEnrollment(…, { orderId })`. Если доступ снят, а у
+  пользователя есть другой оплаченный заказ на курс со сроком, который ещё идёт
+  (`paid_at + access_days`), доступ переходит на него: `enroll` с его
+  `orderId` и `expiresAt`.
 
 - Доступ к уроку — только при `ok`. Проверка — на сервере, в каждой странице
   урока и в каждом server action (прогресс, тест, сертификат).
 - Платный курс никогда не даёт `self`.
 - Неопубликованный урок, модуль или курс слушателю не виден.
 - Правильные ответы теста (`correct`, `explain`) никогда не уходят на клиент
-  до сдачи. `explain` показываем только после попытки.
+  до сдачи. Ответ на попытку (D-020): провал — только
+  `{ passed: false, correct, total, scorePct }`; сдан — плюс `passScore` и
+  разбор `perQuestion` с `explain`.
+- **Документ урока по локали** — одна функция `pickLessonDoc` для страницы,
+  теста и «Урок пройден». Казахский документ берётся, только если он непустой
+  и содержит все тесты русского (по id блока). Иначе показывается `ru` с
+  пометкой. Обязательные для завершения тесты — тесты выбранного документа.
+  Админка не сохраняет непустую kz-версию с другим набором тестов
+  (`KZ_QUIZ_MISMATCH`).
+- **Адреса уроков:** `RESERVED_LESSON_SLUGS` (`certificate`) заняты страницами
+  `/learn/[slug]/…`. Вручную их не задать, авто-адрес получает суффикс
+  (`certificate-2`).
 
 ## 5. Авторизация
 
@@ -217,15 +242,16 @@ isManagerOf(userId, orgId): Promise<boolean>
   32 символов секрет — ошибка и в демо.
 - **Демо-режим** — только явно (`DEMO_MODE=1` или локально без `DATABASE_URL`,
   см. §2). На регистрации в демо — предупреждение не вводить реальные ПДн.
-- **Email не подтверждается** (поток — позже, follow-up). Поэтому в проде
-  оформление заказа можно привязывать только к аккаунту с подтверждённым email
-  (`users.email_verified_at`) или через ссылку установки пароля, а не к
-  аккаунту, который любой мог зарегистрировать на чужой email.
+- **Email не подтверждается** (поток — позже, follow-up). Поэтому заказ
+  оформляет только вошедший пользователь, и заказ привязывается к аккаунту из
+  сессии. Пользователь по email не ищется, при оплате не создаётся (D-020).
+  Гостевая покупка — после подтверждения email и ссылки установки пароля (#25).
 - **Пароли.** bcryptjs, cost 10; минимум 8 символов.
 - **Защита.** Ограничение частоты входа и регистрации — в памяти процесса:
   на IP, на пару IP+email и на email независимо от IP (вход — 20 попыток за
   15 минут на аккаунт). IP клиента — только по доверенной схеме
-  (`src/lib/auth/clientIp.ts`): `TRUSTED_PROXY_HOPS=N` — N-е значение
+  (`src/lib/auth/clientIp.ts`, `deriveClientIp`; так же для лимитов заказов и
+  проверки сертификатов): `TRUSTED_PROXY_HOPS=N` — N-е значение
   X-Forwarded-For справа; при 0 (по умолчанию) X-Forwarded-For не читается,
   X-Real-IP — только при `TRUST_X_REAL_IP=1`. IP неизвестен — общее ведро
   «на IP», аккаунты защищает лимит на email.
@@ -250,9 +276,9 @@ isManagerOf(userId, orgId): Promise<boolean>
 |---|---|---|
 | `/[locale]` | все | **catalog** — лендинг академии |
 | `/[locale]/courses` | все | **catalog** — каталог |
-| `/[locale]/courses/[slug]` | все | **catalog** — страница курса. Кнопка зависит от состояния: «Купить» / «Начать бесплатно» / «Продолжить» |
-| `/[locale]/courses/[slug]/buy` | все | **checkout** — форма покупки |
-| `/[locale]/orders/[number]` | покупатель (по номеру и email) | **checkout** — статус заказа и инструкция по оплате |
+| `/[locale]/courses/[slug]` | все | **catalog** — страница курса. Кнопка зависит от состояния: «Купить» (гостю — «Войти и купить») / «Начать бесплатно» / «Продолжить» |
+| `/[locale]/courses/[slug]/buy` | вошедший (гость — на вход с `next`) | **checkout** — форма покупки |
+| `/[locale]/orders/[number]` | владелец заказа, держатель ключа из ссылки, admin | **checkout** — статус заказа и инструкция по оплате |
 | `/[locale]/orders/[number]/invoice` | покупатель | **checkout** — счёт на оплату (печатный HTML) |
 | `/[locale]/learn` | вошедший | **learn** — «Моё обучение» |
 | `/[locale]/learn/[slug]` | зачисленный | **learn** — программа с прогрессом |
@@ -321,7 +347,8 @@ light / sm / lg / block), `Card`, `Badge`, `Eyebrow`, `Section` (board / paper
 - демо-аккаунты из §5;
 - ещё 5 сотрудников ЦРП с разным прогрессом — для отчёта руководителя;
 - заказы: 1 оплаченный (`client@crp.demo` → «Целина»), 2 ожидающих
-  (физлицо Kaspi, юрлицо по счёту);
+  (физлицо Kaspi, юрлицо по счёту) — у их покупателей есть аккаунты сида
+  (`saule.omarova@example.com`, `b.aliev@example.com`, без демо-кнопки входа);
 - 1 выданный сертификат («Как проходит бизнес-разбор» у `client@crp.demo`).
 
 ## 10. Тесты и проверки
@@ -332,6 +359,8 @@ light / sm / lg / block), `Card`, `Badge`, `Eyebrow`, `Section` (board / paper
   - доступ (все пути §4);
   - идемпотентность `enroll`;
   - заказ → оплачено → зачисление, повтор → без дублей, возврат → отзыв;
+  - заказ только вошедшему, без поиска по email; срок — снимок в заказе;
+    возврат при другом оплаченном заказе;
   - сертификат только после 100 %;
   - изоляция руководителя по организации.
 - **E2E** — `tests/e2e/*.spec.ts`, Playwright на `next start` в демо-режиме

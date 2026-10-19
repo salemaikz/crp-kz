@@ -11,7 +11,7 @@ import { formatDate, formatPrice } from '@/lib/format';
 import { routing } from '@/lib/i18n/routing';
 import { canViewOrder } from '@/lib/orders/access-key';
 import { isOrderNumber } from '@/lib/orders/number';
-import { getOrderByNumber, orderEnrollment, userCanSignIn } from '@/lib/orders/queries';
+import { getOrderByNumber, orderEnrollment } from '@/lib/orders/queries';
 import {
   ClosedResult,
   DemoAdminHint,
@@ -70,19 +70,15 @@ export default async function OrderPage({ params, searchParams }: Props) {
 
   let paid: ReactNode = null;
   if (order.status === 'paid') {
-    const [enrollment, canSignIn] = await Promise.all([
-      orderEnrollment(order),
-      order.userId ? userCanSignIn(order.userId) : Promise.resolve(false),
-    ]);
+    const enrollment = await orderEnrollment(order);
     const state = enrollmentState(enrollment);
     paid = (
       <PaidResult
         order={order}
         locale={locale}
         access={state.ok ? { state: 'active', expiresAt: enrollment?.expiresAt ?? null } : { state: 'closed' }}
-        cta={isOwner ? 'learn' : canSignIn ? 'signin' : 'no_account'}
+        cta={isOwner ? 'learn' : 'signin'}
         signInHref={`/login?next=${encodeURIComponent(`/${locale}/learn/${order.courseSlug}`)}`}
-        demo={isDemo()}
       />
     );
   }

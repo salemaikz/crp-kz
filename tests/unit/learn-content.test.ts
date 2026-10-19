@@ -23,11 +23,29 @@ const ru: LessonContent['ru'] = {
 };
 const kzNoQuiz: LessonContent['ru'] = { v: 1, blocks: [{ id: 'h', type: 'heading', level: 2, text: 'Тақырып' }] };
 
-test('pickLessonDoc: своя локаль, если в документе есть блоки', () => {
-  const p = pickLessonDoc({ ru, kz: kzNoQuiz }, 'kz');
+const kzWithQuiz: LessonContent['ru'] = {
+  v: 1,
+  blocks: [{ id: 'h', type: 'heading', level: 2, text: 'Тақырып' }, { ...quiz, questions: quiz.questions.map((q) => ({ ...q, text: `${q.text} (қаз)` })) } as Block],
+};
+
+test('pickLessonDoc: своя локаль, если в документе есть блоки и все тесты ru', () => {
+  const p = pickLessonDoc({ ru, kz: kzWithQuiz }, 'kz');
   assert.equal(p?.locale, 'kz');
   assert.equal(p?.fallback, false);
-  assert.equal(p?.doc.blocks.length, 1);
+  assert.equal(p?.doc.blocks.length, 2);
+  // урок без тестов: достаточно непустого перевода
+  const plainRu: LessonContent['ru'] = { v: 1, blocks: [{ id: 't', type: 'text', markdown: 'Текст' }] };
+  assert.deepEqual(pickLessonDoc({ ru: plainRu, kz: kzNoQuiz }, 'kz')?.locale, 'kz');
+});
+
+test('pickLessonDoc: перевод без теста из ru (или с другим id теста) не показывается — ru с пометкой', () => {
+  const noQuiz = pickLessonDoc({ ru, kz: kzNoQuiz }, 'kz');
+  assert.deepEqual([noQuiz?.locale, noQuiz?.fallback, quizBlocksOf(noQuiz!.doc).length], ['ru', true, 1]);
+  const otherId = pickLessonDoc({ ru, kz: { v: 1, blocks: [{ ...quiz, id: 'other' } as Block] } }, 'kz');
+  assert.deepEqual([otherId?.locale, otherId?.fallback], ['ru', true]);
+  // битый перевод — тоже ru, а не «урок недоступен»
+  const broken = pickLessonDoc({ ru, kz: { v: 1, blocks: [{ id: 'quiz', type: 'quiz' }] } }, 'kz');
+  assert.deepEqual([broken?.locale, broken?.fallback], ['ru', true]);
 });
 
 test('pickLessonDoc: нет перевода или он пустой — запасной ru с пометкой', () => {
@@ -59,10 +77,13 @@ test('attemptKey: ru — id блока как есть, остальные — �
 
 test('quizBlocksOf и contentHasQuiz учитывают документ показываемой локали', () => {
   assert.equal(quizBlocksOf(ru).length, 1);
-  const content = { ru, kz: kzNoQuiz };
-  assert.equal(contentHasQuiz(content, 'ru'), true);
-  assert.equal(contentHasQuiz(content, 'kz'), false); // в kz-документе теста нет
+  assert.equal(contentHasQuiz({ ru, kz: kzWithQuiz }, 'ru'), true);
+  assert.equal(contentHasQuiz({ ru, kz: kzWithQuiz }, 'kz'), true);
+  assert.equal(contentHasQuiz({ ru, kz: kzNoQuiz }, 'kz'), true); // перевод без теста не показывается — ru с тестом
   assert.equal(contentHasQuiz({ ru }, 'kz'), true); // перевода нет — показывается ru
+  const plainRu: LessonContent['ru'] = { v: 1, blocks: [{ id: 't', type: 'text', markdown: 'Текст' }] };
+  assert.equal(contentHasQuiz({ ru: plainRu, kz: kzWithQuiz }, 'kz'), true); // в kz-документе тест есть
+  assert.equal(contentHasQuiz({ ru: plainRu, kz: kzNoQuiz }, 'kz'), false);
   assert.equal(contentHasQuiz(null, 'ru'), false);
 });
 

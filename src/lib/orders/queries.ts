@@ -90,10 +90,9 @@ export async function getOrderById(id: string, sql?: Sql): Promise<Order | null>
 export async function getOrderByNumber(number: string, sql?: Sql): Promise<OrderView | null> {
   const s = await q(sql);
   const [o] = await s<OrderView>`
-    SELECT o.*, c.slug AS course_slug, c.title AS course_title, f.access_days
+    SELECT o.*, c.slug AS course_slug, c.title AS course_title
     FROM orders o
     JOIN courses c ON c.id = o.course_id
-    LEFT JOIN course_offers f ON f.course_id = o.course_id
     WHERE o.number = ${number}`;
   return o ?? null;
 }
@@ -105,18 +104,16 @@ export async function listOrders(filter: OrderFilter = 'all', limit = 200, sql?:
   const s = await q(sql);
   if (filter === 'all') {
     return s<OrderView>`
-      SELECT o.*, c.slug AS course_slug, c.title AS course_title, f.access_days
+      SELECT o.*, c.slug AS course_slug, c.title AS course_title
       FROM orders o
       JOIN courses c ON c.id = o.course_id
-      LEFT JOIN course_offers f ON f.course_id = o.course_id
       ORDER BY o.created_at DESC, o.number DESC
       LIMIT ${limit}`;
   }
   return s<OrderView>`
-    SELECT o.*, c.slug AS course_slug, c.title AS course_title, f.access_days
+    SELECT o.*, c.slug AS course_slug, c.title AS course_title
     FROM orders o
     JOIN courses c ON c.id = o.course_id
-    LEFT JOIN course_offers f ON f.course_id = o.course_id
     WHERE o.status = ${filter}
     ORDER BY o.created_at DESC, o.number DESC
     LIMIT ${limit}`;
@@ -138,13 +135,6 @@ export async function orderStats(sql?: Sql): Promise<OrderStats> {
   };
   for (const r of rows) out[r.status] = { count: Number(r.n), amountKzt: Number(r.total) };
   return out;
-}
-
-/** Есть ли у пользователя пароль (может ли он войти) — для подсказки после оплаты. */
-export async function userCanSignIn(userId: string, sql?: Sql): Promise<boolean> {
-  const s = await q(sql);
-  const [u] = await s<{ has: boolean }>`SELECT password_hash IS NOT NULL AS has FROM users WHERE id = ${userId}`;
-  return u?.has ?? false;
 }
 
 /** Зачисление покупателя на курс заказа (для «доступ до …» на странице оплаченного заказа). */

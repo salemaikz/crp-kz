@@ -35,18 +35,18 @@ type Props = {
 const FILTERS: OrderFilter[] = ['all', ...ORDER_STATUSES];
 const NOTICES = [
   'paid',
-  'paid_new_user',
   'cancelled',
   'refunded',
   'refunded_no_access',
   'already_paid',
+  'no_user',
   'not_pending',
   'not_paid',
   'not_found',
   'invalid',
 ] as const;
 type Notice = (typeof NOTICES)[number];
-const SUCCESS: readonly Notice[] = ['paid', 'paid_new_user', 'cancelled', 'refunded', 'refunded_no_access'];
+const SUCCESS: readonly Notice[] = ['paid', 'cancelled', 'refunded', 'refunded_no_access'];
 
 export async function generateMetadata({ params }: Pick<Props, 'params'>): Promise<Metadata> {
   const { locale: raw } = await params;

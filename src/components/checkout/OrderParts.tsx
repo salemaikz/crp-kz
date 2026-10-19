@@ -161,14 +161,13 @@ export function InvoicePayment({ order, locale, invoiceHref }: WithOrder & { inv
 type PaidProps = WithOrder & {
   /** Действующий доступ: срок окончания (null — бессрочно) или closed. */
   access: { state: 'active'; expiresAt: number | null } | { state: 'closed' };
-  /** Как зритель может перейти к курсу. */
-  cta: 'learn' | 'signin' | 'no_account';
+  /** Как зритель может перейти к курсу: владелец — сразу, по ссылке с ключом — через вход. */
+  cta: 'learn' | 'signin';
   signInHref: string;
-  demo: boolean;
 };
 
-/** Итог оплаченного заказа: доступ и переход к обучению (или как войти, если аккаунт новый). */
-export function PaidResult({ order, locale, access, cta, signInHref, demo }: PaidProps) {
+/** Итог оплаченного заказа: доступ и переход к обучению (или вход в аккаунт заказа). */
+export function PaidResult({ order, locale, access, cta, signInHref }: PaidProps) {
   const t = useTranslations('checkout.order.paid');
   return (
     <Card large padding="lg" className="co-result" data-testid="order-paid">
@@ -193,13 +192,6 @@ export function PaidResult({ order, locale, access, cta, signInHref, demo }: Pai
         <Button href={signInHref} variant="primary" size="lg">
           {t('signInToLearn')}
         </Button>
-      )}
-      {cta === 'no_account' && (
-        <div className="co-demo">
-          <Eyebrow>{t('noAccountTitle')}</Eyebrow>
-          <p className="co-result__text">{t('noAccountText', { email: order.buyerEmail })}</p>
-          {demo && <p className="co-hint">{t('demoNote')}</p>}
-        </div>
       )}
     </Card>
   );

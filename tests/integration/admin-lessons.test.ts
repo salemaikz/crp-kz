@@ -9,6 +9,7 @@ import {
   updateLesson,
   type LessonSaveInput,
 } from '../../src/lib/admin';
+import { RESERVED_LESSON_SLUGS } from '../../src/lib/admin/slug';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 
 let db: TestDb;
@@ -178,6 +179,46 @@ test('slug урока: смена, занятость, пустой — преж
   }).catch((x: unknown) => x);
   assert.ok(e instanceof AdminError);
   assert.equal(e.code, 'SLUG_TAKEN');
+});
+
+test('казахская версия с тестами: те же id тестов, что в русской, иначе KZ_QUIZ_MISMATCH (D-020)', async () => {
+  const ru = [{ id: 't', type: 'text', markdown: 'Текст' }, goodQuiz];
+  const kzText = { id: 't', type: 'text', markdown: 'Мәтін' };
+  const before = JSON.stringify((await getLessonForEdit(admin, courseId, lessonId))?.content);
+  const mismatch = async (kz: unknown[]) => {
+    const e = await save({ content: { ru: { v: 1, blocks: ru }, kz: { v: 1, blocks: kz } } }).catch((x: unknown) => x);
+    assert.ok(e instanceof AdminError, String(e));
+    assert.equal(e.code, 'KZ_QUIZ_MISMATCH');
+    assert.equal(e.fields?.content, 'kzQuizMismatch');
+  };
+  await mismatch([kzText]); // перевод без теста — слушатель в kz обошёл бы тест
+  await mismatch([kzText, { ...goodQuiz, id: 'other-quiz' }]); // другой тест
+  await mismatch([kzText, goodQuiz, { ...goodQuiz, id: 'extra' }]); // лишний тест
+  // ничего из этого не записалось
+  assert.equal(JSON.stringify((await getLessonForEdit(admin, courseId, lessonId))?.content), before);
+
+  // тот же тест (копия из RU, тексты переведены) — сохраняется; пустая kz — тоже
+  const kzQuiz = { ...goodQuiz, questions: goodQuiz.questions.map((q) => ({ ...q, text: `${q.text} (қаз)` })) };
+  await save({ content: { ru: { v: 1, blocks: ru }, kz: { v: 1, blocks: [kzText, kzQuiz] } } });
+  assert.equal((await getLessonForEdit(admin, courseId, lessonId))?.content.kz?.blocks.length, 2);
+  await save({ content: { ru: { v: 1, blocks: ru }, kz: { v: 1, blocks: [] } } });
+  assert.equal((await getLessonForEdit(admin, courseId, lessonId))?.content.kz, undefined);
+});
+
+test('зарезервированный адрес урока: certificate нельзя задать вручную, авто-slug получает суффикс', async () => {
+  assert.deepEqual([...RESERVED_LESSON_SLUGS], ['certificate']);
+  const e = await fails(save({ slug: 'certificate' }));
+  assert.equal(e.fields?.slug, 'slugReserved');
+  const e2 = await fails(save({ slug: 'Certificate' }));
+  assert.equal(e2.fields?.slug, 'slugReserved');
+  assert.notEqual((await getLessonForEdit(admin, courseId, lessonId))?.slug, 'certificate');
+
+  const m = await addModule(admin, courseId, { titleRu: 'Итоги' });
+  const auto = await addLesson(admin, m.id, { titleRu: 'Certificate' });
+  assert.equal(auto.slug, 'certificate-2');
+  // похожие адреса не зарезервированы
+  const r = await save({ slug: 'certificate-review' });
+  assert.equal(r.slug, 'certificate-review');
 });
 
 test('статус published требует контента; урок из чужого курса не находится', async () => {

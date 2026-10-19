@@ -10,7 +10,7 @@ import { issueCertificate, normalizeCertificateNumber } from './certificates';
 import { LearnError } from './errors';
 import { completeLesson } from './progress';
 import { submitQuiz } from './quiz';
-import { clientIp } from './server';
+import { certFormAllowed } from './server';
 import type { ActionResult, CompleteData, QuizResult } from './types';
 
 const id = z.string().min(1).max(64);
@@ -28,8 +28,6 @@ const certificateInput = z.object({ courseId: id, locale });
 
 /** Не более 60 попыток тестов за 10 минут на пользователя. */
 const QUIZ_LIMIT = { limit: 60, windowMs: 10 * 60_000 } as const;
-/** Не более 30 проверок номера сертификата в минуту с одного адреса. */
-const LOOKUP_LIMIT = { limit: 30, windowMs: 60_000 } as const;
 
 async function run<T>(fn: (user: User) => Promise<T>): Promise<ActionResult<T>> {
   const user = await getCurrentUser();
@@ -43,7 +41,7 @@ async function run<T>(fn: (user: User) => Promise<T>): Promise<ActionResult<T>> 
   }
 }
 
-/** Сдать тест: { lessonId, blockId, answers: number[][], locale } → результат с пояснениями (только после попытки). */
+/** Сдать тест: { lessonId, blockId, answers: number[][], locale } → счёт; разбор и пояснения — только при сдаче (D-020). */
 export async function submitQuizAction(input: unknown): Promise<ActionResult<QuizResult>> {
   const parsed = quizInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'invalid' };
@@ -86,7 +84,7 @@ export async function lookupCertificateAction(formData: FormData): Promise<void>
   const raw = formData.get('number');
   const text = typeof raw === 'string' ? raw.trim().toUpperCase().slice(0, 40) : '';
   if (!text) redirect({ href: '/cert', locale: loc });
-  if (!rateLimit(`cert-lookup:${await clientIp()}`, LOOKUP_LIMIT.limit, LOOKUP_LIMIT.windowMs).ok) {
+  if (!(await certFormAllowed())) {
     redirect({ href: '/cert', locale: loc });
   }
   redirect({ href: `/cert/${encodeURIComponent(normalizeCertificateNumber(text) ?? text)}`, locale: loc });
