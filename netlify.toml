@@ -1,0 +1,10 @@
+# Демо-превью на Netlify (D-015, D-016, D-024): сборка Next.js, рантайм @netlify/plugin-nextjs.
+# Демо включает переменная окружения сайта DEMO_MODE=1 (в настройках Netlify, не здесь):
+# без неё production-сборка без DATABASE_URL не стартует (BUILD.md §2).
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Рантайм Next.js (SSR, server actions, маршруты). При выкладке загрузкой сам не подключается — объявлен явно.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
