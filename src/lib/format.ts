@@ -39,10 +39,12 @@ type DateOptions = {
   now?: number;
 };
 
+// Создаём один раз: конструктор Intl.DateTimeFormat дорогой, а formatDate зовут в каждой строке таблиц.
+const ALMATY_YEAR_FORMAT = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric' });
+
 /** Календарный год даты в часовом поясе Астаны. */
 function almatyYear(ms: number): number {
-  const part = new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE, year: 'numeric' })
-    .formatToParts(new Date(ms))
+  const part = ALMATY_YEAR_FORMAT.formatToParts(new Date(ms))
     .find((p) => p.type === 'year');
   return Number(part?.value);
 }

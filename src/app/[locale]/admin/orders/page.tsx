@@ -100,11 +100,16 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
     {
       key: 'buyer',
       header: t('admin.columns.buyer'),
+      width: '26%',
       cell: (o) => (
         <div className="co-buyer">
           <span className="co-buyer__name">{o.buyerName}</span>
-          <span className="co-buyer__line">{o.buyerEmail}</span>
-          <span className="co-buyer__line">{o.buyerPhone}</span>
+          <span className="co-buyer__line" title={o.buyerEmail}>
+            {o.buyerEmail}
+          </span>
+          <span className="co-buyer__line" title={o.buyerPhone}>
+            {o.buyerPhone}
+          </span>
           {o.buyerType === 'company' && o.companyName && (
             <span className="co-buyer__company">
               {o.companyName}
@@ -117,7 +122,7 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
     {
       key: 'course',
       header: t('admin.columns.course'),
-      width: '24%',
+      width: '22%',
       cell: (o) => <span className="co-course-cell">{tl(o.courseTitle, locale)}</span>,
     },
     {
@@ -126,7 +131,7 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
       align: 'right',
       cell: (o) => (
         <>
-          <strong className="num co-amount">{formatPrice(o.amountKzt, locale)}</strong>
+          <strong className="num">{formatPrice(o.amountKzt, locale)}</strong>
           <span className="co-cell-meta">{t(`common.method.${o.paymentMethod}`)}</span>
         </>
       ),

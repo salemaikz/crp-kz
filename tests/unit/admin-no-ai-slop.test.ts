@@ -47,12 +47,13 @@ test('тексты админки: нет лозунгов-заголовков 
   }
 });
 
-test('панель сохранения урока — не плавающая плашка: у низа окна, без скругления', () => {
+test('панель сохранения урока — не плавающая плашка: у низа окна, рамка со скруглением только сверху, без тени', () => {
   const css = read(join(ROOT, 'src/components/admin/admin.css'));
   const bar = /\.adm-savebar \{([^}]*)\}/.exec(css)?.[1] ?? '';
   assert.match(bar, /bottom:\s*0/);
-  assert.doesNotMatch(bar, /border-radius/);
-  assert.match(bar, /border-top/);
+  assert.match(bar, /border:\s*1px solid var\(--line\)/);
+  assert.match(bar, /border-radius:\s*20px 20px 0 0/);
+  assert.doesNotMatch(bar, /box-shadow|backdrop-filter|gradient/);
 });
 
 test('аннулированный счёт: плашка без поворота и прозрачности', () => {

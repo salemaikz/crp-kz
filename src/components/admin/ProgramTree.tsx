@@ -99,7 +99,8 @@ export async function ProgramTree({ courseId, modules, locale }: Props) {
                           <span>{t('lesson.blocks', { count: l.blocksRu })}</span>
                           {!l.hasKz && (
                             <span className="adm-lesson__lang" title={t('lesson.ruOnlyTitle')}>
-                              {t('lesson.ruOnly')}
+                              <span aria-hidden="true">{t('lesson.ruOnly')}</span>
+                              <span className="visually-hidden">{t('lesson.ruOnlyTitle')}</span>
                             </span>
                           )}
                         </div>

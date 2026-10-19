@@ -367,9 +367,7 @@ export function LessonEditor({ initial, save }: Props) {
             <span className="adm-savebar__warn">{t('save.issues', { count: issueCount })}</span>
           ) : dirty ? (
             <span className="adm-savebar__dirty">{t('save.dirty')}</span>
-          ) : (
-            <span className="adm-savebar__clean">{t('save.clean')}</span>
-          )}
+          ) : null /* открыт без правок — статус пуст: «сохранено» показываем только после сохранения в этой сессии */}
         </div>
         <div className="adm-savebar__actions">
           <Button type="button" onClick={onSave} disabled={pending} aria-busy={pending || undefined} data-testid="lesson-save">

@@ -47,15 +47,18 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
       key: 'title',
       header: t('table.title'),
       primary: true,
-      width: '34%',
+      width: '40%',
       cell: (c: CourseListItem) => (
         <div className="adm-cell-title">
           <Link href={`/admin/courses/${c.id}`} className="adm-cell-title__link">
             {l10n(c.title, locale)}
           </Link>
-          <span className="meta adm-trunc" title={`/${c.slug}`}>
-            /{c.slug}
-          </span>
+          <div className="adm-cell-title__meta">
+            <span className="meta adm-trunc" title={`/${c.slug}`}>
+              /{c.slug}
+            </span>
+            <Badge tone={c.visibility === 'public' ? 'info' : 'neutral'}>{tEnum(`visibility.${c.visibility}`)}</Badge>
+          </div>
         </div>
       ),
     },
@@ -67,11 +70,6 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
           {tEnum(`status.${c.status}`)}
         </Badge>
       ),
-    },
-    {
-      key: 'visibility',
-      header: t('table.visibility'),
-      cell: (c: CourseListItem) => <Badge tone={c.visibility === 'public' ? 'info' : 'neutral'}>{tEnum(`visibility.${c.visibility}`)}</Badge>,
     },
     {
       key: 'price',
@@ -95,7 +93,7 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
       key: 'updated',
       header: t('table.updated'),
       hideOnMobile: true,
-      cell: (c: CourseListItem) => <span className="meta adm-nowrap">{formatDate(c.updatedAt, locale, { short: true })}</span>,
+      cell: (c: CourseListItem) => <span className="meta adm-nowrap">{formatDate(c.updatedAt, locale, { short: true, omitCurrentYear: true })}</span>,
     },
   ];
 

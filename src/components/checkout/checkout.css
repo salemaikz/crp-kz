@@ -827,6 +827,7 @@
 }
 .co-buyer {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
   min-width: 190px;
   font-size: 14px;
@@ -839,7 +840,11 @@
 .co-buyer__line {
   color: var(--ink-3);
   font-size: 13.5px;
-  overflow-wrap: anywhere;
+  /* email не рвём посреди адреса: одна строка с многоточием, полное значение — в title */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .co-buyer__company {
   margin-top: 4px;
@@ -920,6 +925,10 @@
   }
   .co-orders .co-buyer {
     min-width: 150px;
+  }
+  /* ширину колонки «Покупатель» задаёт th (~26%), содержимое под неё обрезается многоточием */
+  .co-orders .table td:nth-child(2) {
+    max-width: 0;
   }
   .co-orders .co-course-cell {
     min-width: 110px;

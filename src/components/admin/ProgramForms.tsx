@@ -74,9 +74,7 @@ export function ModuleTitle({ action, titleRu, titleKz, label }: RenameProps) {
         </div>
         <p className="meta adm-module__num">{label}</p>
         {titleKz && (
-          <p className="meta" lang="kk">
-            {titleKz}
-          </p>
+          <p className="meta">{t.rich('moduleKz', { title: titleKz, kk: (chunks) => <span lang="kk">{chunks}</span> })}</p>
         )}
       </div>
     );
