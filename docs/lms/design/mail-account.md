@@ -457,7 +457,13 @@ export async function getMailView(actor: Actor, id: string): Promise<MailView | 
 - Карточка пользователя `admin/users/[id]`: кнопка «Отправить ссылку для смены пароля»
   (`PASSWORD_RESET`). Действие `sendResetLinkAction(locale, userId)` в `src/lib/admin/actions.ts`
   → `assertAdmin` → `requestPasswordReset({ email, locale: user.locale, actorId })` → audit
-  `admin.password_reset_sent`. Ответ — «Письмо поставлено в очередь». В демо ссылка видна в «Письмах».
+  `user.password_reset_link`. Ответ — «Письмо поставлено в очередь». В демо ссылка видна в «Письмах».
+  **Поправка после волны 2 (делает 4A):** `requestPasswordReset` молчит в нескольких случаях (сид в
+  демо, лимит, письмо не встало в очередь) — для публичной формы это защита от перечисления, для
+  админа это ложный успех. Поэтому он возвращает результат `{ sent: true } | { sent: false; reason:
+  'not_found' | 'demo_seed' | 'rate_limited' | 'unavailable' }`; публичное действие его по-прежнему
+  скрывает, а `sendResetLinkAction` пишет журнал и отвечает «поставлено в очередь» только при
+  `sent: true`, иначе — понятный админу текст.
 
 ### 3.7 Напоминания — `src/lib/reminders/` (зона mail)
 

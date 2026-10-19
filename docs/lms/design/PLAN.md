@@ -371,6 +371,9 @@ kz — с пометкой «требует проверки носителем�
 
 ### 2.9 npm-скрипты и зависимости (волна 0, отдельный коммит)
 
+После волны 2 добавлен прямой пин `fontkit` 2.0.4 (та же версия, что у `@react-pdf/font`): им
+меряется ширина текста в PDF сертификата.
+
 - `dependencies`: `"@react-pdf/renderer": "4.9.0"` (точный пин) + `package-lock.json`. В отчёт —
   `du -sh node_modules/@react-pdf node_modules/pdfkit node_modules/fontkit`.
 - `scripts`: `"db:status": "tsx scripts/db-migrate.ts --status"`, `"db:grants": "tsx scripts/db-grants.ts"`,
@@ -580,7 +583,11 @@ NEXT_TELEMETRY_DISABLED=
     `src/lib/auth/recovery.ts` в транзакции регистрации; `queued: false` регистрацию не откатывает.
     Страница покупки при неподтверждённом email показывает готовый `VerifyEmailNotice
     variant="checkout"` с `next` на форму покупки. `checkout.spec.ts` проходит подтверждение через
-    `openLatestMailLink` (helper исправлен и проверен в 2A). Сид-аккаунт в демо определяется по id
+    `openLatestMailLink` (helper исправлен и проверен в 2A). Плашку подтверждения из layout
+    (`VerifyEmailNotice` banner) не показывать там, где страница рисует свой вариант (`checkout`), и на
+    `/account/verify`; кнопка плашки передаёт `next` текущей страницы. Иначе на покупке две кнопки,
+    а нажатие на кнопку плашки гасит письмо с возвратом к покупке. В `checkout.spec` искать кнопку
+    внутри варианта checkout. Сид-аккаунт в демо определяется по id
     (`seedId`), а не по домену `@crp.demo`: регистрация на `@crp.demo` в тестах 3A — обычный аккаунт.
   - **3A.** Гонка на границе `effectiveFrom`: после `prepareConsents` сверить версии подготовленных
     согласий (`${CONSENT_DOC[kind]}@${version}`, без дублей, по порядку) с токеном формы; расхождение —
@@ -588,6 +595,14 @@ NEXT_TELEMETRY_DISABLED=
   - **4A.** Кнопка «Отправить ссылку для смены пароля» в карточке пользователя вызывает
     `requestPasswordReset({ email, locale: user.locale, actorId })` из `src/lib/auth/recovery.ts`
     (он сам пишет `user.password_reset_request` с `actorId`) и пишет `user.password_reset_link`.
+    **После волны 2:** `requestPasswordReset` сейчас возвращает `void` и молчит (сид в демо, лимит,
+    письмо не встало в очередь) — у админа это ложный успех и ложная запись журнала. 4A меняет его на
+    результат `{ sent: true } | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' |
+    'unavailable' }` (в список файлов 4A добавляется `src/lib/auth/recovery.ts`), публичное
+    `requestPasswordResetAction` по-прежнему всегда отвечает «отправлено», а `sendResetLinkAction`
+    пишет `user.password_reset_link` и отвечает `sendResetDone` только при `sent: true`, иначе —
+    отдельные тексты (новые ключи `admin.json` в этой задаче разрешены, исключение из К-6). Тест
+    admin-users: сид в демо и лимит → нет записи журнала и нет ответа «поставлено в очередь».
   - **4A.** «Письма»: страница за последней — зажать номер до последней страницы; «Писем пока нет»
     только при пустой очереди.
 

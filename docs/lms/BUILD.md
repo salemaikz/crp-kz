@@ -35,6 +35,7 @@
 | @playwright/test | 1.56.1 (браузер: `/opt/pw-browsers/chromium-1194`) |
 | tsx | 4.23.15 |
 | @react-pdf/renderer | 4.9.0 |
+| fontkit | 2.0.4 (прямой пин, та же версия, что у @react-pdf/font; замер текста в PDF) |
 
 Шрифты PDF — статические срезы в `assets/fonts/pdf/` (D-036), источник закреплён на коммите google/fonts.
 
