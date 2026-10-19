@@ -1,6 +1,6 @@
 'use client';
 // Простой предпросмотр блоков урока внутри админки. Свой, а не из зоны learn: показывает и ответы теста.
-import { CircleCheck, ExternalLink, Info, Play, TriangleAlert } from 'lucide-react';
+import { CircleCheck, Info, Play, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { Block } from '@/lib/content/types';
 import { Markdown } from './Markdown';
@@ -54,7 +54,7 @@ export function BlockPreview({ blocks }: { blocks: readonly Block[] }) {
                       rel="noopener noreferrer"
                       className="adm-video__link"
                     >
-                      {t('openYoutube')} <ExternalLink aria-hidden="true" />
+                      {t('openYoutube')}
                     </a>
                   )}
                 </div>

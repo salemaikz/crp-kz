@@ -1,34 +1,13 @@
 'use client';
 // Список блоков одной локали: карточки блоков с перестановкой и удалением, панель «Добавить блок».
 import { useState } from 'react';
-import {
-  ArrowDown,
-  ArrowUp,
-  CircleHelp,
-  Heading2,
-  Info,
-  Minus,
-  Play,
-  Plus,
-  Trash2,
-  Type,
-  type LucideIcon,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { ContentIssue } from '@/lib/admin/errors';
 import type { Block } from '@/lib/content/types';
 import { BLOCK_TYPES, moved, newBlock, type BlockType } from './blockModel';
 import { CalloutEditor, DividerEditor, HeadingEditor, QuizEditor, TextEditor, VideoEditor } from './BlockEditors';
 import { describeIssue, issuesForBlock } from './issueText';
-
-const ICONS: Record<BlockType, LucideIcon> = {
-  heading: Heading2,
-  text: Type,
-  video: Play,
-  callout: Info,
-  divider: Minus,
-  quiz: CircleHelp,
-};
 
 type Props = {
   locale: 'ru' | 'kz';
@@ -78,7 +57,6 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
       ) : (
         <ol className="adm-blocklist">
           {blocks.map((b, i) => {
-            const Icon = ICONS[b.type];
             const own = issuesForBlock(issues, locale, i);
             return (
               <li
@@ -90,7 +68,6 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
               >
                 <div className="adm-block__bar">
                   <span className="adm-block__type">
-                    <Icon aria-hidden="true" />
                     {t(`blocks.types.${b.type}`)}
                     <span className="adm-block__no">#{i + 1}</span>
                   </span>
@@ -154,16 +131,11 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
 
       <div className="adm-addblock" role="group" aria-label={t('blocks.add')}>
         <span className="adm-addblock__label">{t('blocks.add')}</span>
-        {BLOCK_TYPES.map((type) => {
-          const Icon = ICONS[type];
-          return (
-            <button key={type} type="button" className="chip" onClick={() => add(type)} data-testid={`add-block-${type}`}>
-              <Plus aria-hidden="true" className="adm-addblock__plus" />
-              <Icon aria-hidden="true" />
-              {t(`blocks.types.${type}`)}
-            </button>
-          );
-        })}
+        {BLOCK_TYPES.map((type) => (
+          <button key={type} type="button" className="chip" onClick={() => add(type)} data-testid={`add-block-${type}`}>
+            {t(`blocks.types.${type}`)}
+          </button>
+        ))}
       </div>
     </div>
   );

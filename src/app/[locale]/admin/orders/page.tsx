@@ -12,19 +12,9 @@ import { isOrderNumber } from '@/lib/orders/number';
 import { listOrders, orderStats, type OrderFilter } from '@/lib/orders/queries';
 import { ORDER_STATUSES, type OrderView } from '@/lib/orders/types';
 import { AdminOrderActions, OrderStatusBadge } from '@/components/checkout';
-import {
-  Alert,
-  Breadcrumbs,
-  Button,
-  Chip,
-  Container,
-  EmptyState,
-  PageHeader,
-  Section,
-  Stat,
-  Table,
-  type TableColumn,
-} from '@/components/ui';
+import { AdminPageHead } from '@/components/admin/AdminPageHead';
+import { AdminStat } from '@/components/admin/AdminStat';
+import { Alert, Button, Chip, EmptyState, Table, type TableColumn } from '@/components/ui';
 import '@/components/checkout/checkout.css';
 
 type Props = {
@@ -86,7 +76,6 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
 
   const [orders, stats] = await Promise.all([listOrders(filter), orderStats()]);
   const t = await getTranslations('checkout');
-  const a11y = await getTranslations('common.a11y');
   const total = Object.values(stats).reduce((n, s) => n + s.count, 0);
 
   const columns: TableColumn<OrderView>[] = [
@@ -177,66 +166,52 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <PageHeader
-        tone="paper"
-        breadcrumbs={
-          <Breadcrumbs
-            label={a11y('breadcrumbs')}
-            items={[{ label: t('admin.crumbs.admin'), href: '/admin' }, { label: t('admin.crumbs.orders') }]}
-          />
-        }
-        title={t('admin.title')}
-        lead={t('admin.lead')}
-        meta={
-          <div className="co-stats">
-            <Stat
-              tone={stats.pending.count > 0 ? 'red' : 'ink'}
-              value={stats.pending.count}
-              label={t('admin.stats.pending')}
-              hint={t('admin.stats.sum', { amount: formatPrice(stats.pending.amountKzt, locale) })}
-            />
-            <Stat
-              value={stats.paid.count}
-              label={t('admin.stats.paid')}
-              hint={t('admin.stats.sum', { amount: formatPrice(stats.paid.amountKzt, locale) })}
-            />
-            <Stat value={stats.refunded.count} label={t('admin.stats.refunded')} />
-          </div>
-        }
-      />
-      <Section spacing="tight">
-        <Container>
-          {notice && (
-            <Alert tone={SUCCESS.includes(notice) ? 'success' : 'warning'} className="co-notice">
-              {t(`admin.notice.${notice}`, { number: noticeNumber })}
-            </Alert>
-          )}
-          <nav className="co-filters" aria-label={t('admin.filters.label')}>
-            {FILTERS.map((f) => (
-              <Chip key={f} href={f === 'all' ? '/admin/orders' : `/admin/orders?status=${f}`} active={f === filter}>
-                {t(`admin.filters.${f}`)}
-                <span className="co-filters__count">{countOf(f)}</span>
-              </Chip>
-            ))}
-          </nav>
-          {orders.length === 0 ? (
-            <EmptyState
-              icon={<ReceiptText />}
-              title={t(`admin.empty.${filter}`)}
-              description={t('admin.empty.text')}
-              action={
-                filter !== 'all' ? (
-                  <Button href="/admin/orders" variant="ghost">
-                    {t('admin.empty.reset')}
-                  </Button>
-                ) : undefined
-              }
-            />
-          ) : (
-            <Table className="co-orders" columns={columns} rows={orders} rowKey={(o) => o.id} />
-          )}
-        </Container>
-      </Section>
+      <AdminPageHead title={t('admin.title')} lead={t('admin.lead')} />
+
+      <div className="adm-stats">
+        <AdminStat
+          tone={stats.pending.count > 0 ? 'red' : 'ink'}
+          value={stats.pending.count}
+          label={t('admin.stats.pending')}
+          hint={t('admin.stats.sum', { amount: formatPrice(stats.pending.amountKzt, locale) })}
+        />
+        <AdminStat
+          value={stats.paid.count}
+          label={t('admin.stats.paid')}
+          hint={t('admin.stats.sum', { amount: formatPrice(stats.paid.amountKzt, locale) })}
+        />
+        <AdminStat value={stats.refunded.count} label={t('admin.stats.refunded')} />
+      </div>
+
+      {notice && (
+        <Alert tone={SUCCESS.includes(notice) ? 'success' : 'warning'} className="co-notice">
+          {t(`admin.notice.${notice}`, { number: noticeNumber })}
+        </Alert>
+      )}
+      <nav className="co-filters" aria-label={t('admin.filters.label')}>
+        {FILTERS.map((f) => (
+          <Chip key={f} href={f === 'all' ? '/admin/orders' : `/admin/orders?status=${f}`} active={f === filter}>
+            {t(`admin.filters.${f}`)}
+            <span className="co-filters__count">{countOf(f)}</span>
+          </Chip>
+        ))}
+      </nav>
+      {orders.length === 0 ? (
+        <EmptyState
+          icon={<ReceiptText />}
+          title={t(`admin.empty.${filter}`)}
+          description={t('admin.empty.text')}
+          action={
+            filter !== 'all' ? (
+              <Button href="/admin/orders" variant="ghost">
+                {t('admin.empty.reset')}
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <Table className="co-orders" columns={columns} rows={orders} rowKey={(o) => o.id} />
+      )}
     </>
   );
 }

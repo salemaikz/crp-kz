@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { LessonEditor } from '@/components/admin/lesson/LessonEditor';
@@ -47,7 +46,6 @@ export default async function AdminLessonPage({ params }: Props) {
         title={l10n(lesson.title, locale)}
         actions={
           <Button href={`/admin/courses/${lesson.courseId}`} variant="ghost" size="sm">
-            <ArrowLeft aria-hidden="true" />
             {t('back')}
           </Button>
         }

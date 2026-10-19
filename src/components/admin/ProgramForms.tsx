@@ -1,7 +1,7 @@
 'use client';
 // Клиентские формы программы курса: добавить модуль, переименовать модуль, добавить урок.
 import { useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, Input, SubmitButton } from '@/components/ui';
 import type { ActionResult } from '@/lib/admin/result';
@@ -35,7 +35,6 @@ export function AddModuleForm({ action }: { action: Action }) {
           <Input name="titleKz" maxLength={200} lang="kk" />
         </Field>
         <SubmitButton size="md" variant="dark" pending={form.pending} pendingText={t('pending')}>
-          <Plus aria-hidden="true" />
           {t('submit')}
         </SubmitButton>
       </div>
@@ -47,12 +46,12 @@ type RenameProps = {
   action: Action;
   titleRu: string;
   titleKz: string;
-  /** Метка над заголовком: «Модуль 2». */
-  eyebrow: string;
+  /** Строка под названием: «Модуль 2 · 3 урока». */
+  label: string;
 };
 
 /** Название модуля с карандашом: по клику заголовок превращается в форму переименования. */
-export function ModuleTitle({ action, titleRu, titleKz, eyebrow }: RenameProps) {
+export function ModuleTitle({ action, titleRu, titleKz, label }: RenameProps) {
   const t = useTranslations('admin.program');
   const [editing, setEditing] = useState(false);
   const form = useActionForm(action, { onSuccess: () => setEditing(false) });
@@ -61,7 +60,6 @@ export function ModuleTitle({ action, titleRu, titleKz, eyebrow }: RenameProps) 
   if (!editing) {
     return (
       <div className="adm-module__title">
-        <span className="adm-module__num">{eyebrow}</span>
         <div className="adm-module__name">
           <h3>{titleRu}</h3>
           <button
@@ -74,6 +72,7 @@ export function ModuleTitle({ action, titleRu, titleKz, eyebrow }: RenameProps) 
             <Pencil aria-hidden="true" />
           </button>
         </div>
+        <p className="meta adm-module__num">{label}</p>
         {titleKz && (
           <p className="meta" lang="kk">
             {titleKz}
@@ -84,7 +83,7 @@ export function ModuleTitle({ action, titleRu, titleKz, eyebrow }: RenameProps) 
   }
   return (
     <form onSubmit={form.onSubmit} noValidate className="adm-rename">
-      <span className="adm-module__num">{eyebrow}</span>
+      <p className="meta adm-module__num">{label}</p>
       {form.error && <ErrorAlert code={form.error} />}
       <div className="adm-rename__row">
         <Field label={t('renameForm.titleRu')} required error={err('titleRu')}>
@@ -121,7 +120,6 @@ export function AddLessonForm({ action, moduleId }: { action: Action; moduleId: 
   if (!open) {
     return (
       <button type="button" className="adm-addrow" onClick={() => setOpen(true)} data-testid={`add-lesson-${moduleId}`}>
-        <Plus aria-hidden="true" />
         {t('toggle')}
       </button>
     );

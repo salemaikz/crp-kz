@@ -3,7 +3,6 @@ import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { AdminNav } from '@/components/admin/AdminNav';
 import '@/components/admin/admin.css';
-import { Avatar, Badge } from '@/components/ui';
 import { countPendingOrders } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/auth';
 import { routing } from '@/lib/i18n/routing';
@@ -30,11 +29,8 @@ export default async function AdminLayout({ children, params }: Props) {
       <aside className="adm-side">
         <div className="adm-side__head">
           <div className="adm-side__user">
-            <Avatar name={user.name || user.email} size="sm" />
-            <div>
-              <strong>{user.name || user.email}</strong>
-              <Badge tone="red">{roleLabel}</Badge>
-            </div>
+            <strong>{user.name || user.email}</strong>
+            <span className="meta">{roleLabel}</span>
           </div>
         </div>
         <AdminNav pendingOrders={pending} />

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Badge, Card, EmptyState } from '@/components/ui';
 import {
@@ -40,7 +40,7 @@ export async function ProgramTree({ courseId, modules, locale }: Props) {
                 action={renameModuleAction.bind(null, locale, m.id)}
                 titleRu={m.title.ru}
                 titleKz={m.title.kz ?? ''}
-                eyebrow={`${t('module', { n: mi + 1 })} · ${t('lessonsCount', { count: m.lessons.length })}`}
+                label={`${t('module', { n: mi + 1 })} · ${t('lessonsCount', { count: m.lessons.length })}`}
               />
               <div className="adm-module__tools">
                 <ActionButton
@@ -98,7 +98,6 @@ export async function ProgramTree({ courseId, modules, locale }: Props) {
                           variant="text"
                           action={setLessonStatusAction.bind(null, locale, l.id, published ? 'draft' : 'published')}
                           label={published ? t('lesson.unpublish') : t('lesson.publish')}
-                          icon={published ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
                           tone={published ? 'default' : 'primary'}
                           testId={published ? 'lesson-unpublish' : 'lesson-publish'}
                         />

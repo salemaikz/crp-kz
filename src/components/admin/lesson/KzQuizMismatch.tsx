@@ -1,6 +1,5 @@
 'use client';
 // Тесты казахской версии не совпадают с русской: что не так и исправление в один клик.
-import { ListPlus, ListX } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@/components/ui';
 import type { KzQuizDiff } from '@/lib/admin/kzQuizzes';
@@ -23,7 +22,6 @@ export function KzQuizMismatch({ diff, onAddMissing, onRemoveExtra, tone, testId
         <div className="adm-kzquiz__row">
           <p>{t('extra', { count: diff.extra.length, ids: list(diff.extra) })}</p>
           <Button type="button" size="sm" variant="ghost" onClick={onRemoveExtra} data-testid={`${testId}-remove-extra`}>
-            <ListX aria-hidden="true" />
             {t('removeExtra')}
           </Button>
         </div>
@@ -32,7 +30,6 @@ export function KzQuizMismatch({ diff, onAddMissing, onRemoveExtra, tone, testId
         <div className="adm-kzquiz__row">
           <p>{t('missing', { count: diff.missing.length, ids: list(diff.missing) })}</p>
           <Button type="button" size="sm" variant="ghost" onClick={onAddMissing} data-testid={`${testId}-add-missing`}>
-            <ListPlus aria-hidden="true" />
             {t('addMissing')}
           </Button>
         </div>

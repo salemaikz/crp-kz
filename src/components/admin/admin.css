@@ -1,7 +1,8 @@
 /*
  * Админка: оболочка с меню, шапка страницы, программа курса, редактор блоков, лента действий.
- * Классы adm-*; токены и базовые компоненты — из дизайн-системы (src/styles). Файл вне слоёв:
- * он нужен только страницам /admin и сильнее слоёв Tailwind, где это требуется (.container и др.).
+ * Рабочий инструмент: плотно и спокойно, плоские рамки 1px --line, без теней, градиентов и значков-украшений
+ * (BRAND.md, «Без ИИ-шума»). Классы adm-*; токены и базовые компоненты — из дизайн-системы (src/styles).
+ * Файл вне слоёв: он нужен только страницам /admin и сильнее слоёв Tailwind, где это требуется (.container и др.).
  */
 
 /* ---------- Оболочка ---------- */
@@ -49,7 +50,6 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--paper);
-    box-shadow: none;
   }
   .adm-side__head {
     display: grid;
@@ -58,15 +58,13 @@
   }
 }
 .adm-side__user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  gap: 2px;
 }
 .adm-side__user strong {
-  display: block;
-  margin-bottom: 2px;
   font-size: 15px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 .adm-nav ul {
   display: flex;
@@ -98,11 +96,6 @@
     background-color 0.15s ease,
     border-color 0.15s ease,
     color 0.15s ease;
-}
-.adm-nav__link svg {
-  flex: none;
-  width: 18px;
-  height: 18px;
 }
 .adm-nav__link:hover {
   border-color: var(--ink);
@@ -145,34 +138,15 @@
   .adm-nav__link[aria-current='page'] {
     background: var(--ink);
   }
-  .adm-nav__link[aria-current='page'] svg {
-    color: var(--red-on-night);
-  }
   .adm-nav__badge {
     margin-left: auto;
   }
 }
 
-/* Чужие страницы внутри оболочки (например, заказы): общие контейнеры не удваивают отступы */
-.adm-main .container {
-  max-width: none;
-  padding-inline: 0;
-}
-.adm-main .section {
-  padding-block: 0;
-}
-.adm-main .page-header {
-  padding-block: 28px;
-  border-radius: var(--radius-lg);
-}
-.adm-main .page-header .container {
-  padding-inline: clamp(20px, 3vw, 32px);
-}
-
 /* ---------- Шапка страницы ---------- */
 .adm-head {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 .adm-head__row {
   display: flex;
@@ -183,17 +157,17 @@
 .adm-head__copy {
   display: grid;
   flex: 1 1 320px;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
 }
 .adm-head__title {
-  font-size: clamp(28px, 3vw, 40px);
+  font-size: clamp(26px, 2.8vw, 34px);
   overflow-wrap: anywhere;
 }
 .adm-head__lead {
   max-width: 62ch;
   color: var(--ink-2);
-  font-size: 17px;
+  font-size: 16px;
 }
 .adm-head__actions {
   display: flex;
@@ -210,7 +184,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
+  gap: 8px 16px;
+  font-size: 14px;
 }
 
 /* ---------- Карточки, формы, сетки ---------- */
@@ -228,14 +203,6 @@
 }
 .adm-nowrap {
   white-space: nowrap;
-}
-.adm-card__head h2 svg {
-  display: inline-block;
-  width: 0.95em;
-  height: 0.95em;
-  margin-right: 4px;
-  vertical-align: -0.1em;
-  color: var(--red);
 }
 .adm-form {
   display: grid;
@@ -313,10 +280,9 @@
   justify-content: space-between;
   gap: 12px 20px;
   padding: 12px 14px 12px 20px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 20px;
   background: var(--paper);
-  box-shadow: var(--shadow-lg);
 }
 .adm-savebar__status {
   flex: 1 1 240px;
@@ -422,10 +388,6 @@
   font-weight: 600;
   cursor: pointer;
 }
-.adm-linkbtn svg {
-  width: 16px;
-  height: 16px;
-}
 .adm-linkbtn:hover:not(:disabled) {
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -450,11 +412,6 @@
     border-color 0.15s ease,
     color 0.15s ease;
 }
-.adm-addrow svg {
-  width: 16px;
-  height: 16px;
-  color: var(--red);
-}
 .adm-addrow:hover:not(:disabled) {
   border-color: var(--ink);
   color: var(--ink);
@@ -477,7 +434,6 @@
 .adm-seg__item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   min-height: 38px;
   padding: 6px 14px;
   border: 0;
@@ -487,10 +443,6 @@
   font-size: 14.5px;
   font-weight: 600;
   cursor: pointer;
-}
-.adm-seg__item svg {
-  width: 16px;
-  height: 16px;
 }
 .adm-seg__item[aria-checked='true'] {
   background: var(--ink);
@@ -628,48 +580,28 @@ a.adm-person:hover strong {
   }
 }
 
-/* ---------- Сводка ---------- */
+/* ---------- Сводка и заказы: счётчики и журнал ---------- */
 .adm-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
+/* плоская ячейка: рамка 1px --line, без тени; у ссылки при наведении темнеет рамка */
 .adm-stat {
   display: grid;
   align-content: start;
-  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
   color: inherit;
   text-decoration: none;
 }
-.adm-stat__icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--board);
-  color: var(--ink-2);
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+.adm-stat--link {
+  transition: border-color 0.15s ease;
 }
-.adm-stat__icon svg {
-  width: 20px;
-  height: 20px;
-}
-.adm-stat--link:hover .adm-stat__icon {
-  background: var(--red-tint);
-  color: var(--red);
-}
-.adm-dash {
-  display: grid;
-  gap: 20px;
-}
-@media (min-width: 1100px) {
-  .adm-dash {
-    grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
-    align-items: start;
-  }
+.adm-stat--link:hover {
+  border-color: var(--ink);
 }
 .adm-feed {
   display: grid;
@@ -679,10 +611,10 @@ a.adm-person:hover strong {
 }
 .adm-feed__item {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 4px 14px;
-  padding: 14px 0;
+  gap: 4px 16px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--line);
 }
 .adm-feed__item:first-child {
@@ -691,19 +623,6 @@ a.adm-person:hover strong {
 .adm-feed__item:last-child {
   padding-bottom: 0;
   border-bottom: 0;
-}
-.adm-feed__icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--board);
-  color: var(--ink-2);
-}
-.adm-feed__icon svg {
-  width: 18px;
-  height: 18px;
 }
 .adm-feed__text {
   font-weight: 600;
@@ -719,47 +638,8 @@ a.adm-person:hover strong {
 }
 @media (max-width: 560px) {
   .adm-feed__item {
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
-  .adm-feed__time {
-    grid-column: 2;
-  }
-}
-.adm-quick {
-  display: grid;
-  gap: 4px;
-}
-.adm-quick .h3 {
-  color: #fff;
-}
-.adm-quick ul {
-  display: grid;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.adm-quick__link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid rgb(255 255 255 / 12%);
-  color: #fff;
-  font-weight: 600;
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-.adm-quick li:last-child .adm-quick__link {
-  border-bottom: 0;
-}
-.adm-quick__link:hover {
-  color: var(--red-on-night);
-}
-.adm-quick__link svg {
-  width: 18px;
-  height: 18px;
-  flex: none;
 }
 
 /* ---------- Программа курса ---------- */
@@ -776,9 +656,8 @@ a.adm-person:hover strong {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px 20px;
-  padding: 20px 22px 16px;
+  padding: 18px 22px 14px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, #fafaf8, #fff);
 }
 .adm-module__title {
   display: grid;
@@ -786,12 +665,9 @@ a.adm-person:hover strong {
   gap: 4px;
   min-width: 0;
 }
+/* «Модуль 2 · 3 урока» — обычная строка мелким текстом под названием */
 .adm-module__num {
-  color: var(--ink-3);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  margin: 0;
 }
 .adm-module__name {
   display: flex;
@@ -812,7 +688,7 @@ a.adm-person:hover strong {
 }
 .adm-module__foot {
   padding: 14px 18px 18px;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
 }
 .adm-lessons {
   margin: 0;
@@ -936,9 +812,9 @@ a.adm-person:hover strong {
   justify-content: space-between;
   gap: 10px 16px;
   padding: 12px 14px;
-  border: 1px dashed var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-kzbar p {
   max-width: 60ch;
@@ -994,7 +870,7 @@ a.adm-person:hover strong {
 }
 .adm-block--invalid {
   border-color: var(--error);
-  box-shadow: 0 0 0 3px rgb(179 21 27 / 10%);
+  outline: 3px solid rgb(179 21 27 / 10%);
 }
 .adm-block__bar {
   display: flex;
@@ -1003,7 +879,7 @@ a.adm-person:hover strong {
   gap: 10px;
   padding: 8px 10px 8px 16px;
   border-bottom: 1px solid var(--line);
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-block__type {
   display: inline-flex;
@@ -1011,11 +887,6 @@ a.adm-person:hover strong {
   gap: 8px;
   font-size: 14.5px;
   font-weight: 700;
-}
-.adm-block__type svg {
-  width: 18px;
-  height: 18px;
-  color: var(--red);
 }
 .adm-block__no {
   color: var(--ink-3);
@@ -1049,16 +920,6 @@ a.adm-person:hover strong {
   margin-right: 4px;
   color: var(--ink-2);
   font-weight: 600;
-}
-.adm-addblock .chip svg {
-  width: 16px;
-  height: 16px;
-}
-.adm-addblock .chip .adm-addblock__plus {
-  color: var(--red);
-}
-.adm-addblock .chip:hover .adm-addblock__plus {
-  color: var(--red-ink);
 }
 .adm-row {
   display: grid;
@@ -1115,7 +976,7 @@ a.adm-person:hover strong {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-divider-note {
   color: var(--ink-3);
@@ -1134,7 +995,7 @@ a.adm-person:hover strong {
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-question__bar {
   display: flex;
@@ -1267,7 +1128,7 @@ a.adm-person:hover strong {
   aspect-ratio: 16 / 9;
   padding: 16px;
   border-radius: 16px;
-  background: var(--hero-bg);
+  background: var(--night);
   color: #fff;
   text-align: center;
 }
@@ -1279,15 +1140,10 @@ a.adm-person:hover strong {
 .adm-video__link {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   color: var(--on-night);
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-.adm-video__link svg {
-  width: 14px;
-  height: 14px;
 }
 .adm-video figcaption {
   color: var(--ink-3);
@@ -1297,7 +1153,7 @@ a.adm-person:hover strong {
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-quiz-preview__title {
   margin-bottom: 12px;
@@ -1430,7 +1286,7 @@ a.adm-person:hover strong {
   text-align: left;
 }
 .adm-md th {
-  background: #fafaf8;
+  background: var(--board);
 }
 .adm-md hr {
   border: 0;
@@ -1449,9 +1305,7 @@ a.adm-person:hover strong {
 .adm-skeleton__bar {
   height: 18px;
   border-radius: 10px;
-  background: linear-gradient(90deg, #ebece7, #f7f8f5, #ebece7);
-  background-size: 200% 100%;
-  animation: adm-shimmer 1.4s linear infinite;
+  background: var(--line);
 }
 .adm-skeleton__bar--title {
   width: min(420px, 70%);
@@ -1461,13 +1315,14 @@ a.adm-person:hover strong {
   height: 150px;
   border-radius: var(--radius);
 }
-@keyframes adm-shimmer {
-  to {
-    background-position: -200% 0;
+/* мягкое мигание — только если движение не отключено в системе */
+@media (prefers-reduced-motion: no-preference) {
+  .adm-skeleton__bar {
+    animation: adm-pulse 1.4s ease-in-out infinite;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .adm-skeleton__bar {
-    animation: none;
+@keyframes adm-pulse {
+  50% {
+    opacity: 0.5;
   }
 }

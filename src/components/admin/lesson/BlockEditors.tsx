@@ -1,7 +1,7 @@
 'use client';
 // Редакторы блоков по типам: заголовок, текст (Markdown + предпросмотр), видео, выноска, тест.
 import { useId, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui';
 import type {
@@ -283,7 +283,7 @@ function QuestionEditor({
         ))}
         <div className="adm-options__foot">
           <button type="button" className="adm-linkbtn" onClick={addOption} disabled={q.options.length >= LIMITS.optionsMax}>
-            <Plus aria-hidden="true" /> {t('addOption')}
+            {t('addOption')}
           </button>
           {q.correct.length === 0 && <span className="adm-options__warn">{t('noCorrect')}</span>}
         </div>
@@ -353,7 +353,7 @@ export function QuizEditor({ block, onChange, autoFocus }: EditorProps<QuizBlock
           onClick={() => onChange({ ...block, questions: [...block.questions, newQuestion()] })}
           disabled={block.questions.length >= LIMITS.questionsMax}
         >
-          <Plus aria-hidden="true" /> {t('addQuestion')}
+          {t('addQuestion')}
         </button>
       </div>
     </div>

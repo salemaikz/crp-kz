@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Building2, KeyRound, ShieldCheck } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/admin/ActionButton';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
@@ -135,7 +135,7 @@ export default async function AdminUserPage({ params }: Props) {
         <Card as="section" padding="lg" aria-labelledby="u-role">
           <header className="adm-card__head">
             <h2 id="u-role" className="h3">
-              <ShieldCheck aria-hidden="true" /> {t('role.title')}
+              {t('role.title')}
             </h2>
             <p className="muted">{t(`role.hint.${user.role}`)}</p>
           </header>
@@ -145,7 +145,7 @@ export default async function AdminUserPage({ params }: Props) {
         <Card as="section" padding="lg" aria-labelledby="u-orgs">
           <header className="adm-card__head">
             <h2 id="u-orgs" className="h3">
-              <Building2 aria-hidden="true" /> {t('orgs.title')}
+              {t('orgs.title')}
             </h2>
           </header>
           {memberships.length === 0 ? (
@@ -169,7 +169,7 @@ export default async function AdminUserPage({ params }: Props) {
       <section aria-labelledby="u-enr" className="adm-section">
         <header className="adm-card__head">
           <h2 id="u-enr" className="h3">
-            <KeyRound aria-hidden="true" /> {t('enrollments.title')}
+            {t('enrollments.title')}
           </h2>
         </header>
         {enrollments.length === 0 ? (

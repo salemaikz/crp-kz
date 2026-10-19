@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { GraduationCap, Plus, Search } from 'lucide-react';
+import { GraduationCap, Search } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { Badge, Button, Chip, EmptyState, Input, Price, Table } from '@/components/ui';
@@ -104,7 +104,6 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
         lead={t('lead')}
         actions={
           <Button href="/admin/courses/new" variant="primary" data-testid="create-course">
-            <Plus aria-hidden="true" />
             {t('create')}
           </Button>
         }
@@ -146,7 +145,6 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
               </Button>
             ) : (
               <Button href="/admin/courses/new" variant="primary">
-                <Plus aria-hidden="true" />
                 {t('create')}
               </Button>
             )

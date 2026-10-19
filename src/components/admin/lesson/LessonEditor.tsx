@@ -1,7 +1,7 @@
 'use client';
 // Редактор урока: метаданные + контент ru/kz (блоки), живая проверка по схеме, сохранение через server action.
 import { useEffect, useMemo, useState, useTransition } from 'react';
-import { Check, Copy, Eye, ListPlus, Pencil } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, Input, Select, Tabs, type TabItem } from '@/components/ui';
 import { toContentIssues } from '@/lib/admin/contentIssues';
@@ -188,7 +188,6 @@ export function LessonEditor({ initial, save }: Props) {
             <p className="muted">{t('content.kzHint')}</p>
             <div className="adm-kzbar__actions">
               <Button type="button" size="sm" variant="ghost" onClick={copyFromRu} disabled={ru.length === 0} data-testid="copy-from-ru">
-                <Copy aria-hidden="true" />
                 {t('content.copyFromRu')}
               </Button>
               <Button
@@ -199,7 +198,6 @@ export function LessonEditor({ initial, save }: Props) {
                 disabled={kzDiff.missing.length === 0}
                 data-testid="add-missing-quizzes"
               >
-                <ListPlus aria-hidden="true" />
                 {t('content.addMissingQuizzes')}
               </Button>
             </div>
@@ -332,7 +330,7 @@ export function LessonEditor({ initial, save }: Props) {
           </div>
           <div className="adm-seg" role="radiogroup" aria-label={t('content.modeLabel')}>
             <button type="button" role="radio" aria-checked={mode === 'edit'} className="adm-seg__item" onClick={() => setMode('edit')}>
-              <Pencil aria-hidden="true" /> {t('content.edit')}
+              {t('content.edit')}
             </button>
             <button
               type="button"
@@ -342,7 +340,7 @@ export function LessonEditor({ initial, save }: Props) {
               onClick={() => setMode('preview')}
               data-testid="mode-preview"
             >
-              <Eye aria-hidden="true" /> {t('content.preview')}
+              {t('content.preview')}
             </button>
           </div>
         </header>

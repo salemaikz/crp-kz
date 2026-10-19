@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Eye, EyeOff, ExternalLink, Trash2 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/admin/ActionButton';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
@@ -79,12 +78,10 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
               tone={published ? 'default' : 'primary'}
               action={setCourseStatusAction.bind(null, locale, course.id, published ? 'draft' : 'published')}
               label={published ? t('actions.unpublish') : t('actions.publish')}
-              icon={published ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
               testId="course-toggle-status"
             />
             {inCatalog && (
               <Button href={`/courses/${course.slug}`} variant="ghost" size="sm">
-                <ExternalLink aria-hidden="true" />
                 {t('actions.openCatalog')}
               </Button>
             )}
@@ -139,7 +136,6 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
               tone="danger"
               action={deleteCourseAction.bind(null, locale, course.id)}
               label={t('danger.delete')}
-              icon={<Trash2 aria-hidden="true" />}
               confirm={t('danger.confirm', { title })}
               disabled={hasData}
               disabledReason={t('danger.blocked')}
