@@ -69,23 +69,30 @@ export function sessionSecret(): string {
   throw new Error('SESSION_SECRET is missing (required outside the in-memory demo, 32+ characters)');
 }
 
-/** Публичный адрес платформы без завершающего слэша (ссылки в письмах, QR сертификатов). */
-export function siteUrl(): string {
-  const explicit = env('NEXT_PUBLIC_SITE_URL');
+/**
+ * Публичный адрес платформы без завершающего слэша (ссылки в письмах, QR сертификатов).
+ * Порядок: NEXT_PUBLIC_SITE_URL; в демо — URL (Netlify); затем адрес Vercel; иначе localhost.
+ * Переменная URL слишком общая, чтобы доверять ей вне демо.
+ */
+export function siteUrl(e: Env = process.env): string {
+  const explicit = read(e, 'NEXT_PUBLIC_SITE_URL');
   if (explicit) return explicit.replace(/\/+$/, '');
-  const vercel = env('VERCEL_PROJECT_PRODUCTION_URL') ?? env('VERCEL_URL');
+  const netlify = isDemo(e) ? read(e, 'URL') : undefined;
+  if (netlify) return netlify.replace(/\/+$/, '');
+  const vercel = read(e, 'VERCEL_PROJECT_PRODUCTION_URL') ?? read(e, 'VERCEL_URL');
   if (vercel) return `https://${vercel.replace(/\/+$/, '')}`;
   return 'http://localhost:3000';
 }
 
 /**
- * Публичный адрес задан явно (NEXT_PUBLIC_SITE_URL) и пригоден для ссылок в письмах и QR:
- * корректный URL; вне демо — только https:// (D-025). Запасные адреса siteUrl() (Vercel,
- * localhost) сюда не считаются: в проде ссылка на localhost в письме — ошибка конфигурации.
+ * Публичный адрес пригоден для ссылок в письмах и QR. Вне демо — задан явно (NEXT_PUBLIC_SITE_URL),
+ * корректный URL и только https:// (D-025): ссылка на localhost в письме — ошибка конфигурации.
+ * В демо всегда true: на Netlify/Vercel задан только DEMO_MODE, адрес берётся из системных
+ * переменных хостинга (см. siteUrl); явный адрес, если он есть, должен быть корректным http(s).
  */
 export function siteUrlConfigured(e: Env = process.env): boolean {
   const explicit = read(e, 'NEXT_PUBLIC_SITE_URL');
-  if (!explicit) return false;
+  if (!explicit) return isDemo(e);
   let url: URL;
   try {
     url = new URL(explicit);
