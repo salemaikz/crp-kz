@@ -1,32 +1,51 @@
 name: Задача
 description: Единица работы — одна задача, одна ветка, один PR
-title: "[поток] Короткое описание результата"
+title: "[lms] Короткое описание результата"
+labels: ["stream:lms"]
 body:
   - type: markdown
     attributes:
       value: |
         Перед созданием проверь `docs/WORKSTREAMS.md` и поищи похожие issues.
         Не пиши сюда секреты, ПДн и коммерческие условия — репозиторий публичный.
+        **После создания поставь метки** `tier:*` и `phase:*` по выбранным ниже
+        значениям — форма не умеет ставить их сама.
   - type: dropdown
-    id: stream
+    id: area
     attributes:
-      label: Поток
+      label: Область
       options:
-        - lms — платформа обучения
-        - brand — бренд и дизайн
-        - infra — инфраструктура и CI
-        - agents — правила и агенты
+        - "курсы, уроки, тесты"
+        - "доступ и оплата"
+        - "компании и сотрудники"
+        - "админка и конструктор"
+        - "бренд и дизайн"
+        - "инфраструктура и CI"
+        - "правила и агенты"
     validations:
       required: true
   - type: dropdown
     id: tier
     attributes:
-      label: Уровень сложности (кому отдавать — docs/agents/ROUTING.md)
-      description: Сомневаешься — ставь выше.
+      label: "Уровень сложности (кому отдавать — docs/agents/ROUTING.md)"
+      description: "Деньги, доступы, ПДн, схема БД, файлы — всегда T2 или T2→T1. Сомневаешься — ставь выше."
       options:
-        - T0 — Haiku: поиск, механика, документация по фактам
-        - T1 — Sonnet: реализация по ТЗ, тесты
-        - T2 — Opus: архитектура, деньги, доступы, безопасность
+        - "T0 — Haiku — поиск, механика, документация по фактам"
+        - "T1 — Sonnet — реализация по ТЗ, тесты"
+        - "T2→T1 — дизайн и ревью Opus, реализация Sonnet"
+        - "T2 — Opus — архитектура, деньги, доступы, безопасность, решения"
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Этап (docs/lms/ROADMAP.md)
+      options:
+        - "phase:0-foundation"
+        - "phase:1-employees"
+        - "phase:2-sales"
+        - "phase:3-b2b"
+        - "phase:ops"
     validations:
       required: true
   - type: textarea

@@ -11,6 +11,16 @@ next-env.d.ts
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# дампы и бэкапы БД (могут содержать ПДн)
+*.dump
+*.sql.gz
+*.backup
+backups/
 
 # локальные настройки Claude Code
 .claude/settings.local.json

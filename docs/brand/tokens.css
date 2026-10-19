@@ -39,8 +39,13 @@
   --crp-font-body: 'Open Sans', Arial, sans-serif;
 }
 
-/* Tailwind 4: токены как утилиты (bg-crp-red, text-crp-black, font-heading …) */
-@theme {
+/*
+ * Tailwind 4: токены как утилиты (bg-crp-red, text-crp-black, font-heading …).
+ * `inline` — чтобы утилиты ссылались на переменные, а не на значения:
+ * тогда переопределение --crp-* во вложенном блоке подхватывается.
+ */
+@theme inline {
+  --color-crp-white: var(--crp-white);
   --color-crp-red: var(--crp-red);
   --color-crp-red-hover: var(--crp-red-hover);
   --color-crp-red-dark: var(--crp-red-dark);
@@ -60,4 +65,5 @@
   --font-body: var(--crp-font-body);
   --radius-control: var(--crp-radius-control);
   --radius-card: var(--crp-radius-card);
+  --radius-pill: var(--crp-radius-pill);
 }
