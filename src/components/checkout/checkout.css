@@ -269,9 +269,6 @@
 .co-summary > * {
   position: relative;
 }
-.co-summary .eyebrow {
-  color: var(--on-night-2);
-}
 .co-summary__title {
   color: #fff;
   font-size: clamp(24px, 2.4vw, 30px);
@@ -714,6 +711,10 @@
   background:
     linear-gradient(90deg, rgb(227 30 36 / 7%), transparent 70%),
     #fff;
+}
+.co-demo__title {
+  margin: 0;
+  font-weight: 700;
 }
 .co-demo__text {
   margin: 0;

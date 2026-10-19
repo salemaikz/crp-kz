@@ -31,7 +31,7 @@ export function PriceCard({ course, locale, cta, state, org }: Props) {
   const due = showDue ? dueStatus(state.dueAt as number) : null;
 
   return (
-    <Card floating large padding="lg" className="on-paper cat-price">
+    <Card large padding="lg" className="on-paper cat-price">
       <div className="cat-price__head">
         <span className="cat-price__label">{t('course.price.label')}</span>
         {staff ? (

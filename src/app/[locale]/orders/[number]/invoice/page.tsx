@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
@@ -60,8 +59,7 @@ export default async function InvoicePage({ params, searchParams }: Props) {
       <Container>
         <div className="co-invoice-wrap">
           <div className="co-toolbar co-noprint">
-            <Link href={backHref} className="link-arrow">
-              <ArrowLeft aria-hidden="true" />
+            <Link href={backHref} className="text-link">
               {t('back')}
             </Link>
             <div className="co-toolbar__print">

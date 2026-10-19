@@ -1,14 +1,12 @@
 /*
  * Каркас: плашка демо, шапка, подвал, страницы входа/регистрации и ошибок.
- * Повторяет шапку v2 и подвал редизайна сайта ЦРП.
+ * Повторяет шапку и подвал сайта ЦРП v3: сплошная шапка, без размытия и свечения.
  */
 
 @layer components {
   /* ---------- Плашка демо-режима ---------- */
   .demo-banner {
-    background:
-      linear-gradient(90deg, rgb(227 30 36 / 22%), rgb(227 30 36 / 4%) 70%),
-      var(--deep);
+    background: var(--night);
     color: var(--on-night);
     border-bottom: 1px solid rgb(255 255 255 / 8%);
     font-size: 13px;
@@ -27,7 +25,6 @@
     height: 8px;
     border-radius: 50%;
     background: var(--red);
-    box-shadow: 0 0 0 4px rgb(227 30 36 / 28%);
   }
   .demo-banner__badge {
     flex: none;
@@ -46,7 +43,7 @@
     }
   }
 
-  /* ---------- Шапка: тёмная полупрозрачная ---------- */
+  /* ---------- Шапка: сплошная, того же цвета, что первый экран ---------- */
   .site-header {
     position: sticky;
     top: 0;
@@ -54,8 +51,6 @@
     background: var(--header-bg);
     color: #fff;
     border-bottom: 1px solid rgb(255 255 255 / 8%);
-    -webkit-backdrop-filter: saturate(160%) blur(12px);
-    backdrop-filter: saturate(160%) blur(12px);
   }
   .site-header__row {
     display: flex;
@@ -156,7 +151,6 @@
   .lang-switch a[aria-current='true'] {
     background: #fff;
     color: var(--ink);
-    box-shadow: 0 1px 2px rgb(20 22 27 / 12%);
   }
 
   /* Пользователь */
@@ -436,87 +430,29 @@
     }
   }
 
-  /* ---------- Вход и регистрация: ночная секция + форма-«бумага» ---------- */
+  /* ---------- Вход и регистрация: простая страница на «доске» ---------- */
   .auth {
-    position: relative;
-    overflow: hidden;
-    padding-block: clamp(28px, 5vw, 80px) clamp(56px, 7vw, 104px);
-    background: var(--hero-bg);
-    color: #fff;
+    padding-block: clamp(32px, 6vw, 80px) clamp(56px, 7vw, 104px);
   }
-  .auth__rings {
-    position: absolute;
-    z-index: 0;
-    top: 50%;
-    right: -6%;
-    width: min(1040px, 150vw);
-    transform: translateY(-50%);
-  }
-  .auth__grid {
-    position: relative;
-    z-index: 1;
+  .auth__col {
     display: grid;
-    gap: 28px;
-    grid-template-areas:
-      'copy'
-      'card'
-      'points';
+    gap: 24px;
+    max-width: 520px;
+    margin-inline: auto;
   }
-  @media (min-width: 960px) {
-    .auth__grid {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
-      grid-template-areas:
-        'copy card'
-        'points card';
-      grid-template-rows: auto 1fr;
-      column-gap: clamp(40px, 6vw, 104px);
-      row-gap: 36px;
-      align-items: start;
-    }
-  }
-  .auth__copy {
-    grid-area: copy;
+  .auth__head {
     display: grid;
-    gap: 22px;
-    align-content: start;
-  }
-  @media (min-width: 960px) {
-    .auth__copy {
-      padding-top: clamp(16px, 4vw, 56px);
-    }
+    gap: 12px;
   }
   .auth__title {
-    color: #fff;
-    font-size: clamp(34px, 4.6vw, 64px);
-    max-width: 14ch;
+    font-size: clamp(32px, 4vw, 44px);
   }
   .auth__lead {
-    max-width: 34ch;
-    color: #c3cad6;
-    font-size: clamp(18px, 1.6vw, 21px);
-    line-height: 1.45;
+    font-size: 17px;
   }
   .auth__card {
-    grid-area: card;
     display: grid;
     gap: 20px;
-    padding: clamp(22px, 3vw, 36px);
-    border-radius: 26px;
-    background: var(--paper);
-    color: var(--ink);
-    box-shadow: var(--shadow-float);
-  }
-  .auth__card-head {
-    display: grid;
-    gap: 6px;
-  }
-  .auth__card-title {
-    font-size: clamp(22px, 2vw, 26px);
-    letter-spacing: -0.02em;
-  }
-  .auth__card-lead {
-    color: var(--ink-2);
-    font-size: 15px;
   }
   .auth-form {
     display: grid;
@@ -530,57 +466,28 @@
     color: var(--ink-2);
     text-align: center;
   }
-  .auth__aside {
-    grid-area: points;
-  }
-  .auth__points {
-    display: grid;
-    gap: 12px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    align-content: start;
-  }
-  .auth__points li {
-    display: grid;
-    grid-template-columns: 26px 1fr;
-    gap: 10px;
-    color: var(--on-night);
-  }
-  .auth__points li::before {
-    content: '✓';
-    color: var(--red-on-night);
-    font-weight: 800;
-  }
   .auth__help {
-    display: grid;
-    gap: 4px;
-    margin-top: 12px;
-    padding-top: 20px;
-    border-top: 1px solid rgb(255 255 255 / 14%);
-    color: var(--on-night-2);
+    color: var(--ink-2);
     font-size: 15px;
   }
   .auth__help a {
-    color: var(--on-night);
     font-weight: 600;
-    text-decoration: none;
-  }
-  .auth__help a:hover {
-    color: #fff;
-    text-decoration: underline;
   }
 
-  /* Демо-доступ: плитки-кнопки, как варианты ответа в форме сайта */
+  /* Демо-доступ: плитки-кнопки под формой, отделены тонкой линией */
   .demo-access {
     display: grid;
     gap: 12px;
     padding-top: 20px;
-    border-top: 1px dashed var(--line-strong);
+    border-top: 1px solid var(--line);
   }
   .demo-access__head {
     display: grid;
     gap: 4px;
+  }
+  .demo-access__title {
+    font-size: 17px;
+    letter-spacing: 0;
   }
   .demo-access__lead {
     color: var(--ink-3);
@@ -599,28 +506,25 @@
   }
   .demo-tile {
     display: grid;
-    grid-template-columns: 1fr auto;
-    align-items: center;
-    gap: 2px 8px;
+    align-content: center;
+    gap: 2px;
     width: 100%;
     height: 100%;
     min-height: 64px;
     padding: 12px 14px;
-    border: 1.5px solid var(--line-strong);
-    border-radius: 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
     background: var(--paper);
     color: var(--ink);
     text-align: left;
     cursor: pointer;
     transition:
       border-color 0.15s ease,
-      background-color 0.15s ease,
-      box-shadow 0.15s ease;
+      background-color 0.15s ease;
   }
   .demo-tile:hover {
     border-color: var(--ink);
     background: var(--board);
-    box-shadow: inset 0 0 0 1px var(--ink);
   }
   .demo-tile__title {
     font-weight: 700;
@@ -628,21 +532,9 @@
     line-height: 1.25;
   }
   .demo-tile__desc {
-    grid-column: 1;
     color: var(--ink-3);
     font-size: 12.5px;
     line-height: 1.35;
-  }
-  .demo-tile svg {
-    grid-row: 1 / span 2;
-    grid-column: 2;
-    width: 18px;
-    height: 18px;
-    color: var(--red);
-    transition: transform 0.15s ease;
-  }
-  .demo-tile:hover svg {
-    transform: translateX(2px);
   }
   @media (max-width: 400px) {
     .demo-access__grid {
@@ -650,46 +542,30 @@
     }
   }
 
-  /* ---------- Страницы ошибок ---------- */
+  /* ---------- Страницы ошибок: текст и одна кнопка ---------- */
   .oops {
-    position: relative;
-    overflow: hidden;
     display: grid;
     align-items: center;
-    min-height: min(720px, calc(100svh - var(--header-h)));
-    padding-block: clamp(48px, 8vw, 112px);
-    background: var(--hero-bg);
-    color: #fff;
+    min-height: min(560px, calc(100svh - var(--header-h)));
+    padding-block: clamp(48px, 8vw, 96px);
   }
   /* корневая 404 без шапки — на весь экран */
   .oops--full {
     min-height: 100svh;
   }
-  .oops__rings {
-    position: absolute;
-    top: 50%;
-    right: -10%;
-    width: min(900px, 140vw);
-    transform: translateY(-50%);
-  }
   .oops__copy {
-    position: relative;
-    z-index: 1;
     display: grid;
-    gap: 22px;
-    max-width: 640px;
+    gap: 18px;
+    max-width: 560px;
+    justify-items: start;
   }
-  .oops__code {
-    color: var(--red-on-night);
-    font-size: clamp(64px, 11vw, 140px);
-    line-height: 0.9;
+  .oops__logo {
+    width: 160px;
+    height: auto;
+    margin-bottom: 8px;
   }
   .oops__title {
-    color: #fff;
-    font-size: clamp(32px, 4.2vw, 54px);
-  }
-  .oops__lead {
-    color: #c3cad6;
+    font-size: clamp(32px, 4vw, 48px);
   }
   .oops__actions {
     display: flex;
@@ -698,13 +574,7 @@
     margin-top: 6px;
   }
   .oops__digest {
-    color: var(--on-night-2);
+    color: var(--ink-3);
     font-size: 13px;
-  }
-  @media (max-width: 760px) {
-    .oops__rings {
-      right: -60%;
-      top: 20%;
-    }
   }
 }

@@ -129,7 +129,7 @@ export default async function LessonPage({ params }: Props) {
 
         <div className="lrn-main">
           <header className="lrn-head">
-            <p className="eyebrow">
+            <p className="meta">
               {t('lesson.eyebrow', { module: lessonModule ? loc(lessonModule.title, locale) : '', n: node.index + 1, total: progress.total })}
             </p>
             <h1 className="display lrn-head__title" data-testid="lesson-title">
@@ -164,7 +164,7 @@ export default async function LessonPage({ params }: Props) {
             initialPassed={initialPassed}
             initialCompleted={completed}
           >
-            <Card as="article" large elevated padding="none" className="lrn-article">
+            <Card as="article" large padding="none" className="lrn-article">
               {picked.doc.blocks.length === 0 ? (
                 <p className="muted">{t('lesson.empty')}</p>
               ) : (

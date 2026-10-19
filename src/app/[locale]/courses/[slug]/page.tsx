@@ -143,7 +143,6 @@ export default async function CoursePage({ params }: Props) {
             items={[{ label: t('course.breadcrumbRoot'), href: '/courses' }, { label: title }]}
           />
         }
-        eyebrow={staff ? t('course.eyebrow.staff', { org }) : t('course.eyebrow.public')}
         title={title}
         lead={summary || undefined}
         meta={

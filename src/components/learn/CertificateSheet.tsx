@@ -1,5 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import { Circles } from '@/components/ui';
 import type { Locale } from '@/lib/content/types';
 import { formatDate } from '@/lib/format';
 import './learn.css';
@@ -27,10 +26,6 @@ export async function CertificateSheet({ holderName, courseTitle, issuedAt, numb
     <div className="lrn-cert-wrap">
       <article className="lrn-cert" aria-label={t('aria', { name: holderName })} lang={locale === 'kz' ? 'kk' : 'ru'} data-testid="certificate">
         <div className="lrn-cert__frame">
-          <div className="lrn-cert__rings" aria-hidden="true">
-            <Circles tone="light" animated={false} />
-          </div>
-
           <header className="lrn-cert__head">
             {/* eslint-disable-next-line @next/next/no-img-element -- векторный логотип из /public/brand */}
             <img className="lrn-cert__logo" src="/brand/crp-logo.svg" alt={t('logoAlt')} />

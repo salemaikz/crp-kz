@@ -5,10 +5,9 @@ import { Button, Container, EmptyState, PageHeader, Section } from '@/components
 /** Временная заглушка раздела (страницы перепишут агенты фич). */
 export async function StubPage({ title }: { title: string }) {
   const t = await getTranslations('common.stub');
-  const brand = await getTranslations('common.brand');
   return (
     <>
-      <PageHeader tone="night" eyebrow={t('eyebrow')} title={title} lead={brand('tagline')} />
+      <PageHeader title={title} />
       <Section spacing="tight">
         <Container size="narrow">
           <EmptyState

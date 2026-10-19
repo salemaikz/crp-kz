@@ -100,7 +100,6 @@ export default async function AdminCoursesPage({ params, searchParams }: Props) 
   return (
     <>
       <AdminPageHead
-        eyebrow={t('eyebrow')}
         title={t('title')}
         lead={t('lead')}
         actions={

@@ -75,9 +75,9 @@ export default async function CoursePage({ params }: Props) {
   ) : null;
 
   const aside = (
-    <Card large floating padding="none" className="on-paper lrn-progress-card" data-complete={progress.complete}>
+    <Card large padding="none" className="on-paper lrn-progress-card" data-complete={progress.complete}>
       <div className="lrn-progress-card__top">
-        <p className="eyebrow">{t('progressTitle')}</p>
+        <p className="meta">{t('progressTitle')}</p>
         <span className="lrn-progress-card__pct" data-testid="course-pct">
           {progress.pct}%
         </span>
@@ -121,7 +121,6 @@ export default async function CoursePage({ params }: Props) {
         breadcrumbs={
           <Breadcrumbs label={a11y('breadcrumbs')} items={[{ label: nav('learn'), href: '/learn' }, { label: title }]} />
         }
-        eyebrow={t('eyebrow')}
         title={title}
         lead={loc(course.summary, locale) || undefined}
         aside={aside}

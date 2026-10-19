@@ -1,49 +1,35 @@
 import type { ReactNode } from 'react';
-import { Circles } from './Circles';
 import { Container } from './Container';
-import { Eyebrow } from './Eyebrow';
 import { cn } from './cn';
 
 type Props = {
   title: ReactNode;
-  eyebrow?: ReactNode;
+  /** Одна строка пояснения: что это и для кого. */
   lead?: ReactNode;
   /** Кнопки под заголовком. */
   actions?: ReactNode;
   /** Хлебные крошки над заголовком. */
   breadcrumbs?: ReactNode;
-  /** Полоса с метаданными/цифрами под текстом (Stat, Badge…). */
+  /** Строка фактов мелким текстом (статус, срок, цена) под текстом. */
   meta?: ReactNode;
   /** Правая колонка на десктопе (карточка цены, прогресс курса). */
   aside?: ReactNode;
-  /** night — тёмная с красным свечением и кольцами (продолжает шапку); board; paper. */
+  /**
+   * board — «доска» (по умолчанию), paper — белая с нижней линией,
+   * night — сплошной --night с белым текстом, без колец и свечения (страница курса).
+   */
   tone?: 'board' | 'paper' | 'night';
-  /** Скрыть декоративные кольца в night. */
-  plain?: boolean;
   className?: string;
 };
 
-/** Шапка страницы: eyebrow + заголовок h1 + лид + действия. */
-export function PageHeader({
-  title,
-  eyebrow,
-  lead,
-  actions,
-  breadcrumbs,
-  meta,
-  aside,
-  tone = 'board',
-  plain,
-  className,
-}: Props) {
+/** Шапка внутренней страницы: крошки, h1, одна строка пояснения, действия. */
+export function PageHeader({ title, lead, actions, breadcrumbs, meta, aside, tone = 'board', className }: Props) {
   const night = tone === 'night';
   return (
     <header className={cn('page-header', `page-header--${tone}`, night && 'on-night', className)}>
-      {night && !plain && <Circles className="page-header__rings" />}
       <Container className={cn('page-header__grid', aside ? 'page-header__grid--aside' : undefined)}>
         <div className="page-header__copy">
           {breadcrumbs}
-          {eyebrow && <Eyebrow variant={night ? 'dot' : 'line'}>{eyebrow}</Eyebrow>}
           <h1 className="display page-header__title">{title}</h1>
           {lead && <p className="lead page-header__lead">{lead}</p>}
           {actions && <div className="page-header__actions">{actions}</div>}

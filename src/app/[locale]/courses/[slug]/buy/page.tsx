@@ -62,7 +62,6 @@ export default async function BuyPage({ params }: Props) {
             ]}
           />
         }
-        eyebrow={t('eyebrow')}
         title={title}
         lead={t('lead')}
       />
@@ -79,7 +78,7 @@ export default async function BuyPage({ params }: Props) {
                 </p>
               </Alert>
             )}
-            <Card large padding="lg" elevated>
+            <Card large padding="lg">
               <CheckoutForm
                 courseSlug={course.slug}
                 priceKzt={course.priceKzt}

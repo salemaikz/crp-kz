@@ -3,7 +3,7 @@ import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { AdminNav } from '@/components/admin/AdminNav';
 import '@/components/admin/admin.css';
-import { Avatar, Badge, Eyebrow } from '@/components/ui';
+import { Avatar, Badge } from '@/components/ui';
 import { countPendingOrders } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/auth';
 import { routing } from '@/lib/i18n/routing';
@@ -29,7 +29,6 @@ export default async function AdminLayout({ children, params }: Props) {
     <div className="container adm-shell" data-locale={locale}>
       <aside className="adm-side">
         <div className="adm-side__head">
-          <Eyebrow>{t('shell.eyebrow')}</Eyebrow>
           <div className="adm-side__user">
             <Avatar name={user.name || user.email} size="sm" />
             <div>

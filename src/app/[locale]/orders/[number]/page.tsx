@@ -114,7 +114,6 @@ export default async function OrderPage({ params, searchParams }: Props) {
             ]}
           />
         }
-        eyebrow={t('eyebrow', { number: order.number })}
         title={t(`title.${variant}`)}
         lead={t(`lead.${variant}`, { amount, course })}
         meta={

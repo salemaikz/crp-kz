@@ -5,7 +5,7 @@ import { t as tl } from '@/lib/content/l10n';
 import type { Locale } from '@/lib/content/types';
 import { formatDuration } from '@/lib/format';
 import type { BuyableCourse } from '@/lib/orders/types';
-import { Card, Eyebrow, Price } from '@/components/ui';
+import { Card, Price } from '@/components/ui';
 import { HelpLine } from './parts';
 
 /** Сводка заказа: курс, состав, срок доступа и цена (из предложения курса). */
@@ -14,7 +14,6 @@ export function OrderSummaryCard({ course, locale }: { course: BuyableCourse; lo
   const summary = tl(course.summary, locale);
   return (
     <section className="co-summary" aria-labelledby="co-summary-title">
-      <Eyebrow>{t('buy.summary.eyebrow')}</Eyebrow>
       <h2 id="co-summary-title" className="co-summary__title">
         {tl(course.title, locale)}
       </h2>

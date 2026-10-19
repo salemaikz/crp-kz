@@ -8,7 +8,7 @@ import { t as tl } from '@/lib/content/l10n';
 import type { Locale } from '@/lib/content/types';
 import { formatDate, formatPrice } from '@/lib/format';
 import { SELLER, type OrderView } from '@/lib/orders/types';
-import { Button, Card, Eyebrow } from '@/components/ui';
+import { Button, Card } from '@/components/ui';
 import { CopyButton } from './CopyButton';
 import { OrderStatusBadge } from './parts';
 
@@ -227,7 +227,7 @@ export function DemoAdminHint({ locale, viewerIsAdmin }: { locale: Locale; viewe
   const admin = DEMO_ACCOUNTS.find((a) => a.role === 'admin');
   return (
     <aside className="co-demo" data-testid="demo-admin-hint">
-      <Eyebrow>{t('title')}</Eyebrow>
+      <p className="co-demo__title">{t('title')}</p>
       <p className="co-demo__text">{t('text')}</p>
       <div className="co-actions-row">
         {viewerIsAdmin || !admin ? (

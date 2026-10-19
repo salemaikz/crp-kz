@@ -6,12 +6,12 @@ type Props = {
   label: ReactNode;
   hint?: ReactNode;
   size?: 'sm' | 'md';
-  /** red — ключевая цифра экрана (одна). */
+  /** red — число, требующее внимания (просрочки, ожидающие оплаты). */
   tone?: 'ink' | 'red';
   className?: string;
 };
 
-/** Крупная цифра + подпись: «12 сотрудников», «86% прошли». */
+/** Рабочий счётчик: число + подпись («12 сотрудников», «86% прошли»). Для отчётов и админки, не для витрины. */
 export function Stat({ value, label, hint, size = 'md', tone = 'ink', className }: Props) {
   return (
     <div className={cn('stat', size === 'sm' && 'stat--sm', tone === 'red' && 'stat--red', className)}>

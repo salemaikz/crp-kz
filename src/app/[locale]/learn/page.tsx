@@ -3,7 +3,7 @@ import { Award, BookOpen } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CourseCard } from '@/components/learn/CourseCard';
-import { Button, Card, Container, EmptyState, LinkArrow, PageHeader, Section, Stat } from '@/components/ui';
+import { Button, Card, Container, EmptyState, PageHeader, Section, Stat, TextLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
 import { formatDate } from '@/lib/format';
@@ -59,7 +59,6 @@ export default async function LearnPage({ params }: Props) {
     <>
       <PageHeader
         tone="night"
-        eyebrow={t('eyebrow')}
         title={t('title')}
         lead={courses.length > 0 ? t('lead', { name: firstName }) : t('leadEmpty', { name: firstName })}
         meta={
@@ -132,7 +131,7 @@ export default async function LearnPage({ params }: Props) {
               ) : (
                 <div className="lrn-certs" data-testid="learn-certificates">
                   {certificates.map((c) => (
-                    <Card key={c.id} as="article" large elevated padding="none" className="lrn-cert-item">
+                    <Card key={c.id} as="article" large padding="none" className="lrn-cert-item">
                       <span className="lrn-cert-item__icon" aria-hidden="true">
                         <Award />
                       </span>
@@ -141,8 +140,8 @@ export default async function LearnPage({ params }: Props) {
                         <p className="meta">{t('certificateIssued', { date: formatDate(c.issuedAt, locale) })}</p>
                         <p className="meta num lrn-nowrap">{t('certificateNumber', { number: c.number })}</p>
                         <div className="lrn-cert-item__links">
-                          <LinkArrow href={`${coursePath(c.courseSlug)}/certificate`}>{t('certificateOpen')}</LinkArrow>
-                          <LinkArrow href={`/cert/${encodeURIComponent(c.number)}`}>{t('certificateVerify')}</LinkArrow>
+                          <TextLink href={`${coursePath(c.courseSlug)}/certificate`}>{t('certificateOpen')}</TextLink>
+                          <TextLink href={`/cert/${encodeURIComponent(c.number)}`}>{t('certificateVerify')}</TextLink>
                         </div>
                       </div>
                     </Card>

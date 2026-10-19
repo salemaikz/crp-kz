@@ -54,7 +54,7 @@ export default async function CoursesPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <PageHeader tone="night" eyebrow={t('eyebrow')} title={t('title')} lead={t('lead')} />
+      <PageHeader tone="night" title={t('title')} lead={t('lead')} />
       <Section tone="board" spacing="tight">
         <Container>
           {courses.length === 0 ? (

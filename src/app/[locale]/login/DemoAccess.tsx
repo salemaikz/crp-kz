@@ -1,8 +1,6 @@
-import { ArrowRight } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { demoLoginAction } from '@/lib/auth/actions';
 import { DEMO_ACCOUNTS } from '@/lib/auth/demo';
-import { Eyebrow } from '@/components/ui';
 
 /** Демо-доступ: вход в один клик под каждой ролью (только в демо-режиме). */
 export async function DemoAccess({ locale, next }: { locale: string; next?: string }) {
@@ -10,9 +8,9 @@ export async function DemoAccess({ locale, next }: { locale: string; next?: stri
   return (
     <section className="demo-access" aria-labelledby="demo-access-title">
       <div className="demo-access__head">
-        <Eyebrow as="h3" id="demo-access-title">
-          {t('eyebrow')}
-        </Eyebrow>
+        <h2 id="demo-access-title" className="demo-access__title">
+          {t('title')}
+        </h2>
         <p className="demo-access__lead">{t('lead')}</p>
       </div>
       <ul className="demo-access__grid">
@@ -30,7 +28,6 @@ export async function DemoAccess({ locale, next }: { locale: string; next?: stri
               >
                 <span className="demo-tile__title">{t(`${acc.role}.title`)}</span>
                 <span className="demo-tile__desc">{t(`${acc.role}.desc`)}</span>
-                <ArrowRight aria-hidden="true" />
               </button>
             </form>
           </li>

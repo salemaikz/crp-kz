@@ -25,9 +25,9 @@ export async function CourseOutline({ locale, courseSlug, progress, quizLessonId
   return (
     <div className="lrn-modules">
       {progress.modules.map((m, mi) => (
-        <Card as="section" large padding="none" elevated className="lrn-module" key={m.id} aria-labelledby={`module-${m.id}`}>
+        <Card as="section" large padding="none" className="lrn-module" key={m.id} aria-labelledby={`module-${m.id}`}>
           <header className="lrn-module__head">
-            <p className="eyebrow">{t('outline.module', { n: mi + 1 })}</p>
+            <p className="meta">{t('outline.module', { n: mi + 1 })}</p>
             <h2 id={`module-${m.id}`} className="display lrn-module__title">
               {loc(m.title, locale)}
             </h2>

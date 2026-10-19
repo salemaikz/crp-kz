@@ -86,9 +86,9 @@ export default async function TeamPage({ params, searchParams }: Props) {
     <>
       <PageHeader
         tone="night"
-        eyebrow={t('header.eyebrow', { org: orgLabel(org) })}
         title={t('header.title')}
         lead={t('header.lead')}
+        meta={orgLabel(org)}
         actions={<OrgSwitcher orgs={orgs} active={org.slug} label={t('header.orgLabel')} />}
       />
 

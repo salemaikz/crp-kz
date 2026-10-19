@@ -71,7 +71,6 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
           label: tc('breadcrumbs'),
           items: [{ label: tn('nav.courses'), href: '/admin/courses' }, { label: title }],
         }}
-        eyebrow={t('eyebrow')}
         title={title}
         actions={
           <>

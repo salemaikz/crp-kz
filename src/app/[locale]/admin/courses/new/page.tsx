@@ -30,7 +30,6 @@ export default async function NewCoursePage({ params }: Props) {
           label: tc('breadcrumbs'),
           items: [{ label: tn('shell.nav.courses'), href: '/admin/courses' }, { label: t('crumb') }],
         }}
-        eyebrow={t('eyebrow')}
         title={t('title')}
         lead={t('lead')}
       />

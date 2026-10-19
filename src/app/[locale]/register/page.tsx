@@ -8,7 +8,7 @@ import { safeNext } from '@/lib/auth/safeNext';
 import { Link } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { AuthShell } from '@/components/layout/AuthShell';
-import { Alert, Mark } from '@/components/ui';
+import { Alert } from '@/components/ui';
 import { RegisterForm } from './RegisterForm';
 
 type Props = {
@@ -34,13 +34,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   const t = await getTranslations('auth');
 
   return (
-    <AuthShell
-      eyebrow={t('register.eyebrow')}
-      title={t.rich('register.title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
-      lead={t('register.lead')}
-      cardTitle={t('register.formTitle')}
-      cardLead={t('register.formLead')}
-    >
+    <AuthShell title={t('register.title')} lead={t('register.lead')}>
       {/* демо: данные на Vercel (вне РК) и сбрасываются — реальные ПДн вводить нельзя */}
       {isDemo() && (
         <Alert tone="warning" role="note" style={{ marginBottom: 16 }}>

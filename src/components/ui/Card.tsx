@@ -6,25 +6,19 @@ type Props = HTMLAttributes<HTMLElement> & {
   /** paper — белая «бумага»; night — тёмная карточка-акцент; dashed — пунктирная рамка. */
   tone?: 'paper' | 'night' | 'dashed';
   padding?: 'none' | 'sm' | 'md' | 'lg';
-  /** Радиус 24 px для крупных карточек. */
+  /** Радиус 28 px для крупных карточек. */
   large?: boolean;
-  /** Мягкая тень вместо одной рамки. */
-  elevated?: boolean;
-  /** Тень сильнее, без рамки — для формы поверх тёмной секции. */
-  floating?: boolean;
-  /** Подъём при наведении (карточка-ссылка). */
+  /** Кликабельная карточка: при наведении подъём на 4 px и тень (без reduced-motion). */
   interactive?: boolean;
   children?: ReactNode;
 };
 
-/** Карточка: белая «бумага» с радиусом 18 px (24 px — large). */
+/** Карточка: плоская белая «бумага» с рамкой 1 px и радиусом 20 px (28 px — large). Тени нет. */
 export function Card({
   as: Tag = 'div',
   tone = 'paper',
   padding = 'md',
   large,
-  elevated,
-  floating,
   interactive,
   className,
   children,
@@ -37,8 +31,6 @@ export function Card({
         tone !== 'paper' && `card--${tone}`,
         padding !== 'none' && `card--p-${padding}`,
         large && 'card--lg',
-        elevated && 'card--elevated',
-        floating && 'card--float',
         interactive && 'card--interactive',
         className,
       )}

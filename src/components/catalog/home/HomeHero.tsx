@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import { Award, CircleCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Button, Circles, Container, Eyebrow, Mark, ProgressBar, Stat } from '@/components/ui';
+import { Button, Circles, Container, Mark, ProgressBar, Stat } from '@/components/ui';
 import type { CatalogStats } from '@/lib/catalog/queries';
 import { formatNumber } from '@/lib/format';
 import '../catalog.css';
@@ -16,7 +16,6 @@ export function HomeHero({ stats, loggedIn, locale }: Props) {
       <Circles className="cat-hero__rings" />
       <Container className="cat-hero__grid">
         <div className="cat-hero__copy">
-          <Eyebrow variant="dot">{t('hero.eyebrow')}</Eyebrow>
           <h1 id="home-title" className="display cat-hero__title">
             {t.rich('hero.title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
           </h1>

@@ -1,5 +1,4 @@
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
-import { ArrowRight } from 'lucide-react';
 import type { Locale } from '@/lib/content/types';
 import { Link } from '@/lib/i18n/navigation';
 import { cn } from './cn';
@@ -11,25 +10,19 @@ type Props = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & {
   children: ReactNode;
 };
 
-/** Жирная ссылка с подчёркиванием и «→», при наведении красная. */
-export function LinkArrow({ href, locale, className, children, ...rest }: Props) {
-  const content = (
-    <>
-      {children}
-      <ArrowRight aria-hidden="true" />
-    </>
-  );
-  const cls = cn('link-arrow', className);
+/** Жирная ссылка с подчёркиванием. Без стрелки и иконки (BRAND.md, «Без ИИ-шума»). */
+export function TextLink({ href, locale, className, children, ...rest }: Props) {
+  const cls = cn('text-link', className);
   if (isExternalHref(href)) {
     return (
       <a href={href} className={cls} {...rest}>
-        {content}
+        {children}
       </a>
     );
   }
   return (
     <Link href={href} locale={locale} className={cls} {...rest}>
-      {content}
+      {children}
     </Link>
   );
 }

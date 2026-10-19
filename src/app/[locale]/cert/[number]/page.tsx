@@ -32,7 +32,7 @@ export default async function CertVerifyPage({ params }: Props) {
   if (!(await certLookupAllowed(number))) {
     return (
       <>
-        <PageHeader tone="night" eyebrow={t('eyebrow')} title={t('tooMany.title')} lead={t('tooMany.description')} />
+        <PageHeader tone="night" title={t('tooMany.title')} lead={t('tooMany.description')} />
         <Section tone="board" spacing="tight">
           <Container size="narrow">
             <EmptyState icon={<Timer />} title={t('tooMany.title')} description={t('tooMany.description')} headingLevel="h2" />
@@ -47,7 +47,7 @@ export default async function CertVerifyPage({ params }: Props) {
   if (!cert) {
     return (
       <>
-        <PageHeader tone="night" eyebrow={t('eyebrow')} title={t('invalid.title')} lead={t('invalid.lead', { number })} />
+        <PageHeader tone="night" title={t('invalid.title')} lead={t('invalid.lead', { number })} />
         <Section tone="board" spacing="tight">
           <Container size="narrow">
             <div className="lrn-block" data-testid="cert-invalid">
@@ -58,7 +58,7 @@ export default async function CertVerifyPage({ params }: Props) {
                 headingLevel="h2"
               />
             </div>
-            <Card large elevated className="lrn-verify">
+            <Card large className="lrn-verify">
               <CertLookup locale={locale} defaultValue={number} />
             </Card>
           </Container>
@@ -69,10 +69,10 @@ export default async function CertVerifyPage({ params }: Props) {
 
   return (
     <>
-      <PageHeader tone="night" eyebrow={t('eyebrow')} title={t('valid.title')} lead={t('valid.lead')} />
+      <PageHeader tone="night" title={t('valid.title')} lead={t('valid.lead')} />
       <Section tone="board" spacing="tight">
         <Container size="narrow">
-          <Card large elevated padding="none" className="lrn-verify" data-testid="cert-valid">
+          <Card large padding="none" className="lrn-verify" data-testid="cert-valid">
             <p className="lrn-verify__seal">
               <span className="lrn-verify__seal-icon" aria-hidden="true">
                 <ShieldCheck />

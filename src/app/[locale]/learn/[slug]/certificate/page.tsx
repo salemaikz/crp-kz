@@ -6,7 +6,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CertificateSheet } from '@/components/learn/CertificateSheet';
 import { CompletionCard } from '@/components/learn/CompletionCard';
 import { PrintButton } from '@/components/learn/PrintButton';
-import { Button, Container, Eyebrow, LinkArrow, PageHeader, Section } from '@/components/ui';
+import { Button, Container, PageHeader, Section, TextLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
 import { siteUrl } from '@/lib/env';
@@ -49,7 +49,7 @@ export default async function CertificatePage({ params }: Props) {
     if (access.status !== 'ok' || !access.progress.complete) redirect({ href: coursePath(slug), locale });
     return (
       <>
-        <PageHeader tone="night" eyebrow={t('ready.eyebrow')} title={t('ready.title')} lead={t('ready.lead')} />
+        <PageHeader tone="night" title={t('ready.title')} lead={t('ready.lead')} />
         <Section tone="board" spacing="tight">
           <Container size="narrow">
             <CompletionCard
@@ -80,7 +80,6 @@ export default async function CertificatePage({ params }: Props) {
         <Container>
           <div className="lrn-cert-toolbar lrn-noprint">
             <div className="lrn-cert-toolbar__head">
-              <Eyebrow>{t('eyebrow')}</Eyebrow>
               <h1 className="display">{t('title')}</h1>
             </div>
             <div className="lrn-cert-toolbar__actions">
@@ -106,7 +105,7 @@ export default async function CertificatePage({ params }: Props) {
             <p className="lrn-cert-hint">{t('printHint')}</p>
             <p className="lrn-cert-hint lrn-cert-hint--link">
               <ShieldCheck aria-hidden="true" />
-              <LinkArrow href={`/cert/${encodeURIComponent(certificate.number)}`}>{t('verifyLink')}</LinkArrow>
+              <TextLink href={`/cert/${encodeURIComponent(certificate.number)}`}>{t('verifyLink')}</TextLink>
             </p>
           </div>
         </Container>

@@ -1,9 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { GraduationCap } from 'lucide-react';
-import { Circles } from '@/components/ui';
 import './learn.css';
 
-// Свечение и кольца чуть смещаются от карточки к карточке — ряд не выглядит копией
+// Свечение чуть смещается от карточки к карточке — ряд не выглядит копией
 const VARIANTS: Array<Record<string, string>> = [
   { '--glow-x': '82%', '--rings-x': '-14%' },
   { '--glow-x': '68%', '--rings-x': '-6%' },
@@ -15,7 +14,7 @@ function isImageUrl(src: string | null): src is string {
   return !!src && /^(https:\/\/|\/(?!\/))/.test(src);
 }
 
-/** Обложка курса: картинка из cover или фирменная заставка (свечение, кольца, значок). */
+/** Обложка курса: картинка из cover или фирменная заставка (свечение, значок). */
 export function CourseCover({ cover, index = 0, badges }: { cover: string | null; index?: number; badges?: ReactNode }) {
   const style = VARIANTS[index % VARIANTS.length] as CSSProperties;
   return (
@@ -25,7 +24,6 @@ export function CourseCover({ cover, index = 0, badges }: { cover: string | null
         <img src={cover} alt="" className="lrn-course__img" loading="lazy" />
       ) : (
         <>
-          <Circles />
           <span className="lrn-course__glyph" aria-hidden="true">
             <GraduationCap />
           </span>

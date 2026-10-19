@@ -1,6 +1,5 @@
 import { Play } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { Circles } from '@/components/ui';
 import type { VideoBlock as VideoBlockData } from '@/lib/content/types';
 import './learn.css';
 
@@ -28,7 +27,6 @@ export async function VideoBlock({ block, title }: { block: VideoBlockData; titl
         </div>
       ) : (
         <div className="lrn-video lrn-video--poster" role="img" aria-label={t('placeholder')}>
-          <Circles tone="red" animated={false} />
           <div className="lrn-video__inner">
             <span className="lrn-video__play" aria-hidden="true">
               <Play />

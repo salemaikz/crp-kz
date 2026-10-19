@@ -185,7 +185,6 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
             items={[{ label: t('admin.crumbs.admin'), href: '/admin' }, { label: t('admin.crumbs.orders') }]}
           />
         }
-        eyebrow={t('admin.eyebrow')}
         title={t('admin.title')}
         lead={t('admin.lead')}
         meta={

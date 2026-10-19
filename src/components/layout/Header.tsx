@@ -34,7 +34,7 @@ function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name;
 }
 
-/** Шапка: тёмная полупрозрачная, логотип, разделы по ролям, язык, вход/выход. */
+/** Шапка: сплошная тёмная, логотип, разделы по ролям, язык, вход/выход. */
 export async function Header() {
   const [t, locale, { user, isManager }] = await Promise.all([
     getTranslations('common'),

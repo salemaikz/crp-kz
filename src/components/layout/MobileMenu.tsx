@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight } from 'lucide-react';
 import { Link, usePathname } from '@/lib/i18n/navigation';
 import { isActivePath, type NavItem } from './nav';
 
@@ -61,7 +60,6 @@ export function MobileMenu({ items, navLabel, openLabel, closeLabel, footer }: P
                   onClick={close}
                 >
                   {item.label}
-                  <ChevronRight aria-hidden="true" size={20} />
                 </Link>
               </li>
             ))}

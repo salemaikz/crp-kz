@@ -100,7 +100,7 @@ export default async function AdminUsersPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <AdminPageHead eyebrow={t('eyebrow')} title={t('title')} lead={t('lead')} />
+      <AdminPageHead title={t('title')} lead={t('lead')} />
 
       <div className="adm-toolbar">
         <div className="adm-toolbar__chips" role="group" aria-label={t('filter.label')}>

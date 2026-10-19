@@ -44,7 +44,6 @@ export default async function AdminLessonPage({ params }: Props) {
             { label: l10n(lesson.title, locale) },
           ],
         }}
-        eyebrow={t('eyebrow')}
         title={l10n(lesson.title, locale)}
         actions={
           <Button href={`/admin/courses/${lesson.courseId}`} variant="ghost" size="sm">

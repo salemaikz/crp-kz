@@ -33,10 +33,8 @@
   z-index: 30;
   margin-inline: calc(-1 * var(--gutter));
   padding: 10px var(--gutter);
-  background: rgb(243 244 241 / 94%);
+  background: var(--board);
   border-bottom: 1px solid var(--line);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 .adm-side__head {
   display: none;
@@ -51,9 +49,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--paper);
-    box-shadow: var(--shadow);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    box-shadow: none;
   }
   .adm-side__head {
     display: grid;
@@ -319,10 +315,8 @@
   padding: 12px 14px 12px 20px;
   border: 1px solid var(--line);
   border-radius: 20px;
-  background: rgb(255 255 255 / 94%);
+  background: var(--paper);
   box-shadow: var(--shadow-lg);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 .adm-savebar__status {
   flex: 1 1 240px;

@@ -1,6 +1,6 @@
 import { Award, BookOpenCheck, PlayCircle } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { Badge, Button, Card, LinkArrow, ProgressBar } from '@/components/ui';
+import { Badge, Button, Card, ProgressBar, TextLink } from '@/components/ui';
 import { t as loc } from '@/lib/content/l10n';
 import type { Locale } from '@/lib/content/types';
 import { Link } from '@/lib/i18n/navigation';
@@ -43,7 +43,7 @@ export async function CourseCard({ item, index, locale }: Props) {
   );
 
   return (
-    <Card as="article" large interactive elevated padding="none" className="lrn-course" data-state={closed ? 'closed' : finished ? 'done' : 'active'}>
+    <Card as="article" large interactive padding="none" className="lrn-course" data-state={closed ? 'closed' : finished ? 'done' : 'active'}>
       <CourseCover cover={course.cover} index={index} badges={badges} />
       <div className="lrn-course__body">
         <h3 className="display lrn-course__title">
@@ -83,14 +83,14 @@ export async function CourseCard({ item, index, locale }: Props) {
                 <Award aria-hidden="true" />
                 {certificateNumber ? t('certificate') : t('getCertificate')}
               </Button>
-              <LinkArrow href={coursePath(course.slug)}>{t('program')}</LinkArrow>
+              <TextLink href={coursePath(course.slug)}>{t('program')}</TextLink>
             </>
           ) : next ? (
             <>
               <Button href={lessonPath(course.slug, next.slug)} size="sm">
                 {started ? t('continue') : t('start')}
               </Button>
-              <LinkArrow href={coursePath(course.slug)}>{t('program')}</LinkArrow>
+              <TextLink href={coursePath(course.slug)}>{t('program')}</TextLink>
             </>
           ) : (
             <Button href={coursePath(course.slug)} variant="ghost" size="sm">

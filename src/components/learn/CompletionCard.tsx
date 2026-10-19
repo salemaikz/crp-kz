@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import { Circles, Hand, LinkArrow } from '@/components/ui';
+import { TextLink } from '@/components/ui';
 import { IssueCertificateButton } from './IssueCertificateButton';
 import './learn.css';
 
@@ -31,8 +31,6 @@ export async function CompletionCard({
   const t = await getTranslations('learn.completion');
   return (
     <section className="lrn-complete on-night" aria-labelledby="completion-title" data-testid="course-complete">
-      <Circles />
-      <Hand rotate={-3}>{t('hand')}</Hand>
       <h2 id="completion-title" className="display lrn-complete__title">
         {t('title')}
       </h2>
@@ -47,8 +45,8 @@ export async function CompletionCard({
         {certificateNumber && <span className="meta">{t('number', { number: certificateNumber })}</span>}
       </div>
       <div className="lrn-complete__links">
-        {showProgramLink && <LinkArrow href={courseHref}>{t('toCourse')}</LinkArrow>}
-        <LinkArrow href="/learn">{t('toLearn')}</LinkArrow>
+        {showProgramLink && <TextLink href={courseHref}>{t('toCourse')}</TextLink>}
+        <TextLink href="/learn">{t('toLearn')}</TextLink>
       </div>
     </section>
   );

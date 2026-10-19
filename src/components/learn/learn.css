@@ -772,7 +772,6 @@ h3.lrn-heading {
   background: var(--red);
   color: #fff;
   box-shadow:
-    var(--shadow-red),
     0 0 0 10px rgb(227 30 36 / 22%),
     0 0 0 22px rgb(227 30 36 / 10%);
 }
@@ -1163,21 +1162,6 @@ h3.lrn-heading {
     linear-gradient(170deg, var(--deep), var(--night));
   color: #fff;
 }
-.lrn-complete .hand {
-  justify-self: start;
-  margin: 4px 0 -2px 4px;
-}
-.lrn-complete .circles {
-  position: absolute;
-  top: 50%;
-  right: -22%;
-  width: min(560px, 90%);
-  transform: translateY(-50%);
-}
-.lrn-complete > *:not(.circles) {
-  position: relative;
-  z-index: 1;
-}
 .lrn-complete__title {
   font-size: clamp(32px, 4vw, 48px);
   color: #fff;
@@ -1199,7 +1183,7 @@ h3.lrn-heading {
   flex-wrap: wrap;
   gap: 8px 22px;
 }
-.lrn-complete .link-arrow {
+.lrn-complete .text-link {
   color: #fff;
 }
 
@@ -1269,17 +1253,6 @@ h3.lrn-heading {
   grid-template-rows: auto 1fr auto;
   padding: 3.4cqw 4.6cqw 3.2cqw;
   border: max(2px, 0.42cqw) solid #e31e24;
-}
-.lrn-cert__rings {
-  position: absolute;
-  right: -27cqw;
-  top: 50%;
-  width: 56cqw;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.lrn-cert__rings .circles {
-  stroke-width: 1.4;
 }
 .lrn-cert__head {
   position: relative;
@@ -1542,7 +1515,6 @@ h3.lrn-heading {
   --badge-bg: var(--red-tint);
   --badge-fg: var(--red-ink);
 }
-.lrn-progress-card .eyebrow,
 .lrn-progress-card .meta,
 .lrn-progress-card .muted {
   color: var(--ink-2);

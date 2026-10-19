@@ -3,7 +3,7 @@
  * (docs/brand/reference/site-redesign.css). Слой base — утилиты Tailwind сильнее.
  */
 
-/* Контейнер 1240 px + гаттер. Перекрывает встроенный container из Tailwind
+/* Контейнер 1200 px + гаттер. Перекрывает встроенный container из Tailwind
    (его брейкпоинты по max-width нам не нужны). */
 @utility container {
   width: 100%;
@@ -148,45 +148,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    line-height: 1.3;
-    color: var(--ink-2);
-  }
-  .eyebrow::before {
-    content: '';
-    flex: none;
-    width: 22px;
-    height: 2px;
-    border-radius: 2px;
-    background: var(--red);
-  }
-  /* вариант первого экрана: красная точка с ореолом */
-  .eyebrow--dot {
-    letter-spacing: 0.04em;
-  }
-  .eyebrow--dot::before {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    box-shadow: 0 0 0 4px rgb(227 30 36 / 25%);
-  }
-
-  .hand {
-    display: inline-block;
-    font-family: var(--font-hand);
-    font-weight: 700;
-    font-size: 25px;
-    line-height: 1;
-    color: var(--red);
-  }
-
-  /* Рукописное подчёркивание ключевого слова (как в заголовке сайта) */
+  /* Красная линия-маркер под одним словом заголовка. Только первый экран главной и заявка внизу. */
   .mark {
     position: relative;
     display: inline-block;
@@ -283,34 +245,6 @@
   .section--clip {
     overflow: hidden;
   }
-  /* фирменные кольца в светлой секции (как #formula-section) */
-  .section--rings {
-    overflow: hidden;
-  }
-  .section--rings::before {
-    content: '';
-    position: absolute;
-    pointer-events: none;
-    width: 900px;
-    height: 900px;
-    right: -260px;
-    top: 50%;
-    transform: translateY(-50%);
-    border-radius: 50%;
-    background: repeating-radial-gradient(circle, transparent 0 74px, rgb(227 30 36 / 9%) 74px 76px);
-    mask-image: radial-gradient(circle, #000 0 40%, transparent 70%);
-  }
-  .section--rings > * {
-    position: relative;
-    z-index: 1;
-  }
-  @media (max-width: 760px) {
-    .section--rings::before {
-      width: 560px;
-      height: 560px;
-      right: -240px;
-    }
-  }
   @media (max-width: 640px) {
     .section {
       padding-block: 64px;
@@ -341,29 +275,22 @@
     }
   }
 
-  /* Тёмный контекст: вторичный текст и eyebrow светлеют */
+  /* Тёмный контекст: вторичный текст светлеет */
   :is(.section--night, .section--deep, .section--glow, .on-night) .lead,
-  :is(.section--night, .section--deep, .section--glow, .on-night) .muted,
-  :is(.section--night, .section--deep, .section--glow, .on-night) .eyebrow {
+  :is(.section--night, .section--deep, .section--glow, .on-night) .muted {
     color: var(--on-night-2);
   }
   :is(.section--night, .section--deep, .section--glow, .on-night) .meta {
     color: var(--on-night-2);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .hand {
-    color: var(--red-on-night);
-  }
   /* белая карточка внутри тёмной секции возвращает тёмные цвета */
   :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper {
     color: var(--ink);
   }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper :is(.lead, .muted, .eyebrow) {
+  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper :is(.lead, .muted) {
     color: var(--ink-2);
   }
   :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper .meta {
     color: var(--ink-3);
-  }
-  :is(.section--night, .section--deep, .section--glow, .on-night) .on-paper .hand {
-    color: var(--red);
   }
 }

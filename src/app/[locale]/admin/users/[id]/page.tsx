@@ -112,7 +112,6 @@ export default async function AdminUserPage({ params }: Props) {
           label: tc('breadcrumbs'),
           items: [{ label: tn('nav.users'), href: '/admin/users' }, { label: user.name || user.email }],
         }}
-        eyebrow={t('eyebrow')}
         title={
           <span className="adm-person adm-person--lg">
             <Avatar name={user.name || user.email} size="lg" />

@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Badge, Button, Card, Container, EmptyState, Eyebrow, LinkArrow, Section } from '@/components/ui';
+import { Badge, Button, Card, Container, EmptyState, Section, TextLink } from '@/components/ui';
 import { CRP_CONTACTS } from '@/lib/brand';
 import type { CatalogCourse, ViewerCourseState } from '@/lib/catalog/types';
 import type { Locale } from '@/lib/content/types';
@@ -23,13 +23,12 @@ export function FeaturedCourses({
       <Container>
         <div className="section-head section-head--split">
           <div className="cat-head">
-            <Eyebrow>{t('eyebrow')}</Eyebrow>
             <h2 id="featured-title" className="display h2">
               {t('title')}
             </h2>
             <p className="lead">{t('lead')}</p>
           </div>
-          <LinkArrow href="/courses">{t('all')}</LinkArrow>
+          <TextLink href="/courses">{t('all')}</TextLink>
         </div>
         {courses.length > 0 ? (
           <div className="cat-grid">
@@ -54,7 +53,6 @@ export function HowItWorks() {
     <Section tone="night" aria-labelledby="steps-title">
       <Container>
         <div className="section-head">
-          <Eyebrow>{t('eyebrow')}</Eyebrow>
           <h2 id="steps-title" className="display h2">
             {t('title')}
           </h2>
@@ -86,10 +84,9 @@ export type TeamsViewer = 'guest' | 'user' | 'manager';
 export function TeamsBlock({ viewer, locale }: { viewer: TeamsViewer; locale: Locale }) {
   const t = useTranslations('catalog.home.teams');
   return (
-    <Section tone="paper" rings aria-labelledby="teams-title">
+    <Section tone="paper" aria-labelledby="teams-title">
       <Container>
         <div className="section-head">
-          <Eyebrow>{t('eyebrow')}</Eyebrow>
           <h2 id="teams-title" className="display h2">
             {t('title')}
           </h2>

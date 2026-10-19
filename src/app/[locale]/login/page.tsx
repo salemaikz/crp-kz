@@ -8,7 +8,6 @@ import { isDemo } from '@/lib/env';
 import { Link } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { AuthShell } from '@/components/layout/AuthShell';
-import { Mark } from '@/components/ui';
 import { DemoAccess } from './DemoAccess';
 import { LoginForm } from './LoginForm';
 
@@ -36,13 +35,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const t = await getTranslations('auth');
 
   return (
-    <AuthShell
-      eyebrow={t('login.eyebrow')}
-      title={t.rich('login.title', { mark: (chunks) => <Mark>{chunks}</Mark> })}
-      lead={t('login.lead')}
-      cardTitle={t('login.formTitle')}
-      cardLead={t('login.formLead')}
-    >
+    <AuthShell title={t('login.title')} lead={t('login.lead')}>
       <LoginForm next={next} />
       <p className="auth__switch">
         {t('login.noAccount')}{' '}

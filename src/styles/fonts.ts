@@ -1,4 +1,4 @@
-import { Caveat, Geologica, Onest } from 'next/font/google';
+import { Geologica, Onest } from 'next/font/google';
 
 // Шрифты бренда (BRAND.md). cyrillic-ext обязателен: без него нет ә ғ қ ң ө ұ ү һ і.
 // next/font требует литералы в аргументах — общий массив subsets вынести нельзя.
@@ -18,14 +18,5 @@ export const onest = Onest({
   display: 'swap',
 });
 
-/** Рукописные пометки — редко, поэтому без preload. */
-export const caveat = Caveat({
-  subsets: ['cyrillic', 'cyrillic-ext', 'latin'],
-  weight: ['700'],
-  variable: '--font-caveat',
-  display: 'swap',
-  preload: false,
-});
-
 /** Классы с CSS-переменными шрифтов — повесить на <html>. */
-export const fontVariables = [geologica.variable, onest.variable, caveat.variable].join(' ');
+export const fontVariables = [geologica.variable, onest.variable].join(' ');

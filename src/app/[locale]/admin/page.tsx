@@ -63,7 +63,6 @@ export default async function AdminDashboardPage({ params }: Props) {
   return (
     <>
       <AdminPageHead
-        eyebrow={t('eyebrow')}
         title={t('title')}
         lead={t('lead')}
         actions={
