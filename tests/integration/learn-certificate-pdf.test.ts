@@ -1,8 +1,6 @@
 // PDF сертификата: данные для файла, рендер на ru и kz, отсутствие email в байтах, маршрут (отдельный процесс).
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +8,8 @@ import { enroll } from '../../src/lib/access';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import { loadCertificatePdfInput } from '../../src/lib/learn/pdf/data';
 import { renderCertificatePdf } from '../../src/lib/learn/pdf/render';
+import { cleanCertificateTexts } from '../../src/lib/learn/pdf/glyphs';
+import { pdfLines } from '../helpers/pdf-lines';
 import { missingChars, pdfText, unicodeInPdf } from '../helpers/pdf-text';
 import { OWNER_EMAIL, OWNER_NAME, PDF_COURSE_SLUG, PDF_NUMBER, RU_NUMBER, seedPdf } from './fixtures/learn-certificate-pdf.seed';
 
@@ -104,7 +104,7 @@ test('маршрут: флаг, гость, лимит, 404, ETag и 304 без 
     { env, encoding: 'utf8', timeout: 120_000 },
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-  assert.match(res.stdout, /# pass 8/);
+  assert.match(res.stdout, /# pass 9/);
 });
 
 test('символы вне шрифта (эмодзи, галочка, иероглифы) не ломают рендер и не попадают в текст', async () => {
@@ -126,23 +126,40 @@ test('расширенная латиница в ФИО сохраняется �
   assert.deepEqual(missingChars(pdf, name), []);
 });
 
-test('двойная фамилия через дефис и длинное слово без пробелов остаются в рамке', async () => {
+test('двойная фамилия и длинные слова: имя целиком, без «--», все строки Geologica в рамке', async () => {
   const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
-  // рамка по внутреннему краю: 841,89 - 17 - 3 - 39 = 782,89 pt
-  const limit = 783;
-  for (const holderName of ['ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА', 'Құрманғалиқызы-Нұрсұлтанова', 'А'.repeat(200)]) {
-    const pdf = await renderCertificatePdf({ ...base, holderName });
-    const dir = mkdtempSync(path.join(tmpdir(), 'crp-pdf-'));
-    try {
-      const file = path.join(dir, 'c.pdf');
-      writeFileSync(file, pdf);
-      const res = spawnSync('pdftotext', ['-bbox', file, '-'], { encoding: 'utf8' });
-      if (res.error) return; // pdftotext не установлен: проверка ширины пропускается, остальное выше
-      const xMax = [...res.stdout.matchAll(/xMax="([\d.]+)"/g)].map((m) => Number(m[1]));
-      assert.ok(xMax.length > 0);
-      assert.ok(Math.max(...xMax) <= limit, `${holderName.slice(0, 20)}: xMax ${Math.max(...xMax)}`);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+  // ширина строки ФИО в макете 700 pt (NAME_MAX_WIDTH) плюс допуск на округление поправок TJ (до 0,5 %);
+  // до внутреннего края рамки остаётся ещё около 23 pt
+  const limit = 703.5;
+  for (const holderName of ['ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА', 'Құрманғалиқызы-Нұрсұлтанова', 'ЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖ', 'А'.repeat(200)]) {
+    const pdf = await renderCertificatePdf({ ...base, holderName, courseTitle: 'Курс' });
+    const lines = pdfLines(pdf).filter((l) => l.font.includes('Geologica'));
+    // первая строка — заголовок листа, последняя — курс; между ними ФИО
+    const nameLines = lines.slice(1, -1);
+    assert.ok(nameLines.length > 0, holderName.slice(0, 20));
+    for (const l of lines) assert.ok(l.width <= limit, `${holderName.slice(0, 20)}: ${l.text.slice(0, 20)} ${l.width.toFixed(1)} pt`);
+    const joined = nameLines.map((l) => l.text).join(' ');
+    assert.ok(!joined.includes('--'), `двойной дефис: ${joined}`);
+    if (holderName.length < 100) {
+      // составное слово не рвётся: имя целиком одной строкой, ровно один раз
+      assert.equal(nameLines.filter((l) => l.text === holderName).length, 1, joined);
+    } else {
+      assert.equal(joined.replace(/ /g, ''), holderName);
     }
   }
+});
+
+test('разбор строк PDF видит текст и размер: обычное имя — одна строка кегля 47', async () => {
+  const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
+  const lines = pdfLines(await renderCertificatePdf(base));
+  const name = lines.find((l) => l.text === 'Марат Нурланов');
+  assert.ok(name, lines.map((l) => l.text).join(' | '));
+  assert.equal(name.size, 47);
+  assert.ok(name.width > 100 && name.width < 700, `ширина ${name.width}`);
+});
+
+test('имя из одних символов вне шрифта: слой данных отдаёт его как есть, очистка даёт пустую строку', async () => {
+  const input = (await loadCertificatePdfInput('pdf-emoji', PDF_COURSE_SLUG))!;
+  assert.ok(input);
+  assert.deepEqual(cleanCertificateTexts(input), { holder: '', course: 'Бизнес-разбор' });
 });

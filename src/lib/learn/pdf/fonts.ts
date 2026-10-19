@@ -1,8 +1,9 @@
 // Регистрация шрифтов в react-pdf: статические срезы из assets/fonts/pdf (D-036).
 import path from 'node:path';
 import { Font } from '@react-pdf/renderer';
+import { PDF_FONT_DIR } from './paths';
 
-export const PDF_FONT_DIR = path.join(process.cwd(), 'assets/fonts/pdf');
+export { PDF_FONT_DIR };
 
 /**
  * Регистрирует шрифты заново: хранилище Font глобальное, а разобранные шрифты в нём накапливают
@@ -34,7 +35,8 @@ export function registerPdfFonts(): void {
       { src: path.join(PDF_FONT_DIR, 'Onest-SemiBold.ttf'), fontWeight: 600 },
     ],
   });
-  // без переносов внутри слов (английские правила ломают кириллицу), но после дефиса строку
-  // можно разорвать: двойные фамилии вроде Құрманғалиқызы-Нұрсұлтанова иначе уходят за рамку
-  Font.registerHyphenationCallback((word) => word.split(/(?<=-)/));
+  // слова не переносятся вовсе, в том числе после дефиса: при разрыве textkit дописывает свой
+  // дефис, и «Құрманғалиқызы-Нұрсұлтанова» получила бы «--». Составное слово — неразрывная
+  // строка, при нехватке места уменьшается кегль (layout.ts, fitText)
+  Font.registerHyphenationCallback((word) => [word]);
 }

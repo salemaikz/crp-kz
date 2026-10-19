@@ -2,7 +2,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { certificatePdfEtag } from '../../src/lib/learn/pdf/etag';
-import { courseFontSize, fitFontSize, nameFontSize, sanitizePdfText } from '../../src/lib/learn/pdf/layout';
+import { hasPdfGlyph } from '../../src/lib/learn/pdf/glyphs';
+import { courseFontSize, fitFontSize, fitText, nameFontSize, sanitizePdfText } from '../../src/lib/learn/pdf/layout';
+import { geologicaMeasure } from '../../src/lib/learn/pdf/measure';
 import { qrPath } from '../../src/lib/learn/pdf/qr';
 import { CERT_PDF_TEMPLATE_VERSION, type CertificatePdfInput } from '../../src/lib/learn/pdf/types';
 
@@ -67,16 +69,48 @@ describe('sanitizePdfText: символы вне шрифта', () => {
   });
 });
 
-describe('fitFontSize', () => {
+describe('sanitizePdfText: NFD', () => {
+  const has = (cp: number) => hasPdfGlyph(cp);
+  it('«й», «ё», «Ә» в разложенной форме собираются обратно, диакритика не теряется', () => {
+    assert.equal(sanitizePdfText('й', has), 'й');
+    assert.equal(sanitizePdfText('Ёлка', has), 'Ёлка');
+    assert.equal(sanitizePdfText('Й'.normalize('NFD'), has), 'Й');
+    assert.equal(sanitizePdfText('Ә'.normalize('NFD'), has), 'Ә');
+    assert.equal(sanitizePdfText('Артём Йылмаз'.normalize('NFD'), has), 'Артём Йылмаз');
+  });
+});
+
+describe('fitFontSize и fitText (замер шрифтом)', () => {
+  const plain = geologicaMeasure();
+  const tracked = geologicaMeasure(-0.03);
   it('короткое имя не трогает', () => {
-    assert.equal(fitFontSize(47, 'Анна Серикова', 700), 47);
+    assert.equal(fitFontSize(47, 'Анна Серикова', 700, tracked, 26), 47);
   });
-  it('двойная фамилия через дефис считается по частям', () => {
-    assert.equal(fitFontSize(47, 'ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА', 700), fitFontSize(47, 'ҚҰРМАНҒАЛИҚЫЗЫ-', 700));
+  it('широкие заглавные влезают в рамку: оценка 0,72 em их недооценивала', () => {
+    const word = 'ЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖЖ';
+    const size = fitFontSize(47, word, 700, tracked, 20);
+    assert.ok(size < 47, `size ${size}`);
+    assert.ok(tracked(word, size) <= 700, `ширина ${tracked(word, size)}`);
+    assert.ok(tracked(word, size + 0.5) > 700 || size === 47, 'кегль мог быть крупнее');
   });
-  it('длинное слово без пробелов уменьшается до ширины', () => {
-    const size = fitFontSize(47, 'А'.repeat(60), 700);
-    assert.ok(size < 47 && size * 0.72 * 60 <= 700, `size ${size}`);
+  it('составное слово с дефисом — одно неразрывное слово', () => {
+    const word = 'ҚҰРМАНҒАЛИҚЫЗЫ-НҰРСҰЛТАНОВА';
+    const size = fitFontSize(47, word, 700, tracked, 20);
+    assert.ok(tracked(word, size) <= 700);
+    // половина слова поместилась бы на большем кегле, но слово целиком не делится
+    assert.ok(size < fitFontSize(47, 'ҚҰРМАНҒАЛИҚЫЗЫ-', 700, tracked, 20));
+  });
+  it('на минимальном кегле слово режется пробелами и влезает', () => {
+    const r = fitText('А'.repeat(200), 26, 26, 700, tracked);
+    assert.equal(r.size, 26);
+    assert.ok(r.text.includes(' '));
+    assert.equal(r.text.replace(/ /g, ''), 'А'.repeat(200));
+    for (const part of r.text.split(' ')) assert.ok(tracked(part, 26) <= 700);
+  });
+  it('курс без трекинга: длинное слово уменьшается не ниже минимума', () => {
+    const r = fitText('Предпринимательство'.repeat(3), 25, 18, 522, plain);
+    assert.equal(r.size, 18);
+    for (const part of r.text.split(' ')) assert.ok(plain(part, 18) <= 522);
   });
 });
 

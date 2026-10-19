@@ -8,6 +8,7 @@ import { routing } from '@/lib/i18n/routing';
 import { certPdfAllowed } from '@/lib/learn/limits';
 import { certificatePdfEtag } from '@/lib/learn/pdf/etag';
 import { loadCertificatePdfInput } from '@/lib/learn/pdf/data';
+import { cleanCertificateTexts } from '@/lib/learn/pdf/glyphs';
 import { PdfConfigError } from '@/lib/learn/pdf/types';
 import { coursePath, routeParam } from '@/lib/learn/server';
 
@@ -61,6 +62,16 @@ export async function GET(request: Request, { params }: Ctx) {
     throw e;
   }
   if (!input) return text('Not found', 404);
+
+  // 4а. имя или курс целиком из символов вне шрифта: PDF с пустым местом выдавать нельзя,
+  // отправляем на HTML-страницу сертификата (та же локаль, что в адресе)
+  const clean = cleanCertificateTexts(input);
+  if (!clean.holder || !clean.course) {
+    return new Response(null, {
+      status: 303,
+      headers: { Location: `/${locale}${coursePath(slug)}/certificate`, 'Cache-Control': 'no-store' },
+    });
+  }
 
   // 5. 304 — только после проверки владельца
   const etag = certificatePdfEtag(input);

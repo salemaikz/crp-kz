@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { after, before, mock, test } from 'node:test';
 import { createTestDb, type TestDb } from '../../../src/lib/db/testing';
-import { PDF_COURSE_SLUG, PDF_NUMBER, seedPdf } from './learn-certificate-pdf.seed';
+import { EMOJI_NUMBER, PDF_COURSE_SLUG, PDF_NUMBER, seedPdf } from './learn-certificate-pdf.seed';
 
 const src = (rel: string) => new URL(`../../../src/${rel}`, import.meta.url).href;
 
@@ -80,6 +80,18 @@ test('владелец: 200, PDF и заголовки без публичног
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.match(res.headers.get('etag')!, /^W\/"[0-9a-f]{32}"$/);
   assert.equal(new TextDecoder().decode(await res.arrayBuffer()).slice(0, 5), '%PDF-');
+});
+
+test('имя пустое после очистки: 303 на HTML-страницу сертификата той же локали, рендера нет', async () => {
+  current = { id: 'pdf-emoji' };
+  const before = renders;
+  for (const locale of ['ru', 'kz']) {
+    const res = await call(locale);
+    assert.equal(res.status, 303, EMOJI_NUMBER);
+    assert.equal(res.headers.get('location'), `/${locale}/learn/${PDF_COURSE_SLUG}/certificate`);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  }
+  assert.equal(renders, before, 'рендер для пустого имени вызывался');
 });
 
 test('чужой сертификат, несуществующий курс и курс без сертификата — одинаковый 404', async () => {

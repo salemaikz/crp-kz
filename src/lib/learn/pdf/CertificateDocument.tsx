@@ -2,8 +2,9 @@
 // (BRAND.md, «Сертификат»). Без водяных знаков, теней, градиентов и колец. Без хуков и next-intl:
 // все строки приходят в props.
 import { Document, Image, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
-import { hasPdfGlyph } from './glyphs';
-import { courseFontSize, fitFontSize, nameFontSize, sanitizePdfText } from './layout';
+import { cleanCertificateTexts } from './glyphs';
+import { COURSE_MIN_SIZE, NAME_MIN_SIZE, courseFontSize, fitText, nameFontSize } from './layout';
+import { geologicaMeasure } from './measure';
 import { qrPath } from './qr';
 import { A4_LANDSCAPE, PDF_COLORS as C } from './theme';
 import type { CertificatePdfInput } from './types';
@@ -14,6 +15,8 @@ const LOGO_RATIO = 196 / 940;
 const QR_SIZE = 84;
 /** Ширина строки ФИО внутри рамки и ширина блока названия курса (см. стили), pt. */
 const NAME_MAX_WIDTH = 700;
+/** Трекинг ФИО, в долях кегля. */
+const NAME_TRACKING = -0.03;
 const COURSE_MAX_WIDTH = 522;
 /** Белое поле вокруг QR, в модулях. */
 const QR_QUIET = 4;
@@ -58,11 +61,10 @@ type Props = CertificatePdfInput & { logo: Buffer };
 export function CertificateDocument({ logo, ...c }: Props) {
   // ФИО и название курса приходят из БД: чистим от управляющих и bidi-символов и от символов,
   // которых нет в шрифте (эмодзи, иероглифы): с ними react-pdf падает на всём документе
-  const holder = sanitizePdfText(c.holderName, hasPdfGlyph);
-  const course = sanitizePdfText(c.courseTitle, hasPdfGlyph);
-  // длинное слово без пробелов и дефисов не переносится, поэтому размер подгоняется под ширину рамки
-  const nameSize = fitFontSize(nameFontSize(holder), holder, NAME_MAX_WIDTH);
-  const courseSize = fitFontSize(courseFontSize(course), course, COURSE_MAX_WIDTH);
+  const { holder, course } = cleanCertificateTexts(c);
+  // слово без пробелов не переносится, поэтому кегль подгоняется под ширину по замеру самого шрифта
+  const name = fitText(holder, nameFontSize(holder), NAME_MIN_SIZE, NAME_MAX_WIDTH, geologicaMeasure(NAME_TRACKING));
+  const courseFit = fitText(course, courseFontSize(course), COURSE_MIN_SIZE, COURSE_MAX_WIDTH, geologicaMeasure());
   const qr = qrPath(c.verifyUrl);
   const view = qr.size + QR_QUIET * 2;
   const l = c.labels;
@@ -83,9 +85,9 @@ export function CertificateDocument({ logo, ...c }: Props) {
           <View style={s.body}>
             <Text style={s.title}>{l.title}</Text>
             <Text style={s.small}>{l.certifies}</Text>
-            <Text style={[s.name, { fontSize: nameSize, letterSpacing: -0.03 * nameSize }]}>{holder}</Text>
+            <Text style={[s.name, { fontSize: name.size, letterSpacing: NAME_TRACKING * name.size }]}>{name.text}</Text>
             <Text style={s.small}>{l.completed}</Text>
-            <Text style={[s.course, { fontSize: courseSize }]}>{course}</Text>
+            <Text style={[s.course, { fontSize: courseFit.size }]}>{courseFit.text}</Text>
           </View>
 
           <View style={s.foot}>

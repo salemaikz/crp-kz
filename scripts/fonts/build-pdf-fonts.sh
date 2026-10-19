@@ -21,7 +21,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT="$ROOT/assets/fonts/pdf"
 SUMS="$ROOT/scripts/fonts/sources.sha256"
-BASE="https://raw.githubusercontent.com/google/fonts/main/ofl"
+# источник закреплён коммитом google/fonts, а не веткой: байты не плывут между сборками
+BASE="https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl"
 
 die() { echo "build-pdf-fonts: $*" >&2; exit 1; }
 

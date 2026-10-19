@@ -17,18 +17,65 @@ export function courseFontSize(title: string): number {
   return 25;
 }
 
+/** Минимальные кегли в pt: нижние ступени nameFontSize и courseFontSize. */
+export const NAME_MIN_SIZE = 26;
+export const COURSE_MIN_SIZE = 18;
+
+/** Ширина строки в pt при данном кегле (с учётом трекинга); в рантайме мерит сам шрифт (measure.ts). */
+export type Measure = (text: string, size: number) => number;
+
+const STEP = 0.5;
+
+/** Ширина самого широкого неразрывного слова: перенос идёт только по пробелам, дефис слово не разрывает. */
+function widest(text: string, size: number, measure: Measure): number {
+  return text.split(/\s+/).reduce((m, w) => Math.max(m, w ? measure(w, size) : 0), 0);
+}
+
 /**
- * Уменьшает размер, чтобы самое длинное неразрывное место (слово или часть после дефиса) влезло в
- * maxWidth pt. Ширина оценивается с запасом: 0,72 em на знак (заглавные Geologica Bold шире строчных).
- * Нужно именно неразрывным строкам: перенос идёт только по пробелам и после дефиса.
+ * Уменьшает кегль (шагом 0,5 pt, не ниже minSize), пока самое длинное неразрывное слово не влезет
+ * в maxWidth. Ширину даёт measure, то есть сам шрифт, а не оценка на знак.
  */
-export function fitFontSize(size: number, text: string, maxWidth: number): number {
-  const longest = text
+export function fitFontSize(size: number, text: string, maxWidth: number, measure: Measure, minSize: number): number {
+  let cur = size;
+  while (cur > minSize && widest(text, cur, measure) > maxWidth) cur = Math.max(minSize, cur - STEP);
+  return cur;
+}
+
+/** Режет слово на части, каждая из которых влезает в maxWidth (хотя бы по одному знаку). */
+function chunkWord(word: string, size: number, maxWidth: number, measure: Measure): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (const ch of word) {
+    if (cur && measure(cur + ch, size) > maxWidth) {
+      out.push(cur);
+      cur = ch;
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/**
+ * Кегль и текст для строки на листе. Сначала уменьшается кегль до minSize; если слово не влезает
+ * и на минимуме (патологический ввод вроде 200 букв без пробелов), оно режется пробелами на части,
+ * чтобы текст не вылез за рамку.
+ */
+export function fitText(
+  text: string,
+  size: number,
+  minSize: number,
+  maxWidth: number,
+  measure: Measure,
+): { text: string; size: number } {
+  const fitted = Math.min(size, fitFontSize(size, text, maxWidth, measure, minSize));
+  if (widest(text, fitted, measure) <= maxWidth) return { text, size: fitted };
+  const cut = text
     .split(/\s+/)
-    .flatMap((w) => w.split(/(?<=-)/))
-    .reduce((m, w) => Math.max(m, Array.from(w).length), 0);
-  if (longest === 0) return size;
-  return Math.min(size, Math.floor((maxWidth / 0.72 / longest) * 10) / 10);
+    .flatMap((w) => (measure(w, fitted) > maxWidth ? chunkWord(w, fitted, maxWidth, measure) : [w]))
+    .join(' ');
+  return { text: cut, size: fitted };
 }
 
 const MAX_TEXT = 200;
@@ -58,7 +105,9 @@ function isInvisible(c: number): boolean {
  */
 export function sanitizePdfText(s: string, hasGlyph?: (codePoint: number) => boolean): string {
   let out = '';
-  for (const ch of s) {
+  // NFC до проверки глифов: в NFD «й» и «ё» приходят базовой буквой и combining-знаком; знак
+  // выпал бы как «нет в шрифте», и «Й» превратилась бы в «И»
+  for (const ch of s.normalize('NFC')) {
     const c = ch.codePointAt(0)!;
     if (isInvisible(c)) continue;
     if (hasGlyph && !isControl(c) && !/\s/.test(ch) && !hasGlyph(c)) continue;
