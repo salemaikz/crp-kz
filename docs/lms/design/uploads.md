@@ -584,9 +584,9 @@ await syncLessonFiles(sql, lessonId, fileIds);
 | `src/app/[locale]/admin/courses/[id]/lessons/[lessonId]/page.tsx` | передаёт `uploads` в редактор |
 | `src/app/[locale]/admin/courses/[id]/page.tsx` | `CoverCard` и ссылка «Файлы курса» при включённом флаге |
 | `src/app/[locale]/admin/courses/[id]/files/page.tsx` | новая страница; при выключенном флаге — `notFound()` |
-| `src/components/learn/ImageBlock.tsx`, `FileBlock.tsx` | показ слушателю |
+| `src/components/learn/ImageBlock.tsx`, `FileBlock.tsx` | показ слушателю; в демо у не-админа — подпись `block.demoHidden` вместо файла (D-038) |
 | `src/components/learn/Blocks.tsx` | ветки `image`/`file`, при выключенном флаге — `null` |
-| `src/components/learn/Markdown.tsx` | проп `filesEnabled`: при `false` `img` с `/api/files/` не выводится |
+| `src/components/learn/Markdown.tsx` | проп `filesEnabled`: при `false` `img` с `/api/files/` не выводится; в демо у не-админа — `false` (D-038) |
 | `messages/{ru,kz}/files.json` | тексты (раздел 4) |
 | `messages/{ru,kz}/admin.json` | `lessonEditor.blocks.types.{image,file}`, `lessonEditor.issue.{fileNotFound,fileWrongKind}`, `errors.{FEATURE_DISABLED,FILE_IN_USE,FILE_NOT_FOUND}` |
 
@@ -627,7 +627,9 @@ await syncLessonFiles(sql, lessonId, fileIds);
 - изображение — `<figure>` с `<img width height loading="lazy" alt>` и подписью;
 - файл — плоская карточка-«бумага»: иконка `FileText` или `FileSpreadsheet`, название,
   «PDF · 2,4 МБ», кнопка «Скачать» (`<a href download>`);
-- без анимаций и теней, как в BRAND «Без ИИ-шума».
+- без анимаций и теней, как в BRAND «Без ИИ-шума»;
+- в демо у не-админа (D-038) — вместо изображения или файла нейтральная подпись
+  `block.demoHidden`, картинки в тексте урока не выводятся.
 
 **Гость, каталог:** обложка опубликованного public-курса видна. Обложки черновиков и
 закрытых курсов отдаются 302 на вход.
@@ -636,6 +638,7 @@ await syncLessonFiles(sql, lessonId, fileIds);
 
 | Ключ | ru | kz |
 |---|---|---|
+| `block.demoHidden` | В демо загруженные материалы видит только администратор. | Демода жүктелген материалдарды тек әкімші көреді. |
 | `upload.image` | Загрузить изображение | Суретті жүктеу |
 | `upload.file` | Загрузить файл | Файлды жүктеу |
 | `upload.replace` | Заменить | Ауыстыру |
