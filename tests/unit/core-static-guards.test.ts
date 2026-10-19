@@ -20,16 +20,40 @@ function walk(dir: string, out: string[] = []): string[] {
 const rel = (f: string) => path.relative(ROOT, f).split(path.sep).join('/');
 const srcFiles = walk(path.join(ROOT, 'src'));
 
-test('src/lib/files/url.ts не содержит import', () => {
+/** Любая зависимость файла: import … from, import '…', import(…), export … from, require(…). */
+function hasDependency(text: string): boolean {
+  return [
+    /(^|[;{}\s])(import|export)\b[^;]*?\bfrom\s*['"]/,
+    /(^|[;{}\s])import\s*['"(]/,
+    /\bimport\s*\(/,
+    /\brequire\s*\(/,
+  ].some((re) => re.test(text));
+}
+
+test('src/lib/files/url.ts не содержит зависимостей (import, export from, import(), require())', () => {
   const text = readFileSync(path.join(ROOT, 'src/lib/files/url.ts'), 'utf8');
-  assert.equal(/^\s*import\s/m.test(text), false);
-  assert.equal(/\brequire\(/.test(text), false);
+  assert.equal(hasDependency(text), false);
+});
+
+test('охрана url.ts ловит обходы и не срабатывает на обычный код', () => {
+  for (const t of [
+    "export { isFeatureActive } from '../features';",
+    "export * from '../features';",
+    "import{x}from'../features';",
+    "import x from '../features';",
+    "import '../side-effect';",
+    "const m = await import('../features');",
+    "const m = require('../features');",
+  ]) {
+    assert.equal(hasDependency(t), true, t);
+  }
+  assert.equal(hasDependency('export function visibleCover(c: string) { return c; }\nexport const A = 1;'), false);
 });
 
 // Хвост пути, по которому узнаём серверный модуль.
 const SERVER_ONLY = [/(^|\/)features$/, /(^|\/)env$/, /(^|\/)mail\/config$/, /(^|\/)legal\/registry$/, /(^|\/)db(\/.*)?$/];
 
-test('клиентские файлы не импортируют серверные модули напрямую', () => {
+test('клиентские файлы не импортируют напрямую модули из SERVER_ONLY (транзитивные зависимости не проверяются)', () => {
   const bad: string[] = [];
   for (const file of srcFiles) {
     const text = readFileSync(file, 'utf8');
@@ -43,11 +67,12 @@ test('клиентские файлы не импортируют серверн
   assert.deepEqual(bad, []);
 });
 
-test('INSERT INTO audit_log — только в src/lib/audit.ts (и сиде демо-данных)', () => {
+test('INSERT INTO audit_log — только в src/lib/audit.ts (и сиде демо-данных), в том числе scripts/', () => {
   const ALLOWED = new Set(['src/lib/audit.ts', 'src/lib/db/seed/activity.ts']);
-  const found = srcFiles
+  const found = [...srcFiles, ...walk(path.join(ROOT, 'scripts'))]
     .filter((f) => !ALLOWED.has(rel(f)))
     .filter((f) => /INSERT\s+INTO\s+audit_log/i.test(readFileSync(f, 'utf8')))
     .map(rel);
   assert.deepEqual(found, []);
 });
+
