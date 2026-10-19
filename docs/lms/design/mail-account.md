@@ -694,9 +694,9 @@ export async function queueAssignmentNotices(sql: Sql, input: {
 | `verify-submit:{ip}` | 30 / 15 мин | без лимита (bcrypt нет, токен 256 бит) |
 | `verify-resend:{userId}` | 3 / час | — |
 
-**Журнал (`audit_log`, без email и токенов в `meta`):** `user.password_reset_requested`,
-`user.password_reset`, `admin.password_reset_sent`, `user.email_verify_sent`, `user.email_verified`,
-`reminders.run`, `mail.failed`.
+**Журнал (`audit_log`, без email и токенов в `meta`; имена — по реестру `src/lib/audit.ts`):**
+`user.password_reset_request`, `user.password_reset`, `user.password_reset_link`,
+`user.email_verify_request`, `user.email_verify`, `reminders.run`, `mail.fail`.
 
 ---
 

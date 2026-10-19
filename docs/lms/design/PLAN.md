@@ -598,7 +598,8 @@ NEXT_TELEMETRY_DISABLED=
     **После волны 2:** `requestPasswordReset` сейчас возвращает `void` и молчит (сид в демо, лимит,
     письмо не встало в очередь) — у админа это ложный успех и ложная запись журнала. 4A меняет его на
     результат `{ sent: true } | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' |
-    'unavailable' }` (в список файлов 4A добавляется `src/lib/auth/recovery.ts`), публичное
+    'unavailable' }` (`unavailable` — флаг выключен или письмо не встало в очередь; в список
+    файлов 4A добавляется `src/lib/auth/recovery.ts`), публичное
     `requestPasswordResetAction` по-прежнему всегда отвечает «отправлено», а `sendResetLinkAction`
     пишет `user.password_reset_link` и отвечает `sendResetDone` только при `sent: true`, иначе —
     отдельные тексты (новые ключи `admin.json` в этой задаче разрешены, исключение из К-6). Тест
