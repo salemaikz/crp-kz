@@ -1,5 +1,7 @@
 // Конфиг почты: транспорт и значения по умолчанию (D-030).
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   MAIL_AUTH_RECIPIENT_HOURLY,
@@ -58,4 +60,15 @@ test('категории: первые три шаблона — auth, оста�
     ['password_reset', 'password_changed', 'email_verify'],
   );
   assert.equal(Object.keys(MAIL_CATEGORY).length, MAIL_TEMPLATES.length);
+});
+
+test('подпись о сроке хранения берёт дни из конфига, а не из текста', () => {
+  for (const locale of ['ru', 'kz']) {
+    const admin = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'messages', locale, 'admin.json'), 'utf8')) as {
+      mail: { mode: { smtp: string } };
+    };
+    assert.match(admin.mail.mode.smtp, /\{days\}/, locale);
+    assert.doesNotMatch(admin.mail.mode.smtp, /\b90\b/, locale);
+  }
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '45' }), 45);
 });

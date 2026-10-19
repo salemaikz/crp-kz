@@ -20,6 +20,25 @@ test('гость и не-админ не видят админку', async ({ pa
   await page.goto('/ru/admin/courses');
   await expect(page.getByRole('heading', { name: 'Такой страницы нет' })).toBeVisible();
   await expect(page.getByTestId('admin-nav-courses')).toHaveCount(0);
+  await page.goto('/ru/admin/mail');
+  await expect(page.getByRole('heading', { name: 'Такой страницы нет' })).toBeVisible();
+});
+
+test('письма: пункт меню, режим демо, письмо открывается', async ({ page }) => {
+  await loginAsAdmin(page);
+  await expect(page.getByTestId('admin-nav-mail')).toHaveText('Письма');
+  await page.getByTestId('admin-nav-mail').click();
+  await expect(page).toHaveURL(/\/ru\/admin\/mail$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Письма' })).toBeVisible();
+  await expect(page.getByTestId('mail-mode')).toContainText('Демо-версия: письма не отправляются');
+  // фильтр по статусу не ломает страницу; неизвестный статус игнорируется
+  await page.goto('/ru/admin/mail?status=sent');
+  await expect(page.getByRole('heading', { level: 1, name: 'Письма' })).toBeVisible();
+  await page.goto('/ru/admin/mail?status=nope&page=abc');
+  await expect(page.getByRole('heading', { level: 1, name: 'Письма' })).toBeVisible();
+  // несуществующее письмо — 404
+  await page.goto('/ru/admin/mail/00000000-0000-4000-8000-000000000000');
+  await expect(page.getByRole('heading', { name: 'Такой страницы нет' })).toBeVisible();
 });
 
 test('сводка: цифры, меню и журнал действий', async ({ page }) => {

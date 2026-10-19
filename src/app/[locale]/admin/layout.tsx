@@ -5,6 +5,7 @@ import { AdminNav } from '@/components/admin/AdminNav';
 import '@/components/admin/admin.css';
 import { countPendingOrders } from '@/lib/admin';
 import { getCurrentUser } from '@/lib/auth';
+import { mailPagesActive } from '@/lib/mail';
 import { routing } from '@/lib/i18n/routing';
 
 type Props = { children: ReactNode; params: Promise<{ locale: string }> };
@@ -33,7 +34,7 @@ export default async function AdminLayout({ children, params }: Props) {
             <span className="meta">{roleLabel}</span>
           </div>
         </div>
-        <AdminNav pendingOrders={pending} />
+        <AdminNav pendingOrders={pending} mailPages={mailPagesActive()} />
       </aside>
       <div className="adm-main">{children}</div>
     </div>
