@@ -20,6 +20,22 @@ jobs:
     timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: '1'
+    # Настоящий Postgres 16 для интеграционных тестов: блокировки (FOR UPDATE) и гонки
+    # параллельных транзакций на PGlite (одно соединение) не проверить. Только для тестов.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crp
+          POSTGRES_PASSWORD: crp
+          POSTGRES_DB: crp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crp -d crp_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -40,8 +56,15 @@ jobs:
       - name: Unit-тесты
         run: npm run test:unit
 
-      - name: Интеграционные тесты
+      - name: Интеграционные тесты (PGlite)
         run: npm run test:integration
+
+      # Те же тесты на Postgres 16: каждая тестовая БД — своя временная схема (src/lib/db/testing.ts).
+      # Тесты гонок (checkout-concurrency) без TEST_DATABASE_URL пропускаются — здесь они идут.
+      - name: Интеграционные тесты (Postgres 16)
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgres://crp:crp@localhost:5432/crp_test
 
       # next build/start — production: демо-режим (PGlite с сидом) только по явному DEMO_MODE=1.
       # На шагах тестов флаг не задан: тесты сами переключают режимы через окружение.
