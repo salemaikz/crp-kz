@@ -34,6 +34,9 @@
 | lucide-react | 1.59.0 |
 | @playwright/test | 1.56.1 (браузер: `/opt/pw-browsers/chromium-1194`) |
 | tsx | 4.23.15 |
+| @react-pdf/renderer | 4.9.0 |
+
+Шрифты PDF — статические срезы в `assets/fonts/pdf/` (D-036).
 
 - Node 22, ESM.
 - Сборка `next build --webpack`, не Turbopack.
@@ -55,7 +58,7 @@ export interface Db {
   json(value: unknown): unknown;  // параметр для колонок jsonb: ${db.json(v)}
   driver: 'postgres' | 'pglite';
 }
-export async function getDb(): Promise<Db>;  // ленивая инициализация + миграции + сид
+export async function getDb(): Promise<Db>;  // ленивая инициализация + миграции (в production — только проверка, D-026) + сид
 export function newId(): string;             // crypto.randomUUID()
 export function now(): number;               // Date.now()
 ```
@@ -87,11 +90,23 @@ export function now(): number;               // Date.now()
 - id — `TEXT` (UUID); время — `BIGINT` epoch-мс (в JS `number`); деньги —
   `BIGINT` целые тенге (`amount_kzt`); флаги — `BOOLEAN`.
 
+**Подготовка БД.** `prepareDb(db, { autoMigrate?, seed? })` в `src/lib/db/index.ts`:
+миграции (`migrate`) или только проверка `assertMigrated`, затем сид. Авто-миграция —
+`autoMigrateEnabled()`: `DB_MIGRATE_ON_START=1` — да, `0` — нет, иначе да в демо и
+разработке, в production — нет (D-026). Скрипты и CLI открывают БД через `prepareDb()`,
+а не `migrate()` напрямую, по шаблону: `openDriver()` → `prepareDb(db, { seed: false })` →
+работа → `db.close()`. `migrate()` напрямую — только `db-migrate`, `db-seed`, снимок демо и
+тестовая БД.
+
 **Миграции.**
 - Файлы `migrations/YYYY-MM-DD-<slug>.sql`, строго идемпотентные
   (`IF NOT EXISTS`), применяются по алфавиту.
+- Новое имя обязано сортироваться после всех существующих.
+- `BIGINT` — только время (`*_at`) и деньги (`*_kzt`); другие числа — `INTEGER`
+  (правило снимка демо, §11).
 - Учёт — таблица `schema_migrations(name, applied_at)` (D-012).
-- Раннер: `src/lib/db/migrate.ts` + CLI `npm run db:migrate`.
+- Раннер: `src/lib/db/migrate.ts` + CLI `npm run db:migrate`. Состояние накатки —
+  `npm run db:status`.
 
 **Сид.**
 - `src/lib/db/seed.ts`, запускается автоматически, если таблица `users`
@@ -108,7 +123,7 @@ sessions(id, user_id → users ON DELETE CASCADE, expires_at, created_at)
 organizations(id, slug UNIQUE, name, kind TEXT CHECK(kind IN ('owner','client')), created_at)
 organization_members(org_id → organizations, user_id → users, role TEXT CHECK(role IN ('manager','member')),
       position TEXT, created_at, PRIMARY KEY(org_id, user_id))
-courses(id, slug UNIQUE, title jsonb, summary jsonb, description jsonb, cover TEXT, level TEXT,
+courses(id, slug UNIQUE, title jsonb, summary jsonb, description jsonb, cover TEXT, cover_file_id → files NULL, level TEXT,
       duration_min INT, visibility TEXT CHECK(visibility IN ('public','internal','private')),
       owner_org_id → organizations NULL, status TEXT CHECK(status IN ('draft','published')),
       sequential BOOLEAN DEFAULT false, position INT DEFAULT 0, created_at, updated_at)
@@ -130,9 +145,18 @@ orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT, access_day
       buyer_type TEXT CHECK(buyer_type IN ('person','company')), buyer_name, buyer_email, buyer_phone,
       company_name NULL, company_bin NULL, payment_method TEXT CHECK(payment_method IN ('kaspi','invoice')),
       paid_at NULL, decided_by NULL, created_at, updated_at)
-consents(id, user_id NULL, order_id NULL, kind TEXT, version TEXT, created_at)
+consents(id, user_id NULL, order_id NULL, kind TEXT, version TEXT, created_at,
+      locale TEXT, context TEXT, text_sha256 TEXT, withdrawn_at BIGINT NULL, CHECK(kind IN (…виды из src/lib/legal/types.ts)))
+legal_texts(...)   -- копия принятого текста, адресация по хэшу, только вставка (D-035)
+auth_tokens(...)   -- одноразовые токены сброса пароля и подтверждения email; в БД только SHA-256 (D-031)
+mail_outbox(...)   -- очередь писем (D-030); аренда воркера: lease_until_at BIGINT
+files(...)         -- метаданные файлов (D-034); size_bytes INTEGER NOT NULL CHECK (size_bytes > 0)
+lesson_files(...)  -- ссылки уроков на файлы, пересобираются при сохранении урока (D-034)
 audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta jsonb, created_at)
 ```
+
+Полные определения таблиц `auth_tokens`, `mail_outbox`, `files`, `lesson_files`,
+`legal_texts` — в миграциях `migrations/2026-10-20-*.sql`.
 
 Целостность: модуль урока — из того же курса, `course_id` прогресса — курс
 урока (составные FK).
@@ -144,7 +168,7 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 один раз заполняет старые заказы сроком текущего предложения.
 
 `users.email_verified_at` — NULL, пока email не подтверждён
-(поток подтверждения — позже; у демо-пользователей сида заполнено).
+(заполняется подтверждением по ссылке или сбросом пароля (D-031); у демо-пользователей сида заполнено).
 
 Индексы: `enrollments(user_id)`, `enrollments(course_id)`, `lessons(module_id, position)`,
 `course_modules(course_id, position)`, `orders(status, created_at)`, `audit_log(entity, entity_id)`.
@@ -164,6 +188,10 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 | `callout` | `tone`: `info`, `warn` или `success`, `text` |
 | `divider` | — |
 | `quiz` | `passScore` 1–100, `questions[]` |
+| `image` | `fileId`, `alt`, `caption?`, `width`, `height` |
+| `file` | `fileId`, `label?`, `name`, `ext`, `sizeBytes` |
+
+Снимки полей (`name`, `ext`, `sizeBytes`, `width`, `height`) переписывает сервер.
 
 Вопрос теста: `{id, text, options: string[2..8], correct: number[], multiple: boolean, explain?}`.
 Схемы блоков — `src/lib/content/blocks.ts`, на zod.
@@ -209,6 +237,8 @@ revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): 
   урока и в каждом server action (прогресс, тест, сертификат).
 - Платный курс никогда не даёт `self`.
 - Неопубликованный урок, модуль или курс слушателю не виден.
+- **Файлы урока.** Доступ к `/api/files/[id]` — по `lesson_files` опубликованных уроков и
+  `loadCourseAccess` (без второй реализации); обложки — по видимости курса (D-034).
 - Правильные ответы теста (`correct`, `explain`) никогда не уходят на клиент
   до сдачи. Ответ на попытку (D-020): провал — только `{ passed: false }`, без
   счёта (по счёту ответы подбираются перебором, меняя по одному); сдан —
@@ -252,10 +282,15 @@ isManagerOf(userId, orgId): Promise<boolean>
   32 символов секрет — ошибка и в демо.
 - **Демо-режим** — только явно (`DEMO_MODE=1` или локально без `DATABASE_URL`,
   см. §2). На регистрации в демо — предупреждение не вводить реальные ПДн.
-- **Email не подтверждается** (поток — позже, follow-up). Поэтому заказ
+- **Сброс пароля и подтверждение email** (D-031; волна 2). Токены — 32 случайных байта,
+  в БД только SHA-256. Письма ставятся в очередь (D-030). Предложено, ждёт владельца
+  (D-032; волна 3): при активном `EMAIL_VERIFY` заказ оформляется только с подтверждённого
+  email (`email_unverified`). Заказ
   оформляет только вошедший пользователь, и заказ привязывается к аккаунту из
   сессии. Пользователь по email не ищется, при оплате не создаётся (D-020).
-  Гостевая покупка — после подтверждения email и ссылки установки пароля (#25).
+  Гостевая покупка — D-032: гость регистрируется, подтверждает email и оформляет
+  заказ на свой аккаунт; ссылки установки пароля нет.
+- **Согласия** пишутся через `src/lib/legal` (D-035; волна 3).
 - **Пароли.** bcryptjs, cost 10; минимум 8 символов.
 - **Защита.** Ограничение частоты входа и регистрации — в памяти процесса:
   на IP, на пару IP+email и на email независимо от IP (вход — 20 попыток за
@@ -276,6 +311,11 @@ isManagerOf(userId, orgId): Promise<boolean>
   (~10⁹ на год), страница не индексируется и не показывает email, но при
   тысячах выданных сертификатов долгий перебор находит ФИО и курс. Поэтому на
   проде за прокси настройка доверенного IP обязательна (#24).
+- **Лимиты новых потоков.** Письма для входа и подтверждения (сброс, подтверждение
+  email): на получателя — `MAIL_AUTH_RECIPIENT_HOURLY` (5 в час), общий предохранитель —
+  `MAIL_AUTH_HOURLY_CAP` (по умолчанию 300 в час). PDF сертификата — 10 в минуту на
+  пользователя (D-036). Загрузка и выдача файлов — `UPLOAD_LIMITS`
+  (`src/lib/storage/limits.ts`).
 
 **Демо-аккаунты** (пароль `demo12345`), на странице входа — кнопки «Войти как …»
 только в демо:
@@ -290,7 +330,8 @@ isManagerOf(userId, orgId): Promise<boolean>
 ## 6. Маршруты
 
 Все страницы — под `src/app/[locale]/`, локали `ru` (по умолчанию) и `kz`.
-Мутации — server actions с zod. Route handlers — только для файлов (CSV).
+Мутации — server actions с zod. Route handlers — только для файлов (CSV, PDF, загрузка и выдача) и `/api/health` (D-028).
+Пометка «(волна N)» — маршрута ещё нет в коде, он появится в этой волне доработки MVP.
 
 | Путь | Кто | Владелец кода |
 |---|---|---|
@@ -303,7 +344,8 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/learn` | вошедший | **learn** — «Моё обучение» |
 | `/[locale]/learn/[slug]` | зачисленный | **learn** — программа с прогрессом |
 | `/[locale]/learn/[slug]/[lesson]` | зачисленный | **learn** — урок: блоки, тест, «Урок пройден», дальше/назад |
-| `/[locale]/learn/[slug]/certificate` | зачисленный | **learn** — сертификат (печать в PDF через браузер) |
+| `/[locale]/learn/[slug]/certificate` | зачисленный | **learn** — сертификат (печать браузером или PDF (`CERT_PDF`)) |
+| `/[locale]/learn/[slug]/certificate/pdf` | владелец сертификата | **learn** — PDF сертификата; гость — на вход, чужой или несуществующий — 404 (волна 2) |
 | `/[locale]/cert/[number]` | все | **learn** — публичная проверка: ФИО, курс, дата |
 | `/[locale]/team` | руководитель | **team** — сотрудники, назначения, отчёт |
 | `/[locale]/team/report.csv` | руководитель | **team** — CSV (UTF-8 BOM) |
@@ -311,7 +353,14 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/admin/courses`, `/new`, `/[id]`, `/[id]/lessons/[lessonId]` | admin | **admin** — конструктор |
 | `/[locale]/admin/orders` | admin | **checkout** — заказы: «Оплачено» / «Отменить» / «Возврат» |
 | `/[locale]/admin/users` | admin | **admin** — пользователи, выдать или отозвать доступ |
+| `/[locale]/admin/mail`, `/[locale]/admin/mail/[id]` | admin | **mail** — страница «Письма» (D-030; волна 1) |
+| `/[locale]/admin/courses/[id]/files` | admin | **files** — файлы курса (волна 4) |
 | `/[locale]/login`, `/register` | гость | **foundation** |
+| `/[locale]/password/forgot`, `/[locale]/password/reset`, `/[locale]/account/verify` | гость / вошедший | **foundation** (волна 2) |
+| `/[locale]/legal`, `/[locale]/legal/[doc]`, `/[locale]/legal/[doc]/[version]` | все | **legal** — юридические документы (волна 1) |
+| `/api/uploads` | admin | **files** — загрузка файлов (POST; волна 3) |
+| `/api/files/[id]` | по доступу к файлу | **files** — выдача файла (GET; волна 3) |
+| `/api/health` | все | **ops** — статус БД, миграций и релиза (волна 5) |
 
 ## 7. Дизайн — по редизайну сайта ЦРП (v3)
 
@@ -344,8 +393,12 @@ isManagerOf(userId, orgId): Promise<boolean>
 ## 8. Тексты и языки
 
 - next-intl. Сообщения — **по пространствам имён в отдельных файлах**:
-  `messages/{ru,kz}/{common,auth,catalog,learn,checkout,team,admin}.json`.
+  `messages/{ru,kz}/{common,auth,catalog,learn,checkout,team,admin,files,legal}.json`.
   Загрузчик склеивает их по имени файла.
+- `messages/{ru,kz}/mail.json` — тексты писем, грузит `src/lib/mail/i18n.ts`, в `NAMESPACES` не входит.
+- Исключения из правила «тексты только в `messages`»: юридические документы —
+  `content/legal/**` (контент, D-035); `deploy/nginx/maintenance.html` (приложение
+  недоступно, D-027).
 - Каждый агент владеет только своими файлами.
 - Казахские строки пишет тот же агент. Перевод помечен «требует проверки
   носителем» (issue #13).
@@ -389,6 +442,11 @@ isManagerOf(userId, orgId): Promise<boolean>
     возвраты;
   - сертификат только после 100 %;
   - изоляция руководителя по организации.
+- **Новые группы тестов:** флаги, почта и токены, сброс и подтверждение, напоминания,
+  файлы, юрдокументы, PDF, ops. Только на Postgres: `mail-worker-concurrency`,
+  `reminders-concurrency`, `files-sweep-race`, `ops-grants`, `checkout-concurrency`.
+- E2E идут на демо с флагами по умолчанию (все включены); выключенный флаг проверяют
+  интеграционные тесты.
 - **E2E** — `tests/e2e/*.spec.ts`, Playwright на `next start` в демо-режиме
   (`DEMO_MODE=1` в `webServer.env`):
   - гость: каталог → курс;
@@ -426,18 +484,55 @@ D-016); на своём сервере без `DATABASE_URL` нужен явны
 
 Netlify (D-024): `netlify.toml` в корне, переменные сайта `DEMO_MODE=1`, `NODE_VERSION=22`.
 
-Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), см. issue #24.
+В демо почта (волна 1) — только `outbox`: ссылки из писем видно в админке, «Письма» (D-030).
+Файлы (волна 3) лежат во временном каталоге экземпляра; на Vercel и Netlify лимит 4 МБ. PDF
+сертификата (волна 2) генерируется в функции (D-036).
+
+Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), D-026, D-027; runbook
+`docs/ops/RUNBOOK.md` появится в волне 5.
 
 ## 12. Кто что строит (зоны агентов)
 
 | Агент | Модель | Папки (владеет) |
 |---|---|---|
-| foundation | Opus | конфиги, `src/lib/{db,auth,env,access,i18n,content}`, `src/components/{ui,layout}`, `src/app/[locale]/layout.tsx`, `login`, `register`, `messages/*/{common,auth}.json`, `migrations/`, сид, тестовая инфраструктура, CI |
+| foundation | Opus | конфиги, `src/lib/{db,auth,env,access,i18n,content,features,audit}`, `src/components/{ui,layout}`, `src/app/[locale]/layout.tsx`, `login`, `register`, `messages/*/{common,auth}.json`, `migrations/`, сид, тестовая инфраструктура, CI |
 | catalog | Sonnet | `src/app/[locale]/page.tsx`, `src/app/[locale]/courses/page.tsx`, `src/app/[locale]/courses/[slug]/page.tsx`, `src/components/catalog`, `src/lib/catalog`, `messages/*/catalog.json` |
 | learn | Sonnet | `src/app/[locale]/learn`, `src/app/[locale]/cert`, `src/components/learn`, `src/lib/learn` (прогресс, тест, сертификаты), `messages/*/learn.json` |
 | checkout | Opus | `src/app/[locale]/courses/[slug]/buy`, `src/app/[locale]/orders`, `src/app/[locale]/admin/orders`, `src/lib/orders`, `src/components/checkout`, `messages/*/checkout.json` |
 | team | Sonnet | `src/app/[locale]/team`, `src/lib/team`, `src/components/team`, `messages/*/team.json` |
 | admin | Sonnet | `src/app/[locale]/admin` (кроме `orders`), `src/lib/admin`, `src/components/admin`, `messages/*/admin.json` |
+| mail | [дозаполни: модель] | `src/lib/{mail,reminders}`, `src/app/[locale]/admin/mail`, `messages/*/mail.json` |
+| files | [дозаполни: модель] | `src/lib/{storage,files}`, `src/app/api/{uploads,files}`, `src/components/admin/files`, `messages/*/files.json` |
+| legal | [дозаполни: модель] | `src/lib/legal`, `src/app/[locale]/legal`, `src/components/legal`, `content/legal`, `messages/*/legal.json` |
+| ops | [дозаполни: модель] | `src/lib/ops`, `src/app/api/health`, `deploy/`, `docs/ops/` |
+
+PDF сертификата — в зоне learn (`src/lib/learn/pdf`), шрифты — `assets/fonts/pdf`.
 
 Чужие папки не меняются. Не хватает чего-то в фундаменте — агент пишет об этом
 в отчёте, а не правит сам.
+
+## 13. Флаги функций
+
+Флаги (D-025) — `src/lib/features.ts`. Выключатель — переменная `FEATURE_<ИМЯ>`:
+`1` — включить, `0` — выключить, не задана или пустая — в демо включено, в остальных
+средах выключено; другое значение — выключено.
+
+| Флаг | Что включает | В демо | Вне демо — активна, только если |
+|---|---|---|---|
+| `PASSWORD_RESET` | сброс пароля по ссылке (D-031) | вкл | почта не `outbox` и задан https-адрес `NEXT_PUBLIC_SITE_URL` |
+| `EMAIL_VERIFY` | подтверждение email; заказ только с подтверждённого email (D-032) | вкл | почта не `outbox` и задан https-адрес сайта |
+| `REMINDERS` | напоминания о сроках (D-033) | вкл | почта не `outbox` и задан https-адрес сайта |
+| `UPLOADS` | загрузка и выдача файлов (D-034) | вкл | — (нет хранилища → загрузка 503 `storage_unavailable`) |
+| `LEGAL` | юридические документы и согласия с хэшем текста (D-035) | вкл | у всех четырёх документов (оферта, политика ПДн, согласие на ПДн, возврат) есть действующая версия и утверждённый kz-текст |
+| `CERT_PDF` | PDF сертификата (D-036) | вкл | задан https-адрес сайта; иначе печать браузером |
+
+Правила использования:
+- В коде функций — только `isFeatureActive(name)` (выключатель и условия готовности):
+  страницы, server actions, маршруты, скрипты и меню.
+- `isFeatureEnabled(name)` — только preflight, админские пометки режима и тесты.
+- Клиентский компонент получает boolean пропсом и `process.env.FEATURE_*` не читает.
+- Матрицы тестов передают `env` аргументом. Интеграционные тесты, которым нужно
+  конкретное состояние, ставят `process.env.FEATURE_X` и возвращают прежнее значение в `after`.
+- В интеграционных тестах и в e2e все флаги по умолчанию включены; поведение при
+  выключенном флаге проверяют интеграционные тесты.
+- Новые функции выходят за флагом и выключенными, пока не прошли приёмку (AGENTS.md).
