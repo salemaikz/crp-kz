@@ -127,3 +127,20 @@ test('DEMO_MODE=1 на настоящем Postgres: демо-секрет не �
   process.env.DEMO_MODE = '1';
   await assert.rejects(createSessionToken('plain-user'), /SESSION_SECRET/);
 });
+
+test('emailVerified: true для подтверждённого пользователя — по строке сессии и при восстановлении в демо', async () => {
+  const email = 'verified@crp.demo';
+  const uid = seedId('user', email);
+  await db.sql`INSERT INTO users (id, email, name, role, locale, email_verified_at, created_at)
+    VALUES (${uid}, ${email}, 'Подтверждён', 'learner', 'ru', 5, 1)`;
+  // обычная сессия: флаг читается из users.email_verified_at
+  const { token } = await createSessionToken(uid);
+  assert.equal((await resolveSessionToken(token))?.emailVerified, true);
+  assert.equal((await resolveSessionToken(await signedLost(uid)))?.emailVerified, true, 'ветка восстановления в демо');
+  // неподтверждённый пользователь сида остаётся false в обеих ветках
+  assert.equal((await resolveSessionToken(await signedLost(SEED_UID)))?.emailVerified, false);
+});
+
+async function signedLost(uid: string): Promise<string> {
+  return signSession({ sid: 'lost-' + Math.random(), uid, exp: Date.now() + 60_000 }, sessionSecret());
+}
