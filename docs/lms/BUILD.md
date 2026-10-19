@@ -22,6 +22,7 @@
 | next / eslint-config-next | 16.4.2 |
 | react, react-dom | 19.3.1 |
 | typescript | 5.9.3 (не 7.x) |
+| eslint | 10.13.0 |
 | tailwindcss, @tailwindcss/postcss | 4.3.3 |
 | next-intl | 4.14.9 |
 | postgres (postgres.js) | 3.4.9 |

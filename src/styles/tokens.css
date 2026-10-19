@@ -1,0 +1,72 @@
+/*
+ * Дизайн-токены ЦРП — стиль «Разбор на доске» (как редизайн сайта ЦРП).
+ * Правила — docs/brand/BRAND.md, эталон — docs/brand/reference/site-redesign.css.
+ * В приложении подключается как src/styles/tokens.css.
+ * Шрифты (next/font/google): Geologica (вариативный, ось SHRP), Onest 400–700,
+ * Caveat 700; subsets: ['cyrillic', 'cyrillic-ext', 'latin'].
+ */
+
+:root {
+  --board: #f3f4f1;
+  --paper: #ffffff;
+  --ink: #14161b;
+  --ink-2: #4a4f59;
+  --ink-3: #6b707a;
+  --line: #dcded8;
+  --red: #e31e24;
+  --red-ink: #c4161c;
+  --red-tint: #fdeceb;
+  --night: #0e1726;
+  --night-2: #17233a;
+  --deep: #0b0f17;
+  --on-night: #e9ecf2;
+  --on-night-2: #a9b2c3;
+  --red-on-night: #ff6b70;
+
+  --success: #17803f;
+  --warning: #9a5200;
+  --info: #1f5fbf;
+  --error: #b3151b;
+
+  --font-display: var(--font-geologica), 'Arial', sans-serif;
+  --font-body: var(--font-onest), 'Segoe UI', Arial, sans-serif;
+  --font-hand: var(--font-caveat), 'Comic Sans MS', cursive;
+
+  --radius: 18px;
+  --radius-lg: 24px;
+  --radius-sm: 12px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --max: 1240px;
+  --header-h: 72px;
+  --shadow: 0 1px 2px rgb(20 22 27 / 6%), 0 8px 28px rgb(20 22 27 / 7%);
+  --shadow-red: 0 8px 22px rgb(227 30 36 / 28%);
+}
+
+/* Tailwind 4: утилиты bg-board, text-ink, bg-red, font-display … (inline — ссылки на переменные) */
+@theme inline {
+  --color-board: var(--board);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-red: var(--red);
+  --color-red-ink: var(--red-ink);
+  --color-red-tint: var(--red-tint);
+  --color-night: var(--night);
+  --color-night-2: var(--night-2);
+  --color-deep: var(--deep);
+  --color-on-night: var(--on-night);
+  --color-on-night-2: var(--on-night-2);
+  --color-red-on-night: var(--red-on-night);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-error: var(--error);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-hand: var(--font-hand);
+  --radius-card: var(--radius);
+  --radius-card-lg: var(--radius-lg);
+  --radius-control: var(--radius-sm);
+}
