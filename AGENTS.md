@@ -84,7 +84,7 @@ Codex и людей. Специфика Claude Code — в `CLAUDE.md`.
 Next.js 16 (App Router, сборка `next build --webpack`, не Turbopack) · React 19 ·
 TypeScript strict · Tailwind 4 · PostgreSQL через `postgres` (postgres.js, без ORM;
 в camelCase — только имена колонок, jsonb не трогается, строки — обычные объекты) · Zod · Zustand · next-intl · своя session-auth (cookie + bcryptjs,
-**без JWT и NextAuth**) · @react-pdf/renderer (сертификаты, счета) · Resend (почта) ·
+**без JWT и NextAuth**) · @react-pdf/renderer (сертификаты, счета) · почта: очередь в БД, провайдер — после решения ЦРП (D-030, D-009) ·
 тесты: node:test + tsx (unit, интеграционные с БД), Playwright (e2e).
 
 This is NOT the Next.js you know: перед кодом под Next 16 читай гайд в
@@ -99,7 +99,7 @@ This is NOT the Next.js you know: перед кодом под Next 16 чита�
   (D-002). `kz` — код страны, а не языка.
 - БД: id — `TEXT` (UUID), время — `BIGINT` epoch-мс, деньги — `BIGINT` в целых
   тенге (`amount_kzt`). Миграции — `migrations/YYYY-MM-DD-<slug>.sql`, строго
-  идемпотентные (`IF NOT EXISTS`), только добавляющие.
+  идемпотентные (`IF NOT EXISTS`), только добавляющие (расширение закрытого списка CHECK считается добавляющей правкой, D-037).
 - **Доступ к платному контенту проверяется на сервере** в каждом API и на каждой
   странице урока. Клиенту не отдаём правильные ответы квизов и ссылки на закрытое видео.
 - Небольшие модули, без мега-файлов. Комментарии в коде — по-русски, по делу.
