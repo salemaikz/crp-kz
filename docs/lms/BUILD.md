@@ -36,7 +36,7 @@
 | tsx | 4.23.15 |
 | @react-pdf/renderer | 4.9.0 |
 
-Шрифты PDF — статические срезы в `assets/fonts/pdf/` (D-036; волна 2).
+Шрифты PDF — статические срезы в `assets/fonts/pdf/` (D-036), источник закреплён на коммите google/fonts.
 
 - Node 22, ESM.
 - Сборка `next build --webpack`, не Turbopack.
@@ -290,7 +290,7 @@ isManagerOf(userId, orgId): Promise<boolean>
   32 символов секрет — ошибка и в демо.
 - **Демо-режим** — только явно (`DEMO_MODE=1` или локально без `DATABASE_URL`,
   см. §2). На регистрации в демо — предупреждение не вводить реальные ПДн.
-- **Сброс пароля и подтверждение email** (D-031; волна 2). Токены — 32 случайных байта,
+- **Сброс пароля и подтверждение email** (D-031). Токены — 32 случайных байта,
   в БД только SHA-256. Письма ставятся в очередь (D-030). Предложено, ждёт владельца
   (D-032; волна 3): при активном `EMAIL_VERIFY` заказ оформляется только с подтверждённого
   email (`email_unverified`). Заказ
@@ -319,7 +319,7 @@ isManagerOf(userId, orgId): Promise<boolean>
   (~10⁹ на год), страница не индексируется и не показывает email, но при
   тысячах выданных сертификатов долгий перебор находит ФИО и курс. Поэтому на
   проде за прокси настройка доверенного IP обязательна (#24).
-- **Лимиты новых потоков (PDF — волна 2, файлы — волна 3).** Письма для входа и подтверждения (сброс, подтверждение
+- **Лимиты новых потоков (файлы — волна 3).** Письма для входа и подтверждения (сброс, подтверждение
   email): на получателя — `MAIL_AUTH_RECIPIENT_HOURLY` (5 в час), общий предохранитель —
   `MAIL_AUTH_HOURLY_CAP` (по умолчанию 300 в час). PDF сертификата — 10 в минуту на
   пользователя (D-036). Загрузка и выдача файлов — `UPLOAD_LIMITS`
@@ -353,7 +353,7 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/learn/[slug]` | зачисленный | **learn** — программа с прогрессом |
 | `/[locale]/learn/[slug]/[lesson]` | зачисленный | **learn** — урок: блоки, тест, «Урок пройден», дальше/назад |
 | `/[locale]/learn/[slug]/certificate` | зачисленный | **learn** — сертификат (печать браузером или PDF (`CERT_PDF`)) |
-| `/[locale]/learn/[slug]/certificate/pdf` | владелец сертификата | **learn** — PDF сертификата; гость — на вход, чужой или несуществующий — 404 (волна 2) |
+| `/[locale]/learn/[slug]/certificate/pdf` | владелец сертификата | **learn** — PDF сертификата; гость — на вход, чужой или несуществующий — 404 |
 | `/[locale]/cert/[number]` | все | **learn** — публичная проверка: ФИО, курс, дата |
 | `/[locale]/team` | руководитель | **team** — сотрудники, назначения, отчёт |
 | `/[locale]/team/report.csv` | руководитель | **team** — CSV (UTF-8 BOM) |
@@ -364,7 +364,7 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/admin/mail`, `/[locale]/admin/mail/[id]` | admin | **mail** — страница «Письма» (D-030) |
 | `/[locale]/admin/courses/[id]/files` | admin | **files** — файлы курса (волна 4) |
 | `/[locale]/login`, `/register` | гость | **foundation** |
-| `/[locale]/password/forgot`, `/[locale]/password/reset`, `/[locale]/account/verify` | гость / вошедший | **foundation** (волна 2) |
+| `/[locale]/password/forgot`, `/[locale]/password/reset`, `/[locale]/account/verify` | гость / вошедший | **foundation** |
 | `/[locale]/legal`, `/[locale]/legal/[doc]`, `/[locale]/legal/[doc]/[version]` | все | **legal** — юридические документы (тексты — черновики до юриста ЦРП) |
 | `/api/uploads` | admin | **files** — загрузка файлов (POST; волна 3) |
 | `/api/files/[id]` | по доступу к файлу | **files** — выдача файла (GET; волна 3) |
@@ -494,7 +494,7 @@ Netlify (D-024): `netlify.toml` в корне, переменные сайта `
 
 В демо почта — только `outbox`: ссылки из писем видно в админке, «Письма» (D-030).
 Файлы (волна 3) лежат во временном каталоге экземпляра; на Vercel и Netlify лимит 4 МБ. PDF
-сертификата (волна 2) генерируется в функции (D-036).
+сертификата генерируется в функции (D-036).
 
 Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), D-026, D-027; runbook
 `docs/ops/RUNBOOK.md` появится в волне 5.

@@ -575,9 +575,19 @@ NEXT_TELEMETRY_DISABLED=
     смене пароля. Для этого 2A правит `src/lib/mail/outbox.ts`; тест: 5 сбросов, затем смена пароля —
     `password_changed` в очереди. `tests/e2e/helpers/mail.ts` (`openLatestMailLink`) впервые
     проверяется в `password-reset.spec.ts`.
+  - **3A (после волны 2).** `registerAction` при `isFeatureActive('EMAIL_VERIFY')` вызывает
+    `sendVerification(sql, { userId, email, name, locale, next: safeNext(next) })` из
+    `src/lib/auth/recovery.ts` в транзакции регистрации; `queued: false` регистрацию не откатывает.
+    Страница покупки при неподтверждённом email показывает готовый `VerifyEmailNotice
+    variant="checkout"` с `next` на форму покупки. `checkout.spec.ts` проходит подтверждение через
+    `openLatestMailLink` (helper исправлен и проверен в 2A). Сид-аккаунт в демо определяется по id
+    (`seedId`), а не по домену `@crp.demo`: регистрация на `@crp.demo` в тестах 3A — обычный аккаунт.
   - **3A.** Гонка на границе `effectiveFrom`: после `prepareConsents` сверить версии подготовленных
     согласий (`${CONSENT_DOC[kind]}@${version}`, без дублей, по порядку) с токеном формы; расхождение —
     `legal_changed`, без записи.
+  - **4A.** Кнопка «Отправить ссылку для смены пароля» в карточке пользователя вызывает
+    `requestPasswordReset({ email, locale: user.locale, actorId })` из `src/lib/auth/recovery.ts`
+    (он сам пишет `user.password_reset_request` с `actorId`) и пишет `user.password_reset_link`.
   - **4A.** «Письма»: страница за последней — зажать номер до последней страницы; «Писем пока нет»
     только при пустой очереди.
 
