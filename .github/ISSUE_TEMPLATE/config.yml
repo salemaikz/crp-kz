@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Правила работы в репозитории
+    url: https://github.com/salemaikz/crp-kz/blob/main/AGENTS.md
+    about: Как брать задачи, как не пересекаться с другими сессиями, git-процесс.

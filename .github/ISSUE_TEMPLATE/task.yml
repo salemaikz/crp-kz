@@ -1,0 +1,60 @@
+name: Задача
+description: Единица работы — одна задача, одна ветка, один PR
+title: "[поток] Короткое описание результата"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Перед созданием проверь `docs/WORKSTREAMS.md` и поищи похожие issues.
+        Не пиши сюда секреты, ПДн и коммерческие условия — репозиторий публичный.
+  - type: dropdown
+    id: stream
+    attributes:
+      label: Поток
+      options:
+        - lms — платформа обучения
+        - brand — бренд и дизайн
+        - infra — инфраструктура и CI
+        - agents — правила и агенты
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Уровень сложности (кому отдавать — docs/agents/ROUTING.md)
+      description: Сомневаешься — ставь выше.
+      options:
+        - T0 — Haiku: поиск, механика, документация по фактам
+        - T1 — Sonnet: реализация по ТЗ, тесты
+        - T2 — Opus: архитектура, деньги, доступы, безопасность
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Цель
+      description: Что должно получиться, одним-двумя предложениями.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Контекст
+      description: Раздел SPEC, решения из DECISIONS, связанные issues, пути к коду.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Границы
+      description: Какие папки можно менять, что точно не трогать.
+  - type: textarea
+    id: done
+    attributes:
+      label: Готово, когда
+      description: Проверяемые критерии — тесты, сценарии, что видно в интерфейсе.
+    validations:
+      required: true
+  - type: textarea
+    id: owner_questions
+    attributes:
+      label: Вопросы владельцу
+      description: Решения, без которых задачу не закончить (с рекомендуемым ответом).
