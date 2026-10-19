@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { Circles, Container, Eyebrow } from '@/components/ui';
-
-const PHONE = '+7 701 100 09 29';
-const PHONE_HREF = 'tel:+77011000929';
+import { CRP_CONTACTS } from '@/lib/brand';
 
 type Props = {
   eyebrow: ReactNode;
@@ -50,8 +48,8 @@ export async function AuthShell({ eyebrow, title, lead, cardTitle, cardLead, chi
             <span>{t('help.title')}</span>
             <span>
               {t.rich('help.text', {
-                number: PHONE,
-                phone: (chunks) => <a href={PHONE_HREF}>{chunks}</a>,
+                number: CRP_CONTACTS.phone,
+                phone: (chunks) => <a href={CRP_CONTACTS.phoneHref}>{chunks}</a>,
               })}
             </span>
           </p>

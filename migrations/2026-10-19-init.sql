@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   name          TEXT NOT NULL,
   role          TEXT NOT NULL DEFAULT 'learner' CHECK (role IN ('admin', 'author', 'learner')),
   locale        TEXT NOT NULL DEFAULT 'ru' CHECK (locale IN ('ru', 'kz')),
+  email_verified_at BIGINT,                 -- NULL: email не подтверждён (поток подтверждения — позже)
   created_at    BIGINT NOT NULL
 );
 
@@ -61,14 +62,15 @@ CREATE TABLE IF NOT EXISTS course_modules (
   course_id  TEXT NOT NULL REFERENCES courses (id) ON DELETE CASCADE,
   position   INT NOT NULL DEFAULT 0,
   title      JSONB NOT NULL,
-  created_at BIGINT NOT NULL
+  created_at BIGINT NOT NULL,
+  UNIQUE (id, course_id)                    -- цель составного FK из lessons
 );
 CREATE INDEX IF NOT EXISTS course_modules_course_pos_idx ON course_modules (course_id, position);
 
 CREATE TABLE IF NOT EXISTS lessons (
   id           TEXT PRIMARY KEY,
   course_id    TEXT NOT NULL REFERENCES courses (id) ON DELETE CASCADE,
-  module_id    TEXT NOT NULL REFERENCES course_modules (id) ON DELETE CASCADE,
+  module_id    TEXT NOT NULL,
   position     INT NOT NULL DEFAULT 0,
   slug         TEXT NOT NULL,
   title        JSONB NOT NULL,
@@ -77,7 +79,11 @@ CREATE TABLE IF NOT EXISTS lessons (
   status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
   created_at   BIGINT NOT NULL,
   updated_at   BIGINT NOT NULL,
-  UNIQUE (course_id, slug)
+  UNIQUE (course_id, slug),
+  UNIQUE (id, course_id),                   -- цель составного FK из lesson_progress
+  -- модуль урока — из того же курса (перенос модуля в другой курс переносит и уроки)
+  FOREIGN KEY (module_id, course_id) REFERENCES course_modules (id, course_id)
+    ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS lessons_module_pos_idx ON lessons (module_id, position);
 
@@ -136,7 +142,9 @@ CREATE TABLE IF NOT EXISTS lesson_progress (
   lesson_id    TEXT NOT NULL REFERENCES lessons (id) ON DELETE CASCADE,
   course_id    TEXT NOT NULL REFERENCES courses (id) ON DELETE CASCADE,
   completed_at BIGINT NOT NULL,
-  PRIMARY KEY (user_id, lesson_id)
+  PRIMARY KEY (user_id, lesson_id),
+  -- course_id прогресса совпадает с курсом урока
+  FOREIGN KEY (lesson_id, course_id) REFERENCES lessons (id, course_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS lesson_progress_user_course_idx ON lesson_progress (user_id, course_id);
 

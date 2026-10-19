@@ -40,13 +40,32 @@ function makeSql(target: Target): Sql {
   }) as Sql;
 }
 
-function makeConn(target: Target): TxConn {
-  return {
+function makeConn(target: Target, inTx = false): TxConn {
+  const conn: TxConn = {
     sql: makeSql(target),
     exec: async (script) => {
       await target.exec(script);
     },
   };
+  if (inTx) {
+    // Точки сохранения на соединении транзакции: SAVEPOINT / ROLLBACK TO / RELEASE.
+    // Имена уникальны в пределах транзакции; вложенность — стек (см. createTxScope.nested).
+    let counter = 0;
+    conn.savepoint = async <T>(fn: (c: TxConn) => Promise<T>): Promise<T> => {
+      const name = `crp_sp_${++counter}`;
+      await target.exec(`SAVEPOINT ${name}`);
+      let result: T;
+      try {
+        result = await fn(conn);
+      } catch (e) {
+        await target.exec(`ROLLBACK TO SAVEPOINT ${name}; RELEASE SAVEPOINT ${name}`);
+        throw e;
+      }
+      await target.exec(`RELEASE SAVEPOINT ${name}`);
+      return result;
+    };
+  }
+  return conn;
 }
 
 export async function createPgliteDb(dataDir?: string): Promise<DbHandle> {
@@ -60,9 +79,9 @@ export async function createPgliteDb(dataDir?: string): Promise<DbHandle> {
   const base = makeConn(pg);
 
   const withTx = async <T>(fn: (conn: TxConn) => Promise<T>): Promise<T> => {
-    const cur = scope.current();
-    if (cur) return fn(cur); // вложенная транзакция = та же транзакция
-    return pg.transaction((t) => scope.run(makeConn(t), fn));
+    // вложенная транзакция — SAVEPOINT внутри текущей
+    if (scope.current()) return scope.nested(fn);
+    return pg.transaction((t) => scope.run(makeConn(t, true), fn));
   };
 
   const sql = (<T = Row>(strings: TemplateStringsArray, ...values: unknown[]) =>

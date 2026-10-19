@@ -5,7 +5,7 @@ import { createTxScope, JsonParam, jsonParam, type DbHandle, type Row, type Sql,
 type Target = PgSql | TransactionSql;
 
 function makeConn(target: Target): TxConn {
-  const sql = (async <T = Row>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]> => {
+  const sqlFn = (async <T = Row>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]> => {
     const res = await target(
       strings,
       // jsonb-маркер → типизированный параметр postgres.js; остальное как есть
@@ -15,12 +15,21 @@ function makeConn(target: Target): TxConn {
     // сериализует. Приводим к обычным объектам — как в PGlite.
     return Array.from(res as unknown as Row[], (r) => ({ ...r }) as T);
   }) as Sql;
-  return {
-    sql,
+  const conn: TxConn = {
+    sql: sqlFn,
     exec: async (script) => {
       await target.unsafe(script);
     },
   };
+  if ('savepoint' in target && typeof target.savepoint === 'function') {
+    // Точка сохранения средствами postgres.js: при ошибке — ROLLBACK TO, ошибка пробрасывается.
+    // Запросы внутри идут через sql точки сохранения, поэтому ошибка не «отравляет» внешнюю
+    // транзакцию (postgres.js откатывает begin(), если в его области упал хоть один запрос).
+    const tx = target as TransactionSql;
+    conn.savepoint = <T>(fn: (c: TxConn) => Promise<T>): Promise<T> =>
+      tx.savepoint((sp) => fn(makeConn(sp))) as Promise<T>;
+  }
+  return conn;
 }
 
 /** opts.schema — search_path соединений (изолированные схемы для тестов на Postgres). */
@@ -44,8 +53,8 @@ export async function createPostgresDb(url: string, opts: { schema?: string } = 
   const base = makeConn(client);
 
   const withTx = async <T>(fn: (conn: TxConn) => Promise<T>): Promise<T> => {
-    const cur = scope.current();
-    if (cur) return fn(cur); // вложенная транзакция = та же транзакция
+    // вложенная транзакция — SAVEPOINT внутри текущей
+    if (scope.current()) return scope.nested(fn);
     return client.begin((t) => scope.run(makeConn(t), fn)) as Promise<T>;
   };
 

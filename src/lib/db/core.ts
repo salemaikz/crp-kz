@@ -9,7 +9,12 @@ export interface Sql {
 
 export interface Db {
   sql: Sql;
-  /** Транзакция. Внутри колбэка любой вызов db.sql/db.tx тоже идёт в эту транзакцию. */
+  /**
+   * Транзакция. Внутри колбэка любой вызов db.sql/db.tx тоже идёт в эту транзакцию.
+   * Вложенный db.tx — SAVEPOINT: ошибка внутри откатывает только вложенную часть, и если её
+   * поймать (например, isUniqueViolation), внешняя транзакция продолжает работать.
+   * Соседние вложенные db.tx одной транзакции выполняются по очереди.
+   */
   tx<T>(fn: (sql: Sql) => Promise<T>): Promise<T>;
   /** Параметр для колонок jsonb: ${db.json(v)}. */
   json(value: unknown): unknown;
@@ -20,6 +25,11 @@ export interface Db {
 export interface TxConn {
   sql: Sql;
   exec(script: string): Promise<void>;
+  /**
+   * Точка сохранения внутри этой транзакции: fn выполняется после SAVEPOINT; при ошибке —
+   * ROLLBACK TO SAVEPOINT и ошибка пробрасывается дальше. Есть только у соединений транзакции.
+   */
+  savepoint?<T>(fn: (conn: TxConn) => Promise<T>): Promise<T>;
 }
 
 /** Внутренний интерфейс: то, что нужно миграциям, сиду и тестам. Приложение работает с Db. */
@@ -56,21 +66,51 @@ export function toCamel(x: string): string {
  * Область транзакции на AsyncLocalStorage: вызовы db.sql/db.tx изнутри колбэка транзакции
  * уходят в ту же транзакцию. Без этого PGlite (одно соединение) зависал бы, а Postgres
  * выполнял бы запрос мимо транзакции. Поведение одинаково в обоих драйверах.
+ *
+ * Вложенная транзакция (withTx внутри withTx) — SAVEPOINT текущего соединения (conn.savepoint).
+ * Соседние вложенные транзакции одной области выполняются строго по очереди: точки сохранения
+ * на одном соединении образуют стек, параллельные SAVEPOINT/ROLLBACK TO перепутали бы его.
  */
 export function createTxScope() {
-  const als = new AsyncLocalStorage<{ conn: TxConn; done: boolean }>();
+  type Store = { conn: TxConn; done: boolean; parent: Store | null; chain: Promise<void> };
+  const als = new AsyncLocalStorage<Store>();
+  const active = (): Store | null => {
+    let s = als.getStore() ?? null;
+    // запрос, «забытый» после конца вложенной области, идёт в родительскую транзакцию
+    while (s && s.done) s = s.parent;
+    return s;
+  };
+  const enter = async <T>(conn: TxConn, parent: Store | null, fn: (conn: TxConn) => Promise<T>): Promise<T> => {
+    const store: Store = { conn, done: false, parent, chain: Promise.resolve() };
+    try {
+      return await als.run(store, () => fn(conn));
+    } finally {
+      // запросы, «забытые» после конца транзакции, пойдут уже мимо неё
+      store.done = true;
+    }
+  };
   return {
     current(): TxConn | null {
-      const s = als.getStore();
-      return s && !s.done ? s.conn : null;
+      return active()?.conn ?? null;
     },
-    async run<T>(conn: TxConn, fn: (conn: TxConn) => Promise<T>): Promise<T> {
-      const store = { conn, done: false };
+    /** Корневая транзакция: conn — соединение уже открытой транзакции драйвера. */
+    run<T>(conn: TxConn, fn: (conn: TxConn) => Promise<T>): Promise<T> {
+      return enter(conn, null, fn);
+    },
+    /** Вложенная транзакция в текущей области (SAVEPOINT). Вызывать, только если current() не null. */
+    async nested<T>(fn: (conn: TxConn) => Promise<T>): Promise<T> {
+      const parent = active();
+      if (!parent) throw new Error('nested transaction outside of a transaction');
+      const conn = parent.conn;
+      if (!conn.savepoint) throw new Error('driver connection does not support savepoints');
+      const prev = parent.chain;
+      let release!: () => void;
+      parent.chain = new Promise<void>((r) => (release = r));
+      await prev;
       try {
-        return await als.run(store, () => fn(conn));
+        return await conn.savepoint<T>((sp) => enter(sp, parent, fn));
       } finally {
-        // запросы, «забытые» после конца транзакции, пойдут уже мимо неё
-        store.done = true;
+        release();
       }
     },
   };

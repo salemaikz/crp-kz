@@ -9,6 +9,7 @@ import { isDemo } from '../env';
 import { isDemoAccountEmail } from './demo';
 import { normalizeEmail } from './index';
 import { hashPassword, passwordProblem, verifyPassword } from './password';
+import { deriveClientIp, UNKNOWN_IP } from './clientIp';
 import { AUTH_LIMITS, rateLimit, resetRateLimit } from './rateLimit';
 import { safeNext } from './safeNext';
 import { endSession, startSession } from './session';
@@ -35,10 +36,9 @@ function localeOf(fd: FormData): 'ru' | 'kz' {
   return field(fd, 'locale') === 'kz' ? 'kz' : 'ru';
 }
 
+/** IP клиента по доверенной схеме (TRUSTED_PROXY_HOPS / TRUST_X_REAL_IP), иначе 'unknown'. */
 async function clientIp(): Promise<string> {
-  const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || 'local';
-  return ip.slice(0, 64);
+  return deriveClientIp(await headers());
 }
 
 function allowed(...checks: Array<[string, { limit: number; windowMs: number }]>): boolean {
@@ -55,7 +55,15 @@ export async function loginAction(_prev: AuthFormState, formData: FormData): Pro
 
   const ip = await clientIp();
   const pairKey = `login:${ip}:${email}`;
-  if (!allowed([`login:${ip}`, AUTH_LIMITS.loginPerIp], [pairKey, AUTH_LIMITS.loginPerIpEmail])) {
+  const emailKey = `login-email:${email}`;
+  if (
+    !allowed(
+      // IP неизвестен — общее ведро на всех (щедрее): бережёт CPU, аккаунты защищает лимит на email
+      ip === UNKNOWN_IP ? [`login:${UNKNOWN_IP}`, AUTH_LIMITS.loginUnknownIp] : [`login:${ip}`, AUTH_LIMITS.loginPerIp],
+      [emailKey, AUTH_LIMITS.loginPerEmail],
+      [pairKey, AUTH_LIMITS.loginPerIpEmail],
+    )
+  ) {
     return { error: 'rate_limited', values };
   }
 
@@ -67,6 +75,7 @@ export async function loginAction(_prev: AuthFormState, formData: FormData): Pro
   if (!user || !ok) return { error: 'invalid', values };
 
   resetRateLimit(pairKey);
+  resetRateLimit(emailKey);
   await startSession(user.id);
   redirect(safeNext(field(formData, 'next')) ?? `/${locale}/learn`);
 }
@@ -81,7 +90,10 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
   const ip = await clientIp();
   if (
     !allowed(
-      [`register:${ip}`, AUTH_LIMITS.registerPerIp],
+      ip === UNKNOWN_IP
+        ? [`register:${UNKNOWN_IP}`, AUTH_LIMITS.registerUnknownIp]
+        : [`register:${ip}`, AUTH_LIMITS.registerPerIp],
+      [`register-email:${email}`, AUTH_LIMITS.registerPerEmail],
       [`register:${ip}:${email}`, AUTH_LIMITS.registerPerIpEmail],
     )
   ) {

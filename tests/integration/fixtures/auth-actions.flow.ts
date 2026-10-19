@@ -5,7 +5,7 @@ import { mock, test } from 'node:test';
 
 type CookieOpts = { httpOnly?: boolean; sameSite?: string; secure?: boolean; expires?: Date };
 const jar = new Map<string, { value: string; opts?: CookieOpts }>();
-const hdrs = new Map<string, string>([['x-forwarded-for', '10.0.0.1, 1.1.1.1']]);
+const hdrs = new Map<string, string>([['x-forwarded-for', '10.0.0.1']]);
 
 class Redirect extends Error {
   constructor(public url: string) {
@@ -94,6 +94,36 @@ test('login: лимит частоты по IP+email, даже для верно
   assert.equal(last?.error, 'rate_limited');
   const ok = await outcome(A.loginAction(undefined, fd({ email: 'admin@crp.demo', password: 'demo12345', locale: 'ru' })));
   assert.equal(ok.error, 'rate_limited');
+  hdrs.set('x-forwarded-for', '10.0.0.1');
+});
+
+test('login: лимит на email действует при смене IP (перебор с разных адресов)', async () => {
+  // по 7 попыток с трёх адресов: лимит IP+email (8) не срабатывает, лимит на email (20) — да
+  let last: State;
+  for (let n = 0; n < 3; n++) {
+    hdrs.set('x-forwarded-for', `203.0.113.${n + 1}`);
+    for (let i = 0; i < 7; i++) {
+      last = await A.loginAction(undefined, fd({ email: 'manager@crp.demo', password: 'bad-bad-bad', locale: 'ru' }));
+    }
+  }
+  assert.equal(last?.error, 'rate_limited');
+  hdrs.set('x-forwarded-for', '203.0.113.200');
+  const ok = await outcome(A.loginAction(undefined, fd({ email: 'manager@crp.demo', password: 'demo12345', locale: 'ru' })));
+  assert.equal(ok.error, 'rate_limited', 'новый IP не обходит лимит на аккаунт');
+  // другой аккаунт с того же адреса не заблокирован
+  const other = await A.loginAction(undefined, fd({ email: 'operator@crp.demo', password: 'bad-bad-bad', locale: 'ru' }));
+  assert.equal(other?.error, 'invalid');
+  hdrs.set('x-forwarded-for', '10.0.0.1');
+});
+
+test('login: подделанный левый X-Forwarded-For не меняет IP клиента', async () => {
+  // при TRUSTED_PROXY_HOPS=1 значения левее последнего — от клиента и не учитываются
+  let last: State;
+  for (let i = 0; i < 9; i++) {
+    hdrs.set('x-forwarded-for', `198.51.100.${i}, 192.0.2.77`);
+    last = await A.loginAction(undefined, fd({ email: 'nobody2@crp.demo', password: 'bad-bad-bad', locale: 'ru' }));
+  }
+  assert.equal(last?.error, 'rate_limited');
   hdrs.set('x-forwarded-for', '10.0.0.1');
 });
 

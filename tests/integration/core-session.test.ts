@@ -16,17 +16,20 @@ const SEED_EMAIL = 'operator@crp.demo';
 const SEED_UID = seedId('user', SEED_EMAIL);
 let db: TestDb;
 
-const saved = { url: process.env.DATABASE_URL, secret: process.env.SESSION_SECRET };
+const saved = { url: process.env.DATABASE_URL, secret: process.env.SESSION_SECRET, demo: process.env.DEMO_MODE };
 function restoreEnv() {
   if (saved.url === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = saved.url;
   if (saved.secret === undefined) delete process.env.SESSION_SECRET;
   else process.env.SESSION_SECRET = saved.secret;
+  if (saved.demo === undefined) delete process.env.DEMO_MODE;
+  else process.env.DEMO_MODE = saved.demo;
 }
 
 before(async () => {
   restoreEnv();
   delete process.env.DATABASE_URL; // демо-режим; getDb() уже подменён тестовой БД
+  delete process.env.DEMO_MODE;
   db = await createTestDb();
   await db.sql`INSERT INTO users (id, email, name, role, locale, created_at) VALUES
     (${SEED_UID}, ${SEED_EMAIL}, 'Оператор', 'learner', 'ru', 1),
@@ -35,6 +38,7 @@ before(async () => {
 afterEach(() => {
   delete process.env.DATABASE_URL;
   delete process.env.SESSION_SECRET;
+  delete process.env.DEMO_MODE;
 });
 after(async () => {
   restoreEnv();
@@ -88,6 +92,21 @@ test('демо: строки нет, подпись верна, пользова
   assert.equal((await resolveSessionToken(token))?.id, SEED_UID); // второй раз — по строке
 });
 
+test('демо: срок восстановленной строки — не дальше SESSION_TTL от «сейчас»', async () => {
+  const sid = 'lost-long-' + Math.random();
+  const token = signSession({ sid, uid: SEED_UID, exp: Date.now() + 10 * SESSION_TTL_MS }, sessionSecret());
+  assert.equal((await resolveSessionToken(token))?.id, SEED_UID);
+  const [row] = await db.sql<{ expiresAt: number }>`SELECT expires_at FROM sessions WHERE id = ${sid}`;
+  assert.ok(row && row.expiresAt <= Date.now() + SESSION_TTL_MS && row.expiresAt > Date.now() + SESSION_TTL_MS - 60_000);
+});
+
+test('демо: зарегистрированный (не из сида) пользователь без строки сессии — отказ', async () => {
+  const sid = 'lost-plain-' + Math.random();
+  const token = signSession({ sid, uid: 'plain-user', exp: Date.now() + 60_000 }, sessionSecret());
+  assert.equal(await resolveSessionToken(token), null);
+  assert.equal((await db.sql`SELECT id FROM sessions WHERE id = ${sid}`).length, 0);
+});
+
 test('не демо: без строки сессии — отказ даже для пользователя сида', async () => {
   process.env.DATABASE_URL = 'postgres://unused/db'; // только переключает isDemo(); БД остаётся тестовой
   process.env.SESSION_SECRET = 'prod-like-secret-'.padEnd(48, 'z');
@@ -99,5 +118,11 @@ test('не демо: без строки сессии — отказ даже д
 
 test('не демо без SESSION_SECRET — создание сессии невозможно', async () => {
   process.env.DATABASE_URL = 'postgres://unused/db';
+  await assert.rejects(createSessionToken('plain-user'), /SESSION_SECRET/);
+});
+
+test('DEMO_MODE=1 на настоящем Postgres: демо-секрет не используется', async () => {
+  process.env.DATABASE_URL = 'postgres://unused/db';
+  process.env.DEMO_MODE = '1';
   await assert.rejects(createSessionToken('plain-user'), /SESSION_SECRET/);
 });

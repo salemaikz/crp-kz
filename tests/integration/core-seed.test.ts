@@ -82,9 +82,10 @@ after(async () => {
 
 test('4 демо-аккаунта с паролем demo12345 и детерминированными id', async () => {
   for (const a of DEMO_ACCOUNTS) {
-    const [u] = await db.sql<{ id: string; role: string; passwordHash: string; name: string }>`
-      SELECT id, role, password_hash, name FROM users WHERE email = ${a.email}`;
+    const [u] = await db.sql<{ id: string; role: string; passwordHash: string; name: string; emailVerifiedAt: number | null }>`
+      SELECT id, role, password_hash, name, email_verified_at FROM users WHERE email = ${a.email}`;
     assert.ok(u, a.email);
+    assert.equal(typeof u.emailVerifiedAt, 'number', 'email демо-пользователя подтверждён');
     assert.equal(u.id, seedUserId(a.email));
     assert.equal(u.role, a.role === 'admin' ? 'admin' : 'learner');
     assert.equal(u.name, a.name);

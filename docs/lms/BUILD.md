@@ -61,18 +61,29 @@ export function now(): number;               // Date.now()
 ```
 
 **Выбор драйвера.**
-- Есть `DATABASE_URL` — используется postgres.js
-  (`transform: postgres.camel`, int8 → number).
+- Есть `DATABASE_URL` — используется postgres.js. В camelCase переводятся только
+  **имена колонок** (`transform: { column: { from: postgres.toCamel } }`); содержимое
+  jsonb не трогается и читается ровно как записано. Строки — обычные объекты
+  (не объекты postgres.js без прототипа); int8 → number.
 - Нет — PGlite: in-memory, либо файл `PGLITE_DIR`, если он задан.
-- PGlite = **демо-режим** (`isDemo()` в `src/lib/env.ts`).
+
+**Демо-режим** (`isDemo()` в `src/lib/env.ts`) включается только явно:
+`DEMO_MODE=1`, либо локальная разработка и тесты без `DATABASE_URL`
+(`NODE_ENV` не `production`). В production без `DATABASE_URL` и без
+`DEMO_MODE=1` инициализация БД падает с понятной ошибкой (fail closed) —
+«тихого» демо в проде нет.
 
 **Правила SQL** — единые для обоих драйверов:
+- Вложенный `db.tx` внутри транзакции — `SAVEPOINT`: ошибку из него можно
+  поймать (например, `isUniqueViolation`), и внешняя транзакция продолжит
+  работать. Соседние вложенные `db.tx` выполняются по очереди.
 - Только tagged template со **значениями** в `${}`. Никаких вложенных
   фрагментов `sql\`...\``, `sql(obj)`, `sql.unsafe` и склейки строк.
 - Списки — `= ANY(${ids})` (массив значений).
 - jsonb пишем так: `${db.json(value)}` (без `::jsonb` — каст делает драйвер).
   Читаем уже распарсенным объектом.
-- Колонки в БД — snake_case, в JS — camelCase (адаптер переводит ключи строк).
+- Колонки в БД — snake_case, в JS — camelCase (адаптер переводит только ключи
+  строк, ключи внутри jsonb остаются как записаны).
 - id — `TEXT` (UUID); время — `BIGINT` epoch-мс (в JS `number`); деньги —
   `BIGINT` целые тенге (`amount_kzt`); флаги — `BOOLEAN`.
 
@@ -92,7 +103,7 @@ export function now(): number;               // Date.now()
 
 ```
 users(id, email UNIQUE, password_hash, name, role TEXT CHECK(role IN ('admin','author','learner')) DEFAULT 'learner',
-      locale TEXT DEFAULT 'ru', created_at)
+      locale TEXT DEFAULT 'ru', email_verified_at BIGINT NULL, created_at)
 sessions(id, user_id → users ON DELETE CASCADE, expires_at, created_at)
 organizations(id, slug UNIQUE, name, kind TEXT CHECK(kind IN ('owner','client')), created_at)
 organization_members(org_id → organizations, user_id → users, role TEXT CHECK(role IN ('manager','member')),
@@ -101,15 +112,17 @@ courses(id, slug UNIQUE, title jsonb, summary jsonb, description jsonb, cover TE
       duration_min INT, visibility TEXT CHECK(visibility IN ('public','internal','private')),
       owner_org_id → organizations NULL, status TEXT CHECK(status IN ('draft','published')),
       sequential BOOLEAN DEFAULT false, position INT DEFAULT 0, created_at, updated_at)
-course_modules(id, course_id → courses ON DELETE CASCADE, position INT, title jsonb, created_at)
-lessons(id, course_id → courses ON DELETE CASCADE, module_id → course_modules ON DELETE CASCADE,
+course_modules(id, course_id → courses ON DELETE CASCADE, position INT, title jsonb, created_at, UNIQUE(id, course_id))
+lessons(id, course_id → courses ON DELETE CASCADE, module_id,
       position INT, slug TEXT, title jsonb, content jsonb, duration_min INT,
-      status TEXT CHECK(status IN ('draft','published')), created_at, updated_at, UNIQUE(course_id, slug))
+      status TEXT CHECK(status IN ('draft','published')), created_at, updated_at, UNIQUE(course_id, slug),
+      UNIQUE(id, course_id), (module_id, course_id) → course_modules(id, course_id) ON DELETE/UPDATE CASCADE)
 course_offers(id, course_id → courses UNIQUE, price_kzt BIGINT, access_days INT NULL, active BOOLEAN, created_at)
 enrollments(id, user_id → users, course_id → courses, source TEXT CHECK(source IN ('purchase','assignment','seat','grant','self')),
       org_id NULL, order_id NULL, granted_by NULL, due_at BIGINT NULL, expires_at BIGINT NULL, revoked_at BIGINT NULL,
       created_at, updated_at, UNIQUE(user_id, course_id))
-lesson_progress(user_id, lesson_id → lessons ON DELETE CASCADE, course_id, completed_at, PRIMARY KEY(user_id, lesson_id))
+lesson_progress(user_id, lesson_id → lessons ON DELETE CASCADE, course_id, completed_at, PRIMARY KEY(user_id, lesson_id),
+      (lesson_id, course_id) → lessons(id, course_id) ON DELETE/UPDATE CASCADE)
 quiz_attempts(id, user_id, lesson_id, block_id TEXT, correct INT, total INT, passed BOOLEAN, created_at)
 certificates(id, number UNIQUE, user_id, course_id, holder_name, locale, issued_at, UNIQUE(user_id, course_id))
 orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT,
@@ -120,6 +133,10 @@ orders(id, number UNIQUE, user_id NULL, course_id, amount_kzt BIGINT,
 consents(id, user_id NULL, order_id NULL, kind TEXT, version TEXT, created_at)
 audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta jsonb, created_at)
 ```
+
+Целостность: модуль урока — из того же курса, `course_id` прогресса — курс
+урока (составные FK). `email_verified_at` — NULL, пока email не подтверждён
+(поток подтверждения — позже; у демо-пользователей сида заполнено).
 
 Индексы: `enrollments(user_id)`, `enrollments(course_id)`, `lessons(module_id, position)`,
 `course_modules(course_id, position)`, `orders(status, created_at)`, `audit_log(entity, entity_id)`.
@@ -149,10 +166,25 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 
 ```ts
 canAccessCourse(userId, courseId): Promise<{ ok: boolean; enrollment?: Enrollment; reason?: 'none'|'expired'|'revoked' }>
-canSelfEnroll(userId, course): Promise<boolean>   // бесплатный public (нет активного offer или price 0) или internal своей организации
-enroll(input: { userId, courseId, source, orgId?, orderId?, grantedBy?, dueAt?, accessDays? }, sql?): Promise<Enrollment>  // идемпотентно (upsert), снимает revoked
-revokeEnrollment(userId, courseId, actorId, sql?): Promise<void>
+canSelfEnroll(userId, course): Promise<boolean>   // опубликованный public без offer или с price_kzt = 0, или internal своей организации
+enroll(input: { userId, courseId, source, orgId?, orderId?, grantedBy?, dueAt?, accessDays? }, sql?): Promise<Enrollment>  // upsert
+revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): Promise<void>
 ```
+
+- **Бесплатный курс** — у него нет offer или `price_kzt = 0`. Offer с ценой > 0
+  запрещает `self` независимо от `active` (продажи на паузе не делают курс
+  бесплатным).
+- **`enroll`:** повтор того же заказа (`orderId` совпадает с `order_id` строки) —
+  no-op в любом состоянии: отзыв не снимается, срок не продлевается. Иначе это
+  новая выдача: снимает revoked; `source`, `org_id`, `order_id`, `granted_by`,
+  `due_at` берутся из input (не переданы — NULL). Срок: у действующего
+  зачисления — max(текущий, новый), бессрочный длиннее любого (назначение или
+  self не сокращают купленный доступ); у отозванного или истёкшего — новый.
+  `accessDays` — целое > 0 или null (бессрочно), иначе `RangeError`.
+- **`revokeEnrollment` с фильтром:** `opts.orderId` — отзыв, только если доступ
+  держится на этом заказе (возврат заказа A не отзывает доступ по заказу B);
+  `opts.orgId` — только если `org_id` совпадает и `source` ∈
+  (`assignment`, `self`, `seat`). Без `opts` — отзыв любого источника.
 
 - Доступ к уроку — только при `ok`. Проверка — на сервере, в каждой странице
   урока и в каждом server action (прогресс, тест, сертификат).
@@ -180,10 +212,23 @@ isManagerOf(userId, orgId): Promise<boolean>
 - **Демо-исключение.** Только при `isDemo()` и только для пользователей из сида:
   если строки сессии нет (новый экземпляр без памяти), а подпись верна —
   сессия создаётся заново. В обычном режиме без строки — отказ.
-- **Секрет.** `SESSION_SECRET` обязателен вне демо: без него вход не работает.
-  В демо — фиксированный демо-секрет.
+- **Секрет.** `SESSION_SECRET` (32+ символа) обязателен везде, кроме демо на
+  PGlite: там без него — фиксированный демо-секрет. Заданный, но короче
+  32 символов секрет — ошибка и в демо.
+- **Демо-режим** — только явно (`DEMO_MODE=1` или локально без `DATABASE_URL`,
+  см. §2). На регистрации в демо — предупреждение не вводить реальные ПДн.
+- **Email не подтверждается** (поток — позже, follow-up). Поэтому в проде
+  оформление заказа можно привязывать только к аккаунту с подтверждённым email
+  (`users.email_verified_at`) или через ссылку установки пароля, а не к
+  аккаунту, который любой мог зарегистрировать на чужой email.
 - **Пароли.** bcryptjs, cost 10; минимум 8 символов.
-- **Защита.** Ограничение частоты входа и регистрации — в памяти процесса.
+- **Защита.** Ограничение частоты входа и регистрации — в памяти процесса:
+  на IP, на пару IP+email и на email независимо от IP (вход — 20 попыток за
+  15 минут на аккаунт). IP клиента — только по доверенной схеме
+  (`src/lib/auth/clientIp.ts`): `TRUSTED_PROXY_HOPS=N` — N-е значение
+  X-Forwarded-For справа; при 0 (по умолчанию) X-Forwarded-For не читается,
+  X-Real-IP — только при `TRUST_X_REAL_IP=1`. IP неизвестен — общее ведро
+  «на IP», аккаунты защищает лимит на email.
   `?next` принимает только относительные пути (`safeNext`).
 
 **Демо-аккаунты** (пароль `demo12345`), на странице входа — кнопки «Войти как …»
@@ -289,7 +334,8 @@ light / sm / lg / block), `Card`, `Badge`, `Eyebrow`, `Section` (board / paper
   - заказ → оплачено → зачисление, повтор → без дублей, возврат → отзыв;
   - сертификат только после 100 %;
   - изоляция руководителя по организации.
-- **E2E** — `tests/e2e/*.spec.ts`, Playwright на `next start` в демо-режиме:
+- **E2E** — `tests/e2e/*.spec.ts`, Playwright на `next start` в демо-режиме
+  (`DEMO_MODE=1` в `webServer.env`):
   - гость: каталог → курс;
   - вход демо-клиентом → урок → тест → «пройден»;
   - админ: подтверждение заказа;
@@ -300,9 +346,12 @@ light / sm / lg / block), `Card`, `Badge`, `Eyebrow`, `Section` (board / paper
 
 ## 11. Деплой превью
 
-Vercel, проект привязан к репозиторию. Без `DATABASE_URL` приложение работает в
-демо-режиме на PGlite: данные из сида, изменения живут до перезапуска
-экземпляра. В шапке плашка «Демо-версия: данные сбрасываются».
+Vercel, проект привязан к репозиторию. В окружении Vercel задан `DEMO_MODE=1`
+(там `NODE_ENV=production`: без флага и без `DATABASE_URL` приложение не
+стартует). Без `DATABASE_URL` демо работает на PGlite: данные из сида,
+изменения живут до перезапуска экземпляра. В шапке плашка «Демо-версия: данные
+сбрасываются», на регистрации — предупреждение не вводить реальные ПДн (данные
+вне РК). Для лимитов входа на Vercel — `TRUST_X_REAL_IP=1`.
 `serverExternalPackages: ['@electric-sql/pglite']`.
 
 Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), см. issue #24.

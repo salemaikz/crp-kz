@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # демо-режим: без DATABASE_URL работает PGlite с сидом
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +43,12 @@ jobs:
       - name: Интеграционные тесты
         run: npm run test:integration
 
+      # next build/start — production: демо-режим (PGlite с сидом) только по явному DEMO_MODE=1.
+      # На шагах тестов флаг не задан: тесты сами переключают режимы через окружение.
       - name: Сборка
         run: npm run build
+        env:
+          DEMO_MODE: '1'
 
       - name: Браузер для Playwright
         run: npx playwright install --with-deps chromium
@@ -54,6 +57,7 @@ jobs:
         run: npm run test:e2e
         env:
           PW_SKIP_BUILD: '1'
+          DEMO_MODE: '1'
 
       - name: Отчёт Playwright
         if: failure()

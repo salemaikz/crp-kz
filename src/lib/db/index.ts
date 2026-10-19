@@ -5,7 +5,7 @@
 // - списки: = ANY(${ids}); jsonb: ${db.json(v)}, читается уже объектом;
 // - колонки snake_case в БД → camelCase в строках; BIGINT → number;
 // - внутри db.tx(fn) используйте sql из колбэка (вызовы db.sql тоже попадут в транзакцию).
-import { isDemo } from '../env';
+import { assertDbConfigured, isDemo } from '../env';
 import type { Db, DbHandle } from './core';
 import { migrate } from './migrate';
 
@@ -17,6 +17,7 @@ const g = globalThis as DbGlobal;
 
 /** Открыть драйвер без миграций и сида (скрипты npm run db:*). */
 export async function openDriver(): Promise<DbHandle> {
+  assertDbConfigured(); // production без DATABASE_URL и без DEMO_MODE=1 — ошибка, а не тихое демо
   const url = process.env.DATABASE_URL?.trim();
   if (url) {
     const { createPostgresDb } = await import('./postgres');

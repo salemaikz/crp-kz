@@ -75,7 +75,7 @@ export const SEED_PEOPLE: SeedPerson[] = [
 
 export const demoEmail = (role: DemoRole): string => DEMO_ACCOUNTS.find((a) => a.role === role)?.email as string;
 
-/** Организация, пользователи (один хеш пароля на всех) и членства. */
+/** Организация, пользователи (один хеш пароля на всех, email подтверждён при создании) и членства. */
 export async function seedPeople(sql: Sql, base: number, passwordHash: string): Promise<void> {
   const orgId = seedOrgId();
   await sql`
@@ -86,8 +86,8 @@ export async function seedPeople(sql: Sql, base: number, passwordHash: string): 
     const id = seedUserId(p.email);
     const createdAt = base - (p.member ? 90 : 40) * DAY + i * 60_000;
     await sql`
-      INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
-      VALUES (${id}, ${p.email}, ${passwordHash}, ${p.name}, ${p.role}, 'ru', ${createdAt})
+      INSERT INTO users (id, email, password_hash, name, role, locale, email_verified_at, created_at)
+      VALUES (${id}, ${p.email}, ${passwordHash}, ${p.name}, ${p.role}, 'ru', ${createdAt}, ${createdAt})
       ON CONFLICT (id) DO NOTHING`;
     if (p.member) {
       await sql`

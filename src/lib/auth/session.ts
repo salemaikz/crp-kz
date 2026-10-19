@@ -56,9 +56,12 @@ export async function resolveSessionToken(token: string | null | undefined): Pro
   const [user] = await db.sql<SessionUserRow>`
     SELECT id, email, name, role, locale FROM users WHERE id = ${payload.uid}`;
   if (!user || !isSeedUser(user)) return null;
+  // срок восстановленной строки — не дальше обычного TTL от «сейчас», даже если exp в токене больше
+  const t = now();
+  const expiresAt = Math.min(payload.exp, t + SESSION_TTL_MS);
   await db.sql`
     INSERT INTO sessions (id, user_id, expires_at, created_at)
-    VALUES (${payload.sid}, ${payload.uid}, ${payload.exp}, ${now()})
+    VALUES (${payload.sid}, ${payload.uid}, ${expiresAt}, ${t})
     ON CONFLICT (id) DO NOTHING`;
   return pickUser(user);
 }

@@ -82,8 +82,8 @@ Codex и людей. Специфика Claude Code — в `CLAUDE.md`.
 ## Стек (как в SalemAI — чтобы код и люди были взаимозаменяемы)
 
 Next.js 16 (App Router, сборка `next build --webpack`, не Turbopack) · React 19 ·
-TypeScript strict · Tailwind 4 · PostgreSQL через `postgres` (postgres.js, без ORM,
-`postgres.camel`) · Zod · Zustand · next-intl · своя session-auth (cookie + bcryptjs,
+TypeScript strict · Tailwind 4 · PostgreSQL через `postgres` (postgres.js, без ORM;
+в camelCase — только имена колонок, jsonb не трогается, строки — обычные объекты) · Zod · Zustand · next-intl · своя session-auth (cookie + bcryptjs,
 **без JWT и NextAuth**) · @react-pdf/renderer (сертификаты, счета) · Resend (почта) ·
 тесты: node:test + tsx (unit, интеграционные с БД), Playwright (e2e).
 

@@ -3,11 +3,12 @@ import { redirect } from 'next/navigation';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
+import { isDemo } from '@/lib/env';
 import { safeNext } from '@/lib/auth/safeNext';
 import { Link } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { AuthShell } from '@/components/layout/AuthShell';
-import { Mark } from '@/components/ui';
+import { Alert, Mark } from '@/components/ui';
 import { RegisterForm } from './RegisterForm';
 
 type Props = {
@@ -40,6 +41,12 @@ export default async function RegisterPage({ params, searchParams }: Props) {
       cardTitle={t('register.formTitle')}
       cardLead={t('register.formLead')}
     >
+      {/* демо: данные на Vercel (вне РК) и сбрасываются — реальные ПДн вводить нельзя */}
+      {isDemo() && (
+        <Alert tone="warning" role="note" style={{ marginBottom: 16 }}>
+          {t('register.demoWarning')}
+        </Alert>
+      )}
       <RegisterForm next={next} />
       <p className="auth__switch">
         {t('register.haveAccount')}{' '}

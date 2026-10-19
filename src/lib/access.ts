@@ -71,8 +71,9 @@ export async function canAccessCourse(userId: string, courseId: string, sql?: Sq
 
 /**
  * Может ли пользователь сам записаться (source 'self'):
- * опубликованный бесплатный public (нет активного offer или цена 0) или опубликованный
- * internal организации, где пользователь состоит. Платный курс никогда не даёт self.
+ * опубликованный бесплатный public или опубликованный internal организации, где пользователь
+ * состоит. Бесплатный = у курса нет offer или его price_kzt = 0. Offer с ценой > 0 запрещает
+ * self независимо от active: «пауза продаж» не делает платный курс бесплатным.
  * Поля курса берутся из БД, а не из аргумента — их нельзя подменить.
  */
 export async function canSelfEnroll(userId: string, course: CourseForEnroll, sql?: Sql): Promise<boolean> {
@@ -80,11 +81,10 @@ export async function canSelfEnroll(userId: string, course: CourseForEnroll, sql
   const [c] = await s<{ visibility: string; ownerOrgId: string | null; status: string }>`
     SELECT visibility, owner_org_id, status FROM courses WHERE id = ${course.id}`;
   if (!c || c.status !== 'published') return false;
-  if (c.visibility === 'public') {
-    const offers = await s<{ priceKzt: number }>`
-      SELECT price_kzt FROM course_offers WHERE course_id = ${course.id} AND active = true`;
-    return offers.every((o) => o.priceKzt === 0);
-  }
+  // платный курс (любой offer с ценой > 0, активный или нет) никогда не даёт self
+  const paid = await s`SELECT 1 FROM course_offers WHERE course_id = ${course.id} AND price_kzt > 0`;
+  if (paid.length > 0) return false;
+  if (c.visibility === 'public') return true;
   if (c.visibility === 'internal' && c.ownerOrgId) {
     const rows = await s`
       SELECT 1 FROM organization_members WHERE user_id = ${userId} AND org_id = ${c.ownerOrgId}`;
@@ -94,15 +94,27 @@ export async function canSelfEnroll(userId: string, course: CourseForEnroll, sql
 }
 
 /**
- * Новый срок не сокращает уже действующий: бессрочный (null) длиннее любого.
- * Повтор того же заказа по действующему зачислению срок не меняет (идемпотентность оплаты).
+ * Срок нового зачисления поверх существующей строки (повтор того же заказа сюда не доходит —
+ * enroll возвращает строку без изменений раньше).
+ * - Действующее зачисление: новый срок не сокращает текущий — берём max(текущий, новый),
+ *   бессрочный (null) длиннее любого. Так покупка/выдача продлевают доступ, а назначение
+ *   или self не обрезают уже купленный более длинный доступ.
+ * - Отозванное или истёкшее: прежний срок не в счёт, действует только новый (от «сейчас»).
  */
-function mergeExpiry(cur: Enrollment, next: number | null, nowMs: number, orderId: string | null): number | null {
-  const active = enrollmentState(cur, nowMs).ok;
-  if (!active) return next;
-  if (orderId && orderId === cur.orderId) return cur.expiresAt;
+function mergeExpiry(cur: Enrollment, next: number | null, nowMs: number): number | null {
+  if (!enrollmentState(cur, nowMs).ok) return next;
   if (cur.expiresAt === null || next === null) return null;
   return Math.max(cur.expiresAt, next);
+}
+
+/** accessDays: только целое > 0 либо null/undefined (бессрочно). Иначе RangeError. */
+function expiryFor(accessDays: number | null | undefined, nowMs: number): number | null {
+  if (accessDays === null || accessDays === undefined) return null;
+  const expiresAt = nowMs + accessDays * DAY_MS;
+  if (!Number.isInteger(accessDays) || accessDays <= 0 || !Number.isSafeInteger(expiresAt)) {
+    throw new RangeError(`accessDays must be a positive integer or null, got ${String(accessDays)}`);
+  }
+  return expiresAt;
 }
 
 async function audit(sql: Sql, actorId: string | null, action: string, entityId: string, meta: object) {
@@ -112,20 +124,25 @@ async function audit(sql: Sql, actorId: string | null, action: string, entityId:
 }
 
 /**
- * Зачислить пользователя (идемпотентно, upsert по (user_id, course_id)).
- * Снимает revoked, ставит expires_at по accessDays (не сокращая действующий срок),
- * обновляет source; org/order/grantedBy/due сохраняются, если не переданы.
+ * Зачислить пользователя (upsert по (user_id, course_id)).
+ * - Повтор того же заказа (input.orderId совпадает с order_id строки) — no-op в любом
+ *   состоянии: строка возвращается как есть, отзыв не снимается, срок не продлевается
+ *   (повторная доставка «оплачено» после возврата не возвращает доступ).
+ * - Иначе это новая выдача: снимает revoked, source/org/order/grantedBy/due берутся из input
+ *   (не переданы — null, без «хвостов» прежнего источника), срок — см. mergeExpiry.
+ * - accessDays — целое > 0 или null/не задан (бессрочно); иначе RangeError.
  * Пишет enrollment.grant в audit_log, когда состояние изменилось.
  * source 'self' разрешён только при canSelfEnroll — иначе ошибка SELF_ENROLL_FORBIDDEN.
  */
 export async function enroll(input: EnrollInput, sql?: Sql): Promise<Enrollment> {
+  expiryFor(input.accessDays, now()); // RangeError до любых запросов
   const run = async (s: Sql): Promise<Enrollment> => {
     // защита в глубину: self только там, где его разрешает canSelfEnroll (платный — никогда)
     if (input.source === 'self' && !(await canSelfEnroll(input.userId, { id: input.courseId }, s))) {
       throw new Error('SELF_ENROLL_FORBIDDEN');
     }
     const t = now();
-    const expiresAt = input.accessDays ? t + input.accessDays * DAY_MS : null;
+    const expiresAt = expiryFor(input.accessDays, t);
     const meta = {
       source: input.source,
       courseId: input.courseId,
@@ -150,13 +167,16 @@ export async function enroll(input: EnrollInput, sql?: Sql): Promise<Enrollment>
     const [cur] = await s<Enrollment>`
       SELECT * FROM enrollments WHERE user_id = ${input.userId} AND course_id = ${input.courseId} FOR UPDATE`;
     if (!cur) throw new Error('enrollment vanished during upsert');
+    // повтор того же заказа — ничего не меняем ни в каком состоянии (идемпотентность оплаты)
+    if (input.orderId && input.orderId === cur.orderId) return cur;
+    // новая выдача заменяет источник целиком: привязки прежнего источника не переносятся
     const next = {
       source: input.source,
-      orgId: input.orgId ?? cur.orgId,
-      orderId: input.orderId ?? cur.orderId,
-      grantedBy: input.grantedBy ?? cur.grantedBy,
-      dueAt: input.dueAt ?? cur.dueAt,
-      expiresAt: mergeExpiry(cur, expiresAt, t, input.orderId ?? null),
+      orgId: input.orgId ?? null,
+      orderId: input.orderId ?? null,
+      grantedBy: input.grantedBy ?? null,
+      dueAt: input.dueAt ?? null,
+      expiresAt: mergeExpiry(cur, expiresAt, t),
     };
     const changed =
       cur.revokedAt !== null ||
@@ -185,15 +205,44 @@ export async function enroll(input: EnrollInput, sql?: Sql): Promise<Enrollment>
   return (await getDb()).tx(run);
 }
 
-/** Отозвать доступ (идемпотентно). Прогресс и сертификаты сохраняются. */
-export async function revokeEnrollment(userId: string, courseId: string, actorId: string | null, sql?: Sql): Promise<void> {
+/** Необязательный фильтр отзыва: отзывать, только если доступ всё ещё держится на этом источнике. */
+export type RevokeFilter = {
+  /** Отозвать, только если enrollments.order_id = orderId (возврат заказа A не трогает доступ по заказу B). */
+  orderId?: string;
+  /** Отозвать, только если org_id = orgId и source IN ('assignment','self','seat') (уход из организации). */
+  orgId?: string;
+};
+
+/**
+ * Отозвать доступ (идемпотентно). Прогресс и сертификаты сохраняются.
+ * opts — фильтр по источнику (см. RevokeFilter); без него отзывается любое действующее зачисление.
+ */
+export async function revokeEnrollment(
+  userId: string,
+  courseId: string,
+  actorId: string | null,
+  sql?: Sql,
+  opts: RevokeFilter = {},
+): Promise<void> {
+  const orderId = opts.orderId ?? null;
+  const orgId = opts.orgId ?? null;
   const run = async (s: Sql) => {
     const t = now();
     const [row] = await s<{ id: string; source: string }>`
       UPDATE enrollments SET revoked_at = ${t}, updated_at = ${t}
       WHERE user_id = ${userId} AND course_id = ${courseId} AND revoked_at IS NULL
+        AND (${orderId}::text IS NULL OR order_id = ${orderId})
+        AND (${orgId}::text IS NULL OR (org_id = ${orgId} AND source IN ('assignment', 'self', 'seat')))
       RETURNING id, source`;
-    if (row) await audit(s, actorId, 'enrollment.revoke', row.id, { userId, courseId, source: row.source });
+    if (row) {
+      await audit(s, actorId, 'enrollment.revoke', row.id, {
+        userId,
+        courseId,
+        source: row.source,
+        ...(orderId ? { orderId } : {}),
+        ...(orgId ? { orgId } : {}),
+      });
+    }
   };
   if (sql) return run(sql);
   return (await getDb()).tx(run);
