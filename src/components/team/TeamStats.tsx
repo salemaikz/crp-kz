@@ -3,7 +3,7 @@ import { Card, Stat } from '@/components/ui';
 import type { TeamSummary } from '@/lib/team/types';
 import './team.css';
 
-/** Сводка: сотрудники, назначения в работе, просрочено, доля завершивших. */
+/** Сводка: сотрудники, назначения в работе, просрочено, доля завершивших. Рабочие счётчики в плоских ячейках с рамкой. */
 export function TeamStats({ summary }: { summary: TeamSummary }) {
   const t = useTranslations('team.stats');
   return (

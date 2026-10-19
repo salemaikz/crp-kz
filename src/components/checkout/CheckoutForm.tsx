@@ -1,7 +1,7 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Building2, CircleAlert, CreditCard, FileText, Info, Lock, User } from 'lucide-react';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { CircleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { createOrderAction, type CheckoutFormState } from '@/lib/orders/actions';
 import type { BuyerType, PaymentMethod } from '@/lib/orders/types';
@@ -93,9 +93,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
       <div className="co-section">
         <fieldset className="co-fieldset">
           <legend className="co-legend">
-            <span className="co-step" aria-hidden="true">
-              1
-            </span>
             {t('who.legend')}
           </legend>
           <div className="co-choices">
@@ -104,7 +101,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
               value="person"
               checked={buyerType === 'person'}
               onChange={() => chooseBuyer('person')}
-              icon={<User />}
               title={t('who.person')}
               desc={t('who.personDesc')}
             />
@@ -113,7 +109,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
               value="company"
               checked={company}
               onChange={() => chooseBuyer('company')}
-              icon={<Building2 />}
               title={t('who.company')}
               desc={t('who.companyDesc')}
             />
@@ -124,9 +119,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
       <div className="co-section">
         <fieldset className="co-fieldset">
           <legend className="co-legend">
-            <span className="co-step" aria-hidden="true">
-              2
-            </span>
             {t('contacts.legend')}
           </legend>
           <Field label={t('contacts.name')} hint={t('contacts.nameHint')} error={err('name')} required>
@@ -178,9 +170,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
       <div className="co-section">
         <fieldset className="co-fieldset" aria-describedby={errors.paymentMethod ? 'payment-error' : undefined}>
           <legend className="co-legend">
-            <span className="co-step" aria-hidden="true">
-              3
-            </span>
             {t('payment.legend')}
           </legend>
           <div className="co-choices" aria-invalid={errors.paymentMethod ? true : undefined}>
@@ -190,7 +179,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
               checked={method === 'kaspi'}
               disabled={company}
               onChange={() => setMethod('kaspi')}
-              icon={<CreditCard />}
               title={t('payment.kaspi')}
               desc={t('payment.kaspiDesc')}
             />
@@ -199,7 +187,6 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
               value="invoice"
               checked={method === 'invoice'}
               onChange={() => setMethod('invoice')}
-              icon={<FileText />}
               title={t('payment.invoice')}
               desc={t('payment.invoiceDesc')}
             />
@@ -210,12 +197,7 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
               <span>{err('paymentMethod')}</span>
             </p>
           )}
-          {company && (
-            <p className="co-hint">
-              <Info aria-hidden="true" />
-              {t('payment.companyNote')}
-            </p>
-          )}
+          {company && <p className="co-hint">{t('payment.companyNote')}</p>}
         </fieldset>
       </div>
 
@@ -224,10 +206,7 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
         <SubmitButton size="lg" block pending={pending} pendingText={t('pending')}>
           {t('submit', { price: formatPrice(priceKzt) })}
         </SubmitButton>
-        <p className="co-hint">
-          <Lock aria-hidden="true" />
-          {t('note')}
-        </p>
+        <p className="co-hint">{t('note')}</p>
       </div>
     </form>
   );
@@ -239,13 +218,12 @@ type ChoiceProps = {
   checked: boolean;
   disabled?: boolean;
   onChange: () => void;
-  icon: ReactNode;
   title: string;
   desc: string;
 };
 
-/** Карточка-радиокнопка: нативный input (клавиатура, скринридер) + оформление через :has(). */
-function Choice({ name, value, checked, disabled, onChange, icon, title, desc }: ChoiceProps) {
+/** Карточка-радиокнопка: нативный input (клавиатура, скринридер) + оформление через :has(). Без иконок. */
+function Choice({ name, value, checked, disabled, onChange, title, desc }: ChoiceProps) {
   const id = `${name}-${value}`;
   return (
     <label className="co-choice" htmlFor={id}>
@@ -260,9 +238,6 @@ function Choice({ name, value, checked, disabled, onChange, icon, title, desc }:
         aria-labelledby={`${id}-title`}
         aria-describedby={`${id}-desc`}
       />
-      <span className="co-choice__icon" aria-hidden="true">
-        {icon}
-      </span>
       <span id={`${id}-title`} className="co-choice__title">
         {title}
       </span>

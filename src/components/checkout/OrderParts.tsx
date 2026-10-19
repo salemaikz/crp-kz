@@ -1,6 +1,7 @@
 // Блоки страницы заказа: детали, оплата Kaspi, оплата по счёту, итог, подсказка демо.
+// Плоские карточки, без декоративных иконок: значок только у заглушки QR.
 import type { ReactNode } from 'react';
-import { CalendarCheck, CircleCheck, FileText, QrCode, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
+import { QrCode } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { demoLoginAction } from '@/lib/auth/actions';
 import { DEMO_ACCOUNTS } from '@/lib/auth/demo';
@@ -93,9 +94,7 @@ export function KaspiPayment({ order, locale }: WithOrder) {
           </li>
         </ol>
         <div className="co-qr" data-testid="kaspi-qr-placeholder">
-          <span className="co-qr__icon" aria-hidden="true">
-            <QrCode />
-          </span>
+          <QrCode className="co-qr__icon" aria-hidden="true" />
           <span className="co-qr__title">{k('qrTitle')}</span>
           <p className="co-qr__text">{k('qrText')}</p>
         </div>
@@ -135,22 +134,16 @@ export function InvoicePayment({ order, locale, invoiceHref }: WithOrder & { inv
       <h2 className="co-card-title">{t('title')}</h2>
       <p className="co-result__text">{t('text', { number: order.number })}</p>
       <div className="co-doc-teaser">
-        <span className="co-doc-teaser__icon" aria-hidden="true">
-          <FileText />
-        </span>
-        <div>
-          <div className="co-doc-teaser__title">{t('docTitle', { number: order.number })}</div>
-          <div className="co-doc-teaser__meta">
-            {t('docMeta', {
-              amount: formatPrice(order.amountKzt, locale),
-              date: formatDate(order.createdAt, locale),
-            })}
-          </div>
+        <div className="co-doc-teaser__title">{t('docTitle', { number: order.number })}</div>
+        <div className="co-doc-teaser__meta">
+          {t('docMeta', {
+            amount: formatPrice(order.amountKzt, locale),
+            date: formatDate(order.createdAt, locale),
+          })}
         </div>
       </div>
       <div className="co-actions-row">
         <Button href={invoiceHref} variant="primary">
-          <FileText aria-hidden="true" />
           {t('open')}
         </Button>
       </div>
@@ -171,12 +164,8 @@ export function PaidResult({ order, locale, access, cta, signInHref }: PaidProps
   const t = useTranslations('checkout.order.paid');
   return (
     <Card large padding="lg" className="co-result" data-testid="order-paid">
-      <span className="co-result__icon co-result__icon--success" aria-hidden="true">
-        <CircleCheck />
-      </span>
       <h2 className="co-card-title">{tl(order.courseTitle, locale)}</h2>
       <p className="co-access">
-        <CalendarCheck aria-hidden="true" />
         {access.state === 'closed'
           ? t('accessClosed')
           : access.expiresAt
@@ -203,9 +192,6 @@ export function ClosedResult({ order }: { order: OrderView }) {
   const cancelled = order.status === 'cancelled';
   return (
     <Card large padding="lg" className="co-result">
-      <span className="co-result__icon co-result__icon--muted" aria-hidden="true">
-        {cancelled ? <XCircle /> : <RotateCcw />}
-      </span>
       <p className="co-result__text">{t(`lead.${cancelled ? 'cancelled' : 'refunded'}`)}</p>
       <div className="co-actions-row">
         {cancelled && (
@@ -232,7 +218,6 @@ export function DemoAdminHint({ locale, viewerIsAdmin }: { locale: Locale; viewe
       <div className="co-actions-row">
         {viewerIsAdmin || !admin ? (
           <Button href="/admin/orders?status=pending" variant="dark" size="sm">
-            <ShieldCheck aria-hidden="true" />
             {t('open')}
           </Button>
         ) : (
@@ -241,7 +226,6 @@ export function DemoAdminHint({ locale, viewerIsAdmin }: { locale: Locale; viewe
             <input type="hidden" name="locale" value={locale} />
             <input type="hidden" name="next" value={`/${locale}/admin/orders?status=pending`} />
             <Button type="submit" variant="dark" size="sm">
-              <ShieldCheck aria-hidden="true" />
               {t('login')}
             </Button>
           </form>

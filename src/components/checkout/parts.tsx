@@ -1,5 +1,4 @@
 // Мелкие общие части зоны покупки: телефон помощи, статус заказа.
-import { Phone } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { OrderStatus } from '@/lib/orders/types';
 import { Badge, Card, type BadgeTone } from '@/components/ui';
@@ -13,13 +12,10 @@ export function HelpLine() {
   const t = useTranslations('checkout.common');
   return (
     <p className="co-help">
-      <Phone aria-hidden="true" />
-      <span>
-        {t.rich('help', {
-          number: CRP_PHONE,
-          phone: (chunks) => <a href={CRP_PHONE_HREF}>{chunks}</a>,
-        })}
-      </span>
+      {t.rich('help', {
+        number: CRP_PHONE,
+        phone: (chunks) => <a href={CRP_PHONE_HREF}>{chunks}</a>,
+      })}
     </p>
   );
 }
@@ -32,7 +28,6 @@ export function HelpCard() {
       <h2 className="co-steps-card__title">{t('helpTitle')}</h2>
       <p className="co-result__text">{t('helpText')}</p>
       <p className="co-help co-help--plain">
-        <Phone aria-hidden="true" />
         <a href={CRP_PHONE_HREF}>{CRP_PHONE}</a>
       </p>
     </Card>

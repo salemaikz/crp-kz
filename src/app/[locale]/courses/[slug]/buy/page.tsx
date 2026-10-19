@@ -51,7 +51,6 @@ export default async function BuyPage({ params }: Props) {
   return (
     <>
       <PageHeader
-        tone="night"
         breadcrumbs={
           <Breadcrumbs
             label={a11y('breadcrumbs')}

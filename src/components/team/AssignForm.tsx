@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Avatar, Checkbox, Field, Input, Select, SubmitButton } from '@/components/ui';
+import { Alert, Checkbox, Field, Input, Select, SubmitButton } from '@/components/ui';
 import { assignCourseAction, type AssignState } from '@/lib/team/actions';
 import './team.css';
 
@@ -85,7 +85,6 @@ export function AssignForm({ orgId, employees, courses, minDate, maxAssign }: Pr
                     onChange={(ev) => toggle(e.userId, ev.target.checked)}
                     label={
                       <span className="team-emp">
-                        <Avatar name={e.name} size="sm" />
                         <span className="team-emp__text">
                           <span className="team-emp__name">{e.name}</span>
                           <span className="team-emp__pos">{e.position ?? t('noPosition')}</span>

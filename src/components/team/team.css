@@ -1,6 +1,6 @@
 /*
  * Раздел «Команда»: сводка, форма назначения, отчёт. Классы с префиксом team-.
- * Опирается на токены и компоненты дизайн-системы (src/styles).
+ * Опирается на токены и компоненты дизайн-системы (src/styles). Плоско: рамки 1 px, без теней и декора.
  */
 @layer theme, base, components, utilities;
 
@@ -138,12 +138,11 @@
     align-content: start;
   }
 
-  /* сотрудник: аватар + имя + должность */
+  /* сотрудник: имя и должность под ним */
   .team-emp {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
+    display: grid;
     min-width: 0;
+    line-height: 1.3;
     text-align: left;
   }
   .team-emp__text {

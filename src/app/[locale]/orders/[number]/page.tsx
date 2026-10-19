@@ -23,7 +23,7 @@ import {
   OwnerCancelOrder,
   PaidResult,
 } from '@/components/checkout';
-import { Alert, Breadcrumbs, Container, PageHeader, Price, Section } from '@/components/ui';
+import { Alert, Breadcrumbs, Container, PageHeader, Section } from '@/components/ui';
 import '@/components/checkout/checkout.css';
 
 /** Плашки страницы заказа для владельца (?notice=…): см. createOrderAction и cancelOwnOrderAction. */
@@ -103,7 +103,6 @@ export default async function OrderPage({ params, searchParams }: Props) {
   return (
     <>
       <PageHeader
-        tone="night"
         breadcrumbs={
           <Breadcrumbs
             label={a11y('breadcrumbs')}
@@ -118,9 +117,10 @@ export default async function OrderPage({ params, searchParams }: Props) {
         lead={t(`lead.${variant}`, { amount, course })}
         meta={
           <div className="co-header-meta">
+            <span>{t('numberLine', { number: order.number })}</span>
             <OrderStatusBadge status={order.status} />
-            <Price kzt={order.amountKzt} size="md" />
-            <span className="meta">{formatDate(order.createdAt, locale, { withTime: true })}</span>
+            <strong className="co-header-meta__amount">{amount}</strong>
+            <span>{formatDate(order.createdAt, locale, { withTime: true })}</span>
           </div>
         }
       />

@@ -30,7 +30,7 @@ test('гость не получает CSV', async ({ request }) => {
 test('руководитель: назначает курс сотруднику — строка появляется в отчёте', async ({ page }) => {
   await demoLogin(page, 'manager');
   await expect(page).toHaveURL(/\/ru\/team/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Обучение вашей команды');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Обучение команды');
 
   // сводка и отчёт по внутреннему курсу из демо-данных
   await expect(page.getByText('Сотрудников', { exact: true })).toBeVisible();

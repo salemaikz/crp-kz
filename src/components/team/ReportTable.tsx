@@ -1,5 +1,5 @@
 import { useTranslations } from 'next-intl';
-import { Avatar, ProgressBar, Table, type TableColumn } from '@/components/ui';
+import { ProgressBar, Table, type TableColumn } from '@/components/ui';
 import { t as pick } from '@/lib/content/l10n';
 import type { Locale } from '@/lib/content/types';
 import { formatDate, relativeDue } from '@/lib/format';
@@ -10,7 +10,7 @@ import './team.css';
 
 type Props = { rows: TeamReportRow[]; locale: Locale; filtered: boolean };
 
-/** Таблица отчёта: сотрудник, курс, прогресс, тест, срок со статусом, сертификат. На телефоне — карточки. */
+/** Таблица отчёта: сотрудник, курс, прогресс, тест, срок со статусом, сертификат. На телефоне — карточки. Без аватаров и значков. */
 export function ReportTable({ rows, locale, filtered }: Props) {
   const t = useTranslations('team.report');
 
@@ -21,7 +21,6 @@ export function ReportTable({ rows, locale, filtered }: Props) {
       primary: true,
       cell: (r) => (
         <span className="team-emp">
-          <Avatar name={r.name} size="sm" />
           <span className="team-emp__text">
             <span className="team-emp__name">{r.name}</span>
             {r.position && <span className="team-emp__pos">{r.position}</span>}

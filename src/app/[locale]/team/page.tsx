@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Download } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { AssignForm } from '@/components/team/AssignForm';
@@ -45,7 +44,7 @@ function first(v: string | string[] | undefined): string | null {
   return s ? s : null;
 }
 
-/** «Команда»: сводка, назначение курса, отчёт. Только для руководителей; остальным — 404. */
+/** «Команда»: сводка, назначение курса, отчёт. Только для руководителей; остальным — 404. Шапка простая, на доске. */
 export default async function TeamPage({ params, searchParams }: Props) {
   const locale = await resolveLocale(params);
   setRequestLocale(locale);
@@ -85,7 +84,6 @@ export default async function TeamPage({ params, searchParams }: Props) {
   return (
     <>
       <PageHeader
-        tone="night"
         title={t('header.title')}
         lead={t('header.lead')}
         meta={orgLabel(org)}
@@ -129,7 +127,6 @@ export default async function TeamPage({ params, searchParams }: Props) {
                 </p>
               </div>
               <Button href={csvHref} external variant="ghost" size="sm" download>
-                <Download aria-hidden="true" />
                 {t('report.export')}
               </Button>
             </div>
