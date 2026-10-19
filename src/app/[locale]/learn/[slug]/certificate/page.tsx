@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { CertificatePdfLink } from '@/components/learn/CertificatePdfLink';
 import { CertificateSheet } from '@/components/learn/CertificateSheet';
 import { CompletionCard } from '@/components/learn/CompletionCard';
 import { PrintButton } from '@/components/learn/PrintButton';
@@ -9,6 +10,7 @@ import { Button, Container, PageHeader, Section, TextLink } from '@/components/u
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
 import { siteUrl } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
 import { redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { getCertificate } from '@/lib/learn/certificates';
@@ -66,6 +68,10 @@ export default async function CertificatePage({ params }: Props) {
     );
   }
 
+  // при CERT_PDF — ссылка на файл, иначе прежняя печать браузером
+  const pdfActive = isFeatureActive('CERT_PDF');
+  const pdfHref = `/${locale}${coursePath(slug)}/certificate/pdf`;
+
   // сертификат печатается на языке, на котором проходили курс
   const site = siteUrl();
   const verifyUrl = certificateVerifyUrl(site, certificate.locale, certificate.number);
@@ -85,7 +91,13 @@ export default async function CertificatePage({ params }: Props) {
               <Button href={coursePath(slug)} variant="ghost">
                 {t('back')}
               </Button>
-              <PrintButton />
+              {pdfActive ? (
+                <CertificatePdfLink href={pdfHref} testId="download-certificate-pdf">
+                  {t('download')}
+                </CertificatePdfLink>
+              ) : (
+                <PrintButton />
+              )}
             </div>
           </div>
 
@@ -100,7 +112,7 @@ export default async function CertificatePage({ params }: Props) {
           />
 
           <div className="lrn-noprint">
-            <p className="lrn-cert-hint">{t('printHint')}</p>
+            <p className="lrn-cert-hint">{pdfActive ? t('pdfHint') : t('printHint')}</p>
             <p className="lrn-cert-hint">
               <TextLink href={`/cert/${encodeURIComponent(certificate.number)}`}>{t('verifyLink')}</TextLink>
             </p>

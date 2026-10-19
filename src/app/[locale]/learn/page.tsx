@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { CertificatePdfLink } from '@/components/learn/CertificatePdfLink';
 import { CourseCard } from '@/components/learn/CourseCard';
 import { Button, Card, Container, EmptyState, PageHeader, Section, TextLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
 import { formatDate } from '@/lib/format';
+import { isFeatureActive } from '@/lib/features';
 import { routing } from '@/lib/i18n/routing';
 import { listCertificates, listLearnerCourses, type LearnerCourse } from '@/lib/learn/data';
 import { coursePath } from '@/lib/learn/server';
@@ -47,6 +49,7 @@ export default async function LearnPage({ params }: Props) {
     listCertificates(user.id),
   ]);
 
+  const pdfActive = isFeatureActive('CERT_PDF');
   const sorted = [...courses].sort(byPriority);
   const open = sorted.filter((c) => c.access.ok);
   const closed = sorted.filter((c) => !c.access.ok);
@@ -120,6 +123,11 @@ export default async function LearnPage({ params }: Props) {
                         <p className="meta num lrn-nowrap">{t('certificateNumber', { number: c.number })}</p>
                         <div className="lrn-cert-item__links">
                           <TextLink href={`${coursePath(c.courseSlug)}/certificate`}>{t('certificateOpen')}</TextLink>
+                          {pdfActive && (
+                            <CertificatePdfLink variant="text" href={`/${locale}${coursePath(c.courseSlug)}/certificate/pdf`}>
+                              {t('certificatePdf')}
+                            </CertificatePdfLink>
+                          )}
                           <TextLink href={`/cert/${encodeURIComponent(c.number)}`}>{t('certificateVerify')}</TextLink>
                         </div>
                       </div>

@@ -149,3 +149,54 @@ test('публичная проверка сертификата без вход
   await expect(gp.getByTestId('cert-invalid')).toBeVisible();
   await guest.close();
 });
+
+// PDF сертификата (флаг CERT_PDF, в демо включён): кнопка — ссылка на файл, а не печать браузером.
+test('сертификат: «Скачать PDF» — ссылка на файл; чужой получает 404, гость — вход', async ({ page, browser }) => {
+  await loginAsClient(page);
+  const list = page.getByTestId('learn-certificates');
+  const listPdf = list.getByRole('link', { name: 'Скачать PDF' });
+  const pdfHref = (await listPdf.getAttribute('href')) as string;
+  expect(pdfHref).toMatch(/^\/ru\/learn\/[^/]+\/certificate\/pdf$/);
+
+  // страница сертификата: ссылка вместо печати
+  await list.getByRole('link', { name: 'Открыть' }).click();
+  await expect(page.getByTestId('certificate')).toBeVisible();
+  await expect(page.getByTestId('print-certificate')).toHaveCount(0);
+  await expect(page.getByText('Файл PDF, A4, альбомная ориентация.')).toBeVisible();
+  const link = page.getByTestId('download-certificate-pdf');
+  await expect(link).toHaveAttribute('href', pdfHref);
+
+  // скачивание: имя по номеру сертификата, файл начинается с %PDF-, в нём нет email
+  const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
+  expect(download.suggestedFilename()).toMatch(/^CRP-\d{4}-[A-Z2-9]{6}\.pdf$/);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(c as Buffer);
+  const bytes = Buffer.concat(chunks);
+  expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  expect(bytes.toString('latin1')).not.toContain('@crp.demo');
+
+  // повторный запрос с ETag — 304 без нового файла
+  const first = await page.request.get(pdfHref);
+  expect(first.status()).toBe(200);
+  expect(first.headers()['cache-control']).toBe('private, no-cache');
+  const again = await page.request.get(pdfHref, { headers: { 'If-None-Match': first.headers()['etag'] as string } });
+  expect(again.status()).toBe(304);
+
+  // сотрудник по тому же адресу: сертификата у него нет — 404
+  const other = await browser.newContext();
+  const op = await other.newPage();
+  await op.goto('/ru/login');
+  await op.getByTestId('demo-login-operator').click();
+  await expect(op).toHaveURL(/\/ru\/learn/);
+  expect((await op.request.get(new URL(pdfHref, page.url()).href)).status()).toBe(404);
+  await other.close();
+
+  // гость: перенаправление на вход с возвратом на страницу сертификата
+  const guest = await browser.newContext();
+  const gp = await guest.newPage();
+  await gp.goto(new URL(pdfHref, page.url()).href);
+  await expect(gp).toHaveURL(/\/ru\/login\?next=/);
+  expect(decodeURIComponent(new URL(gp.url()).searchParams.get('next') as string)).toMatch(/\/ru\/learn\/[^/]+\/certificate$/);
+  await guest.close();
+});
