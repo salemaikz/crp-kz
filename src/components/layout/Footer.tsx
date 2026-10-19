@@ -4,6 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
 import { CRP_CONTACTS } from '@/lib/brand';
 import { Link } from '@/lib/i18n/navigation';
+import { isLegalEnabled } from '@/lib/legal/consents';
+import { LEGAL_DOC_SLUG, type LegalDocKind } from '@/lib/legal/types';
+import '@/components/legal/legal.css';
+
+/** Документы в подвале: согласие открывается из политики и из подписей галочек, отдельной ссылки нет. */
+const FOOTER_DOCS: readonly LegalDocKind[] = ['offer', 'privacy', 'refund'];
 
 /** Вошёл ли пользователь: ссылки «Войти» и «Регистрация» ему не нужны. Сбой сессии = гость. */
 async function isSignedIn(): Promise<boolean> {
@@ -21,6 +27,28 @@ async function isSignedIn(): Promise<boolean> {
 export async function Footer() {
   const [t, signedIn] = await Promise.all([getTranslations('common'), isSignedIn()]);
   const year = new Date().getFullYear();
+  // колонка «Документы» только при активном LEGAL (флаг и готовность документов)
+  const legal = isLegalEnabled();
+  const tl = legal ? await getTranslations('legal') : null;
+  const crpNav = (
+    <nav aria-labelledby="footer-crp">
+      <h2 id="footer-crp">{t('footer.crp')}</h2>
+      <ul>
+        <li>
+          <a href={CRP_CONTACTS.site} target="_blank" rel="noopener">
+            {t('footer.crpSite')}
+            <span className="visually-hidden"> ({t('a11y.external')})</span>
+          </a>
+        </li>
+        <li>
+          <a href={CRP_CONTACTS.site} target="_blank" rel="noopener">
+            {t('footer.freeReview')}
+            <span className="visually-hidden"> ({t('a11y.external')})</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  );
   return (
     <footer className="site-footer">
       <div className="container">
@@ -50,23 +78,23 @@ export async function Footer() {
               )}
             </ul>
           </nav>
-          <nav aria-labelledby="footer-crp">
-            <h2 id="footer-crp">{t('footer.crp')}</h2>
-            <ul>
-              <li>
-                <a href={CRP_CONTACTS.site} target="_blank" rel="noopener">
-                  {t('footer.crpSite')}
-                  <span className="visually-hidden"> ({t('a11y.external')})</span>
-                </a>
-              </li>
-              <li>
-                <a href={CRP_CONTACTS.site} target="_blank" rel="noopener">
-                  {t('footer.freeReview')}
-                  <span className="visually-hidden"> ({t('a11y.external')})</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
+          {legal && tl ? (
+            <div className="legal-footer-col">
+              {crpNav}
+              <nav aria-labelledby="footer-legal">
+                <h2 id="footer-legal">{tl('footer.title')}</h2>
+                <ul>
+                  {FOOTER_DOCS.map((kind) => (
+                    <li key={kind}>
+                      <Link href={`/legal/${LEGAL_DOC_SLUG[kind]}`}>{tl(`docs.${kind}`)}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            </div>
+          ) : (
+            crpNav
+          )}
           <div>
             <h2>{t('footer.contacts')}</h2>
             <ul>

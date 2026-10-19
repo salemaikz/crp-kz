@@ -1,5 +1,5 @@
 // Единственный реестр версий юридических документов (D-035). Чистые данные и функции, без fs:
-// файл импортируется и из features.ts. Хэши файлов content/legal/** проверяет тест (задача 1B).
+// файл импортируется и из features.ts. Хэши файлов content/legal/** проверяет тест legal-registry.
 import {
   CONSENT_DOC,
   LEGAL_DOC_KINDS,
@@ -8,8 +8,53 @@ import {
   type LegalVersion,
 } from './types';
 
-/** Старшая версия каждого вида — первая в массиве. Версии появятся в задаче 1B. */
-export const LEGAL_VERSIONS: readonly LegalVersion[] = [];
+/**
+ * Старшая версия каждого вида — первая в массиве. Все четыре документа пока черновики-заглушки
+ * (draft: true): настоящие тексты готовит юрист ЦРП, при утверждении добавляется новая версия.
+ * Хэши — SHA-256 нормализованных файлов content/legal/** (сверяет tests/unit/legal-registry).
+ */
+export const LEGAL_VERSIONS: readonly LegalVersion[] = [
+  {
+    kind: 'offer',
+    version: '2026-10-20',
+    effectiveFrom: '2026-10-20',
+    draft: true,
+    sha256: {
+      ru: '550f100dc11bc818fed64450c1e51ae46a004ab18726bc73dc056b8c8b097017',
+      kz: 'e66231b914ca3d78b276304dcb4a3067d0af6a64dcba31a28b3275237dc85a94',
+    },
+  },
+  {
+    kind: 'privacy',
+    version: '2026-10-20',
+    effectiveFrom: '2026-10-20',
+    draft: true,
+    sha256: {
+      ru: 'fbd7201505d14a42ea4f6cb4299914c92e52d9309c8806bb573a7c60811cb5ca',
+      kz: 'ecb1e20ef4093e52da97e601082c484b978139581b42be68b222a02c9877d8bc',
+    },
+  },
+  {
+    kind: 'pd_consent',
+    version: '2026-10-20',
+    effectiveFrom: '2026-10-20',
+    draft: true,
+    sha256: {
+      ru: '9f841c0891bd330c2d3c3139df56c2a32acdca42a4e0d4e257dfff8818921be9',
+      kz: '47140c9f7ed80e727184d2bd8d069a5f267d87a0dce19f8060982ea45e79ef25',
+    },
+  },
+  {
+    kind: 'refund',
+    version: '2026-10-20',
+    effectiveFrom: '2026-10-20',
+    draft: true,
+    sha256: {
+      ru: '4ed947f1ec4490e311ac30c3881cfebc2b45570be8da1e5751f3a16c57b223f5',
+      kz: '7b5fef7e52d6838558c3d04efb2a4bd44f521c15ebfcf657b2a29d57193123a5',
+    },
+  },
+];
 
 const ALMATY_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty' });
 
@@ -35,6 +80,15 @@ export function currentVersion(
   return (
     versionsOf(kind).find((v) => v.effectiveFrom <= today && (opts.allowDrafts || !v.draft)) ?? null
   );
+}
+
+/** Версии, видимые сейчас: вступили в силу, черновики — только если allowDrafts. Новые — первыми. */
+export function visibleVersions(
+  kind: LegalDocKind,
+  opts: { allowDrafts: boolean; today?: string },
+): readonly LegalVersion[] {
+  const today = opts.today ?? todayAlmaty();
+  return versionsOf(kind).filter((v) => v.effectiveFrom <= today && (opts.allowDrafts || !v.draft));
 }
 
 /**

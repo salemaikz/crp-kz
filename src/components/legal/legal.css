@@ -1,0 +1,89 @@
+/*
+ * Юридические документы: раскладка текста. Классы с префиксом legal-.
+ * Только токены дизайн-системы; без стекла, колец и свечения.
+ */
+.legal-doc {
+  max-width: 760px;
+  display: grid;
+  gap: 20px;
+}
+.legal-doc__paper {
+  padding: clamp(20px, 4vw, 40px);
+}
+.legal-text {
+  max-width: 72ch;
+  color: var(--ink);
+  line-height: 1.6;
+}
+.legal-text h2 {
+  margin: 1.8em 0 0.5em;
+  font-size: 1.25rem;
+}
+.legal-text h2:first-child {
+  margin-top: 0;
+}
+.legal-text h3 {
+  margin: 1.4em 0 0.4em;
+  font-size: 1.05rem;
+}
+.legal-text p,
+.legal-text ul,
+.legal-text ol {
+  margin: 0 0 0.9em;
+}
+.legal-text blockquote {
+  margin: 0 0 1.2em;
+  padding-left: 16px;
+  border-left: 3px solid var(--ink-3);
+  color: var(--ink-2);
+}
+.legal-text a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.legal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 760px;
+}
+.legal-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+.legal-list__item:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.legal-list__title {
+  font-weight: 600;
+}
+.legal-list__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-2);
+  font-size: 0.9rem;
+}
+.legal-history {
+  display: grid;
+  gap: 8px;
+}
+.legal-history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+/* подвал: колонка «Документы» стоит под колонкой «ЦРП», чтобы не ломать сетку из четырёх колонок */
+.legal-footer-col {
+  display: grid;
+  gap: 28px;
+  align-content: start;
+}
