@@ -38,3 +38,7 @@ public/uploads/
 
 # рабочие копии агентов (git worktree)
 .claude/worktrees/
+
+# снимок демо-базы и артефакты Netlify
+.demo/
+.netlify/

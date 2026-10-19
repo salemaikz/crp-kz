@@ -1,4 +1,6 @@
 // Драйвер PGlite (демо-режим): встроенный Postgres в памяти или в папке PGLITE_DIR.
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import type { PGlite, Transaction } from '@electric-sql/pglite';
 import { createTxScope, JsonParam, jsonParam, toCamel, type DbHandle, type Row, type Sql, type TxConn } from './core';
 
@@ -68,13 +70,42 @@ function makeConn(target: Target, inTx = false): TxConn {
   return conn;
 }
 
-export async function createPgliteDb(dataDir?: string): Promise<DbHandle> {
+/** Опции создания PGlite. Снимок — tar.gz от dumpDataDir('gzip'); ломаный/отсутствующий снимок не фатален. */
+export interface PgliteOpenOptions {
+  dataDir?: string;
+  snapshotPath?: string;
+}
+
+/** Поднять экземпляр PGlite; со снимком — без initdb (~0,6 с вместо 5–7 с), иначе с нуля. */
+export async function openPglite(opts: PgliteOpenOptions = {}): Promise<PGlite> {
   const { PGlite } = await import('@electric-sql/pglite');
-  const pg = await PGlite.create({
-    ...(dataDir ? { dataDir } : {}),
+  const base = {
+    ...(opts.dataDir ? { dataDir: opts.dataDir } : {}),
     // int8 → number, как в драйвере postgres (count(*), BIGINT-время, деньги)
     parsers: { [INT8_OID]: (v: string) => Number(v) },
-  });
+  };
+  if (opts.snapshotPath) {
+    let pg: PGlite | undefined;
+    try {
+      // Распаковываем сами и синхронно: битый gzip падает здесь, в нашем try, а не
+      // необработанным отказом внутри PGlite. PGlite получает уже несжатый tar.
+      const tar = gunzipSync(readFileSync(opts.snapshotPath));
+      pg = new PGlite({ ...base, loadDataDir: new Blob([new Uint8Array(tar)]) });
+      await pg.waitReady;
+      return pg;
+    } catch (e) {
+      await pg?.close().catch(() => {});
+      console.warn('PGlite: снимок не загружен, создаю базу с нуля:', (e instanceof Error && e.cause) || e);
+    }
+  }
+  return PGlite.create(base);
+}
+
+export async function createPgliteDb(dataDir?: string, opts: { snapshotPath?: string } = {}): Promise<DbHandle> {
+  return wrapPglite(await openPglite({ dataDir, snapshotPath: opts.snapshotPath }));
+}
+
+export function wrapPglite(pg: PGlite): DbHandle {
   const scope = createTxScope();
   const base = makeConn(pg);
 

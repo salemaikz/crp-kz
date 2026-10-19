@@ -411,6 +411,16 @@ D-016); на своём сервере без `DATABASE_URL` нужен явны
 вне РК). Для лимитов входа на Vercel — `TRUST_X_REAL_IP=1`.
 `serverExternalPackages: ['@electric-sql/pglite']`.
 
+**Снимок схемы демо-базы.** `initdb` в PGlite занимает 5–7 с, на serverless это почти весь
+лимит функции. Поэтому `prebuild` (`scripts/prebuild.mjs` → `scripts/build-demo-snapshot.ts`)
+в демо-сборке (`DEMO_MODE=1` или `VERCEL=1` без `DATABASE_URL`) прогоняет миграции и кладёт
+`pg.dumpDataDir('gzip')` в `.demo/pglite-snapshot.tar.gz` (в git не попадает, в бандл —
+через `outputFileTracingIncludes`). Рантайм в демо-проде поднимает PGlite из снимка
+(~0,6 с), затем `migrate()` догоняет новые миграции, а сид идёт как раньше, так что даты
+демо свежие. Нет файла или он битый — база создаётся с нуля (в dev и тестах снимок не берётся).
+
+Netlify (D-024): `netlify.toml` в корне, переменные сайта `DEMO_MODE=1`, `NODE_VERSION=22`.
+
 Прод — сервер ЦРП в РК с Postgres (`DATABASE_URL`), см. issue #24.
 
 ## 12. Кто что строит (зоны агентов)
