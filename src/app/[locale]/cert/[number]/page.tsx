@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
-import { SearchX, Timer } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CertLookup } from '@/components/learn/CertLookup';
-import { Badge, Button, Card, Container, EmptyState, PageHeader, Section } from '@/components/ui';
+import { Button, Card, Container, EmptyState, PageHeader, Section } from '@/components/ui';
 import { t as loc } from '@/lib/content/l10n';
 import { formatDate } from '@/lib/format';
 import { routing } from '@/lib/i18n/routing';
@@ -30,16 +29,7 @@ export default async function CertVerifyPage({ params }: Props) {
   const t = await getTranslations('learn.verify');
 
   if (!(await certLookupAllowed(number))) {
-    return (
-      <>
-        <PageHeader title={t('tooMany.title')} lead={t('tooMany.description')} />
-        <Section tone="board" spacing="tight">
-          <Container size="narrow">
-            <EmptyState icon={<Timer />} title={t('tooMany.title')} description={t('tooMany.description')} headingLevel="h2" />
-          </Container>
-        </Section>
-      </>
-    );
+    return <PageHeader title={t('tooMany.title')} lead={t('tooMany.description')} />;
   }
 
   const cert = await findCertificateByNumber(number);
@@ -49,14 +39,9 @@ export default async function CertVerifyPage({ params }: Props) {
       <>
         <PageHeader title={t('invalid.title')} lead={t('invalid.lead', { number })} />
         <Section tone="board" spacing="tight">
-          <Container size="narrow">
-            <div className="lrn-block" data-testid="cert-invalid">
-              <EmptyState
-                icon={<SearchX />}
-                title={t('invalid.cardTitle')}
-                description={t('invalid.hint')}
-                headingLevel="h2"
-              />
+          <Container>
+            <div className="lrn-narrow" data-testid="cert-invalid">
+              <EmptyState title={t('invalid.cardTitle')} description={t('invalid.hint')} headingLevel="h2" />
             </div>
             <Card large className="lrn-verify">
               <CertLookup locale={locale} defaultValue={number} />
@@ -71,13 +56,8 @@ export default async function CertVerifyPage({ params }: Props) {
     <>
       <PageHeader title={t('valid.title')} lead={t('valid.lead')} />
       <Section tone="board" spacing="tight">
-        <Container size="narrow">
+        <Container>
           <Card large padding="none" className="lrn-verify" data-testid="cert-valid">
-            <p className="lrn-verify__seal">
-              <Badge tone="success" dot>
-                {t('valid.seal')}
-              </Badge>
-            </p>
             <dl className="lrn-verify__list">
               <div className="lrn-verify__row lrn-verify__row--name">
                 <dt>{t('fields.holder')}</dt>

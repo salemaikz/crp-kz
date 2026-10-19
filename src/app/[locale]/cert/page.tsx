@@ -25,7 +25,7 @@ export default async function CertIndexPage({ params }: Props) {
     <>
       <PageHeader title={t('index.title')} lead={t('index.lead')} />
       <Section tone="board" spacing="tight">
-        <Container size="narrow">
+        <Container>
           <Card large className="lrn-verify">
             <CertLookup locale={locale} />
           </Card>

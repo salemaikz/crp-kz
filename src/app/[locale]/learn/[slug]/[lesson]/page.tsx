@@ -94,9 +94,11 @@ export default async function LessonPage({ params }: Props) {
   const certificateHref = `${coursePath(course.slug)}/certificate`;
 
   // «Модуль · урок 3 из 16 · 12 мин» одной строкой под заголовком
+  const moduleTitle = lessonModule ? loc(lessonModule.title, locale) : '';
   const position = [
-    lessonModule ? loc(lessonModule.title, locale) : null,
-    t('lesson.position', { n: node.index + 1, total: progress.total }),
+    moduleTitle || null,
+    // без названия модуля строка начинается с позиции — с заглавной
+    t(moduleTitle ? 'lesson.position' : 'lesson.positionFirst', { n: node.index + 1, total: progress.total }),
     node.durationMin > 0 ? formatDuration(node.durationMin, locale) : null,
   ]
     .filter(Boolean)

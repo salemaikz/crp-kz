@@ -75,13 +75,12 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
         )}
         <span className="lrn-actions__spacer" />
         {!completed && next && nextOpenNow && (
-          <Button href={next.href} variant="ghost" aria-label={`${t('actions.skip')}: ${next.title}`}>
-            {t('actions.skip')}
+          <Button href={next.href} variant="ghost" aria-label={`${t('actions.next')}: ${next.title}`}>
+            {t('actions.next')}
           </Button>
         )}
         {!completed ? (
           <Button
-            size="lg"
             onClick={complete}
             disabled={blocked || pending}
             aria-describedby={blocked ? hintId : undefined}
@@ -92,11 +91,11 @@ export function LessonActions({ courseHref, prev, next, nextOpenNow, courseCompl
             {pending ? t('actions.completing') : t('actions.complete')}
           </Button>
         ) : next ? (
-          <Button href={next.href} size="lg" data-testid="next-lesson" aria-label={`${t('actions.next')}: ${next.title}`}>
+          <Button href={next.href} data-testid="next-lesson" aria-label={`${t('actions.next')}: ${next.title}`}>
             {t('actions.next')}
           </Button>
         ) : !showCompletion ? (
-          <Button href={courseHref} size="lg">
+          <Button href={courseHref}>
             {t('actions.toCourse')}
           </Button>
         ) : null}

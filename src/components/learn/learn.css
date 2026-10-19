@@ -268,6 +268,9 @@ a.lrn-lesson__row:hover {
     display: block;
     position: sticky;
     top: calc(var(--header-h) + 20px);
+  }
+  /* прокрутка внутри карточки: рамка и скругление остаются целыми */
+  .lrn-aside .lrn-outline {
     max-height: calc(100dvh - var(--header-h) - 40px);
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -571,7 +574,7 @@ h3.lrn-heading {
   border-top: 1px solid var(--line);
 }
 
-/* выноска: плоская плашка с рамкой, значок только у предупреждения */
+/* выноска: плоская плашка с рамкой, значок у предупреждения и успеха */
 .lrn-callout {
   --tone-bg: #eef3fb;
   --tone-line: rgb(31 95 191 / 22%);
@@ -590,6 +593,7 @@ h3.lrn-heading {
   --tone-line: rgb(154 82 0 / 22%);
 }
 .lrn-callout[data-tone='success'] {
+  --tone: var(--success);
   --tone-bg: #eaf5ee;
   --tone-line: rgb(23 128 63 / 22%);
 }
@@ -1028,7 +1032,7 @@ h3.lrn-heading {
   gap: 10px;
 }
 .lrn-cert-stage {
-  padding-block: 20px 72px;
+  padding-block: clamp(32px, 5vw, 64px) 72px;
 }
 .lrn-cert-toolbar__head {
   display: grid;
@@ -1201,10 +1205,15 @@ h3.lrn-heading {
 .lrn-verify {
   display: grid;
   gap: 24px;
+  max-width: 760px;
   padding: clamp(24px, 4vw, 40px);
 }
-.lrn-verify__seal {
-  display: flex;
+/* узкие блоки проверки выровнены по левому краю контейнера, как h1 */
+.lrn-narrow {
+  max-width: 760px;
+}
+.lrn-narrow + .lrn-verify {
+  margin-top: 24px;
 }
 .lrn-verify__list {
   display: grid;

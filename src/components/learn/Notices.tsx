@@ -1,4 +1,3 @@
-import { Lock, TriangleAlert } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { Button, Container, EmptyState, Section } from '@/components/ui';
 import { t as loc } from '@/lib/content/l10n';
@@ -23,7 +22,6 @@ export async function NoAccess({ course, reason, expiresAt, locale }: NoAccessPr
     <Section tone="board" spacing="tight">
       <Container size="narrow">
         <EmptyState
-          icon={<Lock />}
           title={t(`${reason}.title`)}
           description={t(`${reason}.description`, { course: loc(course.title, locale), date })}
           action={
@@ -57,7 +55,6 @@ export async function LockedLesson({ courseSlug, nextTitle, nextSlug }: LockedPr
     <Section tone="board" spacing="tight">
       <Container size="narrow">
         <EmptyState
-          icon={<Lock />}
           title={t('title')}
           description={nextTitle ? t('description', { title: nextTitle }) : t('descriptionPlain')}
           action={
@@ -83,7 +80,6 @@ export async function BrokenLesson({ courseSlug }: { courseSlug: string }) {
     <Section tone="board" spacing="tight">
       <Container size="narrow">
         <EmptyState
-          icon={<TriangleAlert />}
           title={t('title')}
           description={t('description')}
           action={<Button href={coursePath(courseSlug)}>{t('toCourse')}</Button>}

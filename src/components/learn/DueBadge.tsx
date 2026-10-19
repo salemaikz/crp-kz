@@ -14,6 +14,6 @@ export async function DueBadge({ dueAt, locale }: { dueAt: number; locale: strin
         ? t('today')
         : status === 'soon'
           ? t('soon', { when: relativeDue(dueAt, locale) })
-          : t('until', { date: formatDate(dueAt, locale, { short: true }) });
+          : t('until', { date: formatDate(dueAt, locale) });
   return <Badge tone={tone}>{text}</Badge>;
 }

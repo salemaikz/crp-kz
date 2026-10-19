@@ -33,7 +33,7 @@ export async function CourseCard({ item, locale }: Props) {
         <div className="lrn-course__badges">
           {closed &&
             (access.reason === 'expired' && enrollment.expiresAt ? (
-              <Badge tone="warning">{t('expired', { date: formatDate(enrollment.expiresAt, locale, { short: true }) })}</Badge>
+              <Badge tone="warning">{t('expired', { date: formatDate(enrollment.expiresAt, locale) })}</Badge>
             ) : (
               <Badge tone="neutral">{t('revoked')}</Badge>
             ))}
@@ -60,6 +60,8 @@ export async function CourseCard({ item, locale }: Props) {
       ) : (
         <p className="meta">{t('noLessons')}</p>
       )}
+
+      {!closed && !finished && started && next && <p className="meta">{t('nextUp', { title: loc(next.title, locale) })}</p>}
 
       {course.durationMin > 0 && <p className="meta">{t('duration', { value: formatDuration(course.durationMin, locale) })}</p>}
 

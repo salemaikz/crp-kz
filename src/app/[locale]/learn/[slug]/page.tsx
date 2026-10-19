@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { BookOpenText } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CompletionCard } from '@/components/learn/CompletionCard';
@@ -136,7 +135,7 @@ export default async function CoursePage({ params }: Props) {
 
           <div className="lrn-block">
             {progress.total === 0 ? (
-              <EmptyState icon={<BookOpenText />} title={t('empty.title')} description={t('empty.description')} />
+              <EmptyState title={t('empty.title')} description={t('empty.description')} />
             ) : (
               <CourseOutline locale={locale} courseSlug={course.slug} progress={progress} quizLessonIds={quizLessonIds} />
             )}

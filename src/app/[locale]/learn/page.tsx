@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { BookOpen } from 'lucide-react';
 import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { CourseCard } from '@/components/learn/CourseCard';
@@ -61,7 +60,6 @@ export default async function LearnPage({ params }: Props) {
           {courses.length === 0 ? (
             <Container size="narrow">
               <EmptyState
-                icon={<BookOpen />}
                 title={t('empty.title')}
                 description={t('empty.description')}
                 action={

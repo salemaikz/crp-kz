@@ -52,6 +52,8 @@ test('клиент: Моё обучение → Целина → урок с т�
   const celina = page.getByTestId('learn-courses').getByRole('article').filter({ hasText: 'Целина' });
   await expect(celina).toBeVisible();
   await expect(celina.getByRole('progressbar')).toBeVisible();
+  // начатый курс: рабочая строка «Далее: <урок>»
+  await expect(celina.getByText(/^Далее: /)).toBeVisible();
   await expect(page.getByTestId('learn-certificates')).toContainText('Как проходит бизнес-разбор');
 
   // программа курса: пройденные уроки и кнопка продолжения
