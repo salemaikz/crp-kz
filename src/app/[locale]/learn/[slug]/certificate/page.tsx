@@ -119,7 +119,7 @@ export default async function CertificatePage({ params }: Props) {
           <div className="lrn-noprint">
             {pdfUnavailable && (
               <p className="lrn-cert-hint" data-testid="certificate-pdf-unavailable">
-                {t('pdfUnavailable')}
+                {t('pdfUnavailableNote')}
               </p>
             )}
             <p className="lrn-cert-hint">{pdfActive ? t('pdfHint') : t('printHint')}</p>

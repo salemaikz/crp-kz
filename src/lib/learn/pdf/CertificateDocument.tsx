@@ -2,7 +2,7 @@
 // (BRAND.md, «Сертификат»). Без водяных знаков, теней, градиентов и колец. Без хуков и next-intl:
 // все строки приходят в props.
 import { Document, Image, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
-import { COURSE_MAX_WIDTH, NAME_MAX_WIDTH, NAME_TRACKING, planCertificatePdf } from './plan';
+import { COURSE_LINE_HEIGHT, COURSE_MAX_WIDTH, NAME_LINE_HEIGHT, NAME_MAX_WIDTH, NAME_TRACKING, planCertificatePdf } from './plan';
 import { qrPath } from './qr';
 import { A4_LANDSCAPE, PDF_COLORS as C } from './theme';
 import type { CertificatePdfInput } from './types';
@@ -34,8 +34,10 @@ const s = StyleSheet.create({
   body: { flexGrow: 1, justifyContent: 'center' },
   title: { fontFamily: 'Geologica', fontWeight: 700, fontSize: 27, letterSpacing: -0.54, marginBottom: 14 },
   small: { fontSize: 12.6, color: C.muted },
-  name: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: NAME_MAX_WIDTH, lineHeight: 1.05, marginTop: 10, marginBottom: 12 },
-  course: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: COURSE_MAX_WIDTH, lineHeight: 1.15, marginTop: 10 },
+  nameBox: { marginTop: 10, marginBottom: 12 },
+  courseBox: { marginTop: 10 },
+  name: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: NAME_MAX_WIDTH, lineHeight: NAME_LINE_HEIGHT },
+  course: { fontFamily: 'Geologica', fontWeight: 700, maxWidth: COURSE_MAX_WIDTH, lineHeight: COURSE_LINE_HEIGHT },
   foot: { flexDirection: 'row', alignItems: 'flex-end' },
   facts: { flexGrow: 1, flexDirection: 'row' },
   fact: { marginRight: 28 },
@@ -76,9 +78,22 @@ export function CertificateDocument({ logo, ...c }: Props) {
           <View style={s.body}>
             <Text style={s.title}>{l.title}</Text>
             <Text style={s.small}>{l.certifies}</Text>
-            <Text style={[s.name, { fontSize: name.size, letterSpacing: NAME_TRACKING * name.size }]}>{name.text}</Text>
+            {/* строки уже разбиты планом: каждая — свой Text, textkit заново не переносит ('\n' в тексте роняет react-pdf) */}
+            <View style={s.nameBox}>
+              {name.text.split('\n').map((line, i) => (
+                <Text key={i} style={[s.name, { fontSize: name.size, letterSpacing: NAME_TRACKING * name.size }]}>
+                  {line}
+                </Text>
+              ))}
+            </View>
             <Text style={s.small}>{l.completed}</Text>
-            <Text style={[s.course, { fontSize: courseFit.size }]}>{courseFit.text}</Text>
+            <View style={s.courseBox}>
+              {courseFit.text.split('\n').map((line, i) => (
+                <Text key={i} style={[s.course, { fontSize: courseFit.size }]}>
+                  {line}
+                </Text>
+              ))}
+            </View>
           </View>
 
           <View style={s.foot}>

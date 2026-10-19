@@ -9,7 +9,7 @@ import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import { loadCertificatePdfInput } from '../../src/lib/learn/pdf/data';
 import { renderCertificatePdf } from '../../src/lib/learn/pdf/render';
 import { cleanCertificateTexts } from '../../src/lib/learn/pdf/glyphs';
-import { COURSE_MAX_LINES, NAME_MAX_LINES, NAME_MAX_WIDTH } from '../../src/lib/learn/pdf/plan';
+import { COURSE_MAX_LINES, NAME_MAX_LINES, NAME_MAX_WIDTH, planCertificatePdf } from '../../src/lib/learn/pdf/plan';
 import { A4_LANDSCAPE } from '../../src/lib/learn/pdf/theme';
 import { pdfLines } from '../helpers/pdf-lines';
 import { missingChars, pdfText, unicodeInPdf } from '../helpers/pdf-text';
@@ -221,4 +221,53 @@ test('число строк на листе в пределах 3 для ФИО 
   assert.ok(from >= 0 && mid > from && end > mid, 'не нашли подписи листа');
   assert.ok(mid - from - 1 <= NAME_MAX_LINES, `строк ФИО ${mid - from - 1}`);
   assert.ok(end - mid - 1 <= COURSE_MAX_LINES, `строк курса ${end - mid - 1}`);
+});
+
+/** Смещение y строки от её верха в долях кегля (замер по PDF react-pdf). */
+const BASELINE = 0.98;
+
+test('любой ввод с ok=true умещается на листе: ФИО выше подписи «completed», курс выше подвала, строк не больше плана', async () => {
+  const base = (await loadCertificatePdfInput('pdf-ru', PDF_COURSE_SLUG))!;
+  const w = (n: number) => 'Ж'.repeat(n);
+  const cases: { holderName: string; courseTitle: string }[] = [
+    { holderName: `${w(9)} ${w(9)} ${w(8)}`, courseTitle: `${w(11)} ${w(11)} ${w(11)} ${w(11)} ${w(9)}` },
+    { holderName: `${w(13)} ${w(13)} ${w(13)}`, courseTitle: [16, 16, 16, 16, 16].map(w).join(' ') },
+    { holderName: 'ЖУМАБАЕВА АЙГЕРІМ НҰРЛАНҚЫЗЫ СЕРІКБАЕВА', courseTitle: 'Предпринимательство и управление малым бизнесом' },
+  ];
+  // детерминированный набор синтетических слов: проверка расхождений переноса плана и textkit
+  const alphabet = Array.from('абвгдеёжзийклмнопрстуфхцчшщыэюяәғқңөұүһі');
+  let seed = 7;
+  const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
+  const phrase = (words: number, max: number) =>
+    Array.from({ length: words }, () => Array.from({ length: 1 + rnd(max) }, () => alphabet[rnd(alphabet.length)]).join('')).join(' ');
+  for (let i = 0; i < 40; i++) cases.push({ holderName: phrase(2 + rnd(8), 14), courseTitle: phrase(3 + rnd(14), 16) });
+  let checked = 0;
+  for (const c of cases) {
+    const plan = planCertificatePdf(c);
+    if (!plan.ok) continue;
+    checked++;
+    const all = pdfLines(await renderCertificatePdf({ ...base, ...c }));
+    const geo = all.filter((l) => l.font.includes('Geologica'));
+    const from = all.findIndex((l) => l.text === base.labels.certifies);
+    const mid = all.findIndex((l) => l.text === base.labels.completed);
+    const end = all.findIndex((l) => l.text === base.labels.issued.toUpperCase() || l.size < 10);
+    const nameLines = all.slice(from + 1, mid);
+    const courseLines = all.slice(mid + 1, end);
+    const tag = JSON.stringify(c).slice(0, 80);
+    assert.ok(nameLines.length <= NAME_MAX_LINES, `строк ФИО ${nameLines.length}: ${tag}`);
+    assert.equal(nameLines.length, plan.name.text.split('\n').length, `ФИО: план и лист расходятся: ${tag}`);
+    assert.equal(courseLines.length, plan.course.text.split('\n').length, `курс: план и лист расходятся: ${tag}`);
+    assert.ok(courseLines.length <= COURSE_MAX_LINES);
+    const lastName = nameLines[nameLines.length - 1]!;
+    // y из pdfLines — около базовой линии (верх строки + 0,98 кегля); низ строки = y + (межстрочный − 0,98) × кегль
+    const sign = all[mid]!;
+    assert.ok(lastName.y + (1.05 - BASELINE) * lastName.size <= sign.y - BASELINE * sign.size, `ФИО наезжает на подпись: ${tag}`);
+    const qrTitle = all.find((l) => base.labels.qrTitle.startsWith(l.text) && l.size === 8)!;
+    const footTop = qrTitle.y - QR_BLOCK_TOP;
+    const last = geo[geo.length - 1]!;
+    const courseBottom = last.y + (1.15 - BASELINE) * last.size;
+    assert.ok(courseBottom <= footTop, `курс ${courseBottom.toFixed(1)} > подвал ${footTop.toFixed(1)}: ${tag}`);
+    assert.ok(geo[0]!.y - BASELINE * geo[0]!.size >= 17 + 70.6, `заголовок налез на логотип: ${tag}`);
+  }
+  assert.ok(checked >= 20, `проверено ${checked}`);
 });

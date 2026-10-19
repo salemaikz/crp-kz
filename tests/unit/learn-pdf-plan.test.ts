@@ -12,7 +12,9 @@ import {
   NAME_MAX_LINES,
   NAME_MAX_WIDTH,
   NAME_TRACKING,
+  TEXT_HEIGHT_BUDGET,
   planCertificatePdf,
+  textHeight,
 } from '../../src/lib/learn/pdf/plan';
 
 const tracked = geologicaMeasure(NAME_TRACKING);
@@ -107,3 +109,35 @@ describe('planCertificatePdf: когда PDF недоступен', () => {
     assert.ok(p.name.size < 26 && p.course.size < 18, `${p.name.size} / ${p.course.size}`);
   });
 });
+
+describe('planCertificatePdf: бюджет высоты', () => {
+  const w = (n: number) => 'Ж'.repeat(n);
+  const cases = [
+    // 3 строки ФИО при 47 pt и 5 строк курса при 25 pt по числу строк проходили, по высоте — нет
+    { holderName: `${w(9)} ${w(9)} ${w(8)}`, courseTitle: `${w(11)} ${w(11)} ${w(11)} ${w(11)} ${w(9)}` },
+    // вариант 38 / 21 pt (kz)
+    { holderName: `${w(13)} ${w(13)} ${w(13)}`, courseTitle: [16, 16, 16, 16, 16].map(w).join(' ') },
+  ];
+  it('сумма высот строк не выходит за бюджет: кегли ниже ступеней либо PDF недоступен', () => {
+    for (const c of cases) {
+      const p = planCertificatePdf(c);
+      const nameLines = p.name.text.split('\n').length;
+      const courseLines = p.course.text.split('\n').length;
+      if (p.ok) {
+        assert.ok(textHeight(nameLines, p.name.size, courseLines, p.course.size) <= TEXT_HEIGHT_BUDGET, JSON.stringify(p));
+      }
+    }
+  });
+  it('обычные заглавные ФИО в 2 строки и курс в 3 строки укладываются без потери кегля', () => {
+    const p = planCertificatePdf({
+      holderName: 'ЖУМАБАЕВА АЙГЕРІМ НҰРЛАНҚЫЗЫ СЕРІКБАЕВА',
+      courseTitle: 'Предпринимательство и управление малым бизнесом',
+    });
+    assert.equal(p.ok, true);
+  });
+  it('переносы окончательные: в тексте плана каждая строка влезает в ширину', () => {
+    const p = planCertificatePdf({ holderName: 'Ш '.repeat(60).trim(), courseTitle: 'Курс' });
+    for (const line of p.name.text.split('\n')) assert.ok(tracked(line, p.name.size) <= NAME_MAX_WIDTH, line);
+  });
+});
+

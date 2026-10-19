@@ -78,28 +78,43 @@ export function fitText(
   return { text: cut, size: fitted };
 }
 
-/** Число строк при жадном переносе по пробелам (как у textkit); слово шире maxWidth занимает свою строку. */
-export function countLines(text: string, size: number, maxWidth: number, measure: Measure): number {
+/** Запас по ширине при собственной разбивке, pt: ширина у react-pdf может отличаться на доли процента (поправки TJ). */
+const BREAK_MARGIN = 4;
+
+/**
+ * Строки при жадном переносе по пробелам; слово шире maxWidth занимает свою строку. Это наша
+ * разбивка, а не прогноз textkit: textkit выбирает переносы иначе (Кнут–Пласс) и может дать
+ * больше строк, поэтому в PDF текст уходит уже разбитым (см. fitBlock).
+ */
+export function breakLines(text: string, size: number, maxWidth: number, measure: Measure): string[] {
   const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 0;
-  let lines = 1;
+  if (words.length === 0) return [];
+  const lines: string[] = [];
   let cur = words[0]!;
   for (const w of words.slice(1)) {
     const next = `${cur} ${w}`;
     if (measure(next, size) > maxWidth) {
-      lines++;
+      lines.push(cur);
       cur = w;
     } else {
       cur = next;
     }
   }
+  lines.push(cur);
   return lines;
 }
 
+/** Число строк при жадном переносе по пробелам. */
+export function countLines(text: string, size: number, maxWidth: number, measure: Measure): number {
+  return breakLines(text, size, maxWidth, measure).length;
+}
+
 /**
- * Кегль и текст с ограничением по высоте. Сначала как fitText (кегль не ниже minSize). Если строк
+ * Кегль и текст с ограничением по числу строк. Сначала как fitText (кегль не ниже minSize). Если строк
  * больше maxLines, кегль опускается ниже minSize шагом 0,5 pt до жёсткого предела hardMin.
  * fits=false: даже на hardMin текст не укладывается в maxLines, PDF выдавать нельзя.
+ * Возвращаемый text уже разбит на строки символом «\n»: каждая строка влезает в ширину с запасом,
+ * поэтому textkit заново не переносит и на листе ровно lines строк.
  */
 export function fitBlock(
   text: string,
@@ -110,14 +125,14 @@ export function fitBlock(
   maxLines: number,
   measure: Measure,
 ): { text: string; size: number; lines: number; fits: boolean } {
-  const first = fitText(text, size, minSize, maxWidth, measure);
-  let cur = first;
-  let lines = countLines(cur.text, cur.size, maxWidth, measure);
-  while (lines > maxLines && cur.size > hardMin) {
-    cur = fitText(text, Math.max(hardMin, cur.size - STEP), hardMin, maxWidth, measure);
-    lines = countLines(cur.text, cur.size, maxWidth, measure);
+  const width = maxWidth - BREAK_MARGIN;
+  let cur = fitText(text, size, minSize, width, measure);
+  let lines = breakLines(cur.text, cur.size, width, measure);
+  while (lines.length > maxLines && cur.size > hardMin) {
+    cur = fitText(text, Math.max(hardMin, cur.size - STEP), hardMin, width, measure);
+    lines = breakLines(cur.text, cur.size, width, measure);
   }
-  return { ...cur, lines, fits: lines <= maxLines };
+  return { text: lines.join('\n'), size: cur.size, lines: lines.length, fits: lines.length <= maxLines };
 }
 
 const MAX_TEXT = 200;
