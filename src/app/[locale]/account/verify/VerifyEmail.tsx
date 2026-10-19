@@ -26,9 +26,10 @@ export function VerifyEmail() {
   const target = done?.loggedIn && done.next ? done.next : null;
   const isDone = done !== null;
   useEffect(() => {
-    // плашка «Подтвердите email» живёт в общем layout: мягкая навигация его не перерисует, обновляем явно
-    if (isDone) router.refresh();
-    if (target) router.replace(target);
+    // плашка «Подтвердите email» живёт в общем layout. router.replace сразу после router.refresh
+    // отменил бы обновление, поэтому с переходом — полная загрузка (layout строится заново), без него — refresh
+    if (target) window.location.replace(target);
+    else if (isDone) router.refresh();
   }, [isDone, target, router]);
 
   if (done) {

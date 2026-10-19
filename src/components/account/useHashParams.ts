@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { parseHashParams } from './hashParams';
 
 /**
  * Параметры из фрагмента адреса (#token=…&next=…). Токен ссылки лежит во фрагменте: он не уходит на
@@ -11,16 +12,14 @@ import { useEffect, useState } from 'react';
 export function useHashParams(): URLSearchParams | null {
   const [params, setParams] = useState<URLSearchParams | null>(null);
   useEffect(() => {
-    const raw = window.location.hash.replace(/^#/, '');
     // фрагмент доступен только в браузере, поэтому чтение — в эффекте
-    if (raw) {
+    const raw = window.location.hash;
+    if (raw.replace(/^#/, '')) {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setParams(new URLSearchParams(raw));
-    } else {
-      // StrictMode в dev запускает эффект дважды: второй раз адрес уже очищен, прочитанное не затираем
-      setParams((prev) => prev ?? new URLSearchParams());
     }
+    // разбор — чистая функция: пустой hash при повторном запуске эффекта (StrictMode) не затирает токен
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setParams((prev) => parseHashParams(raw, prev));
   }, []);
   return params;
 }
