@@ -26,5 +26,5 @@ test('страница сертификата: ссылка на PDF, либо �
     { env, encoding: 'utf8', timeout: 120_000 },
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-  assert.match(res.stdout, /# pass 4/);
+  assert.match(res.stdout, /# pass 5/);
 });

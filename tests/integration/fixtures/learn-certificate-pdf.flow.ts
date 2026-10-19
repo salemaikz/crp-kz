@@ -152,7 +152,7 @@ test('11-й запрос за минуту — 429 с Retry-After', async () => 
   assert.equal(await res.text(), 'learn.certificate.pdfTooMany');
 });
 
-test('ошибка рендера: 500 без деталей, в журнал — только номер', async () => {
+test('ошибка рендера: 500 без деталей клиенту, в журнал — номер и причина без ПДн', async () => {
   current = { id: 'pdf-owner' };
   renderFails = true;
   const logged: string[] = [];
@@ -166,6 +166,7 @@ test('ошибка рендера: 500 без деталей, в журнал �
   }
   assert.equal(logged.length, 1);
   assert.ok(logged[0]!.includes(PDF_NUMBER));
+  assert.ok(logged[0]!.includes('error=Error') && logged[0]!.includes('message=boom'), logged[0]);
   assert.ok(!logged[0]!.includes('Әлия') && !logged[0]!.includes('@'), 'ФИО или email в логе');
 });
 
@@ -177,23 +178,28 @@ test('неизвестная локаль в адресе не ломает ма
 });
 
 /** Новый владелец сертификата: у лимита 10 запросов в минуту на пользователя, общий владелец уже исчерпан. */
-async function freshOwner(id: string): Promise<{ id: string }> {
+async function freshOwner(id: string, courseId = 'pdf-c1'): Promise<{ id: string }> {
   await db.sql`INSERT INTO users (id, email, name, created_at) VALUES (${id}, ${`${id}@crp-pdf.invalid`}, 'Нав Тест', 1)`;
   await db.sql`INSERT INTO certificates (id, number, user_id, course_id, holder_name, locale, issued_at)
-    VALUES (${`c-${id}`}, ${`CRP-2026-${id.toUpperCase()}`}, ${id}, 'pdf-c1', 'Нав Тест', 'ru', 1760000000000)`;
+    VALUES (${`c-${id}`}, ${`CRP-2026-${id.toUpperCase()}`}, ${id}, ${courseId}, 'Нав Тест', 'ru', 1760000000000)`;
   return { id };
 }
 
 const NAV = { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' };
 
-test('навигация браузера: нет сертификата, чужой, черновик, нет курса — 303 на /{locale}/learn', async () => {
-  const cases: [string, string][] = [
-    ['pdf-other', PDF_COURSE_SLUG],
-    ['pdf-draft-owner', 'pdf-draft'],
-    ['pdf-nocourse-owner', 'net-takogo-kursa'],
+test('навигация браузера: нет сертификата, чужой, черновик (сертификат есть), нет курса — 303 на /{locale}/learn', async () => {
+  const cases: [string, string, string][] = [
+    ['pdf-other', PDF_COURSE_SLUG, 'pdf-c1'],
+    ['pdf-draft-owner', 'pdf-draft', 'pdf-draft'],
+    ['pdf-nocourse-owner', 'net-takogo-kursa', 'pdf-c1'],
   ];
-  for (const [user, slug] of cases) {
-    current = user === 'pdf-other' ? { id: user } : await freshOwner(user);
+  for (const [user, slug, courseId] of cases) {
+    current = user === 'pdf-other' ? { id: user } : await freshOwner(user, courseId);
+    if (courseId === 'pdf-draft') {
+      // сертификат на черновик действительно есть: иначе проверялся бы случай «нет сертификата»
+      const rows = await db.sql`SELECT 1 FROM certificates WHERE user_id = ${user} AND course_id = 'pdf-draft'`;
+      assert.equal(rows.length, 1);
+    }
     for (const locale of ['ru', 'kz']) {
       const res = await call(locale, slug, NAV);
       assert.equal(res.status, 303, `${user} ${slug}`);

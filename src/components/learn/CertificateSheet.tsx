@@ -10,10 +10,10 @@ type Props = {
   number: string;
   /** Язык сертификата = язык, на котором проходили курс. */
   locale: Locale;
-  /** QR как data-URI (SVG), собран на сервере. */
-  qrSrc: string;
+  /** QR как data-URI (SVG), собран на сервере. Нет адреса сайта — блока QR на листе нет. */
+  qrSrc?: string | null;
   /** Адрес страницы проверки без схемы — подпись под QR. */
-  verifyHost: string;
+  verifyHost?: string | null;
 };
 
 /**
@@ -55,12 +55,14 @@ export async function CertificateSheet({ holderName, courseTitle, issuedAt, numb
               <strong>{t('org')}</strong>
               <span>{t('place')}</span>
             </div>
-            <div className="lrn-cert__qr">
-              {/* eslint-disable-next-line @next/next/no-img-element -- QR как data-URI, собран на сервере */}
-              <img src={qrSrc} alt={t('qrAlt', { number })} />
-              <strong>{t('qrTitle')}</strong>
-              <span>{verifyHost}</span>
-            </div>
+            {qrSrc && (
+              <div className="lrn-cert__qr">
+                {/* eslint-disable-next-line @next/next/no-img-element -- QR как data-URI, собран на сервере */}
+                <img src={qrSrc} alt={t('qrAlt', { number })} />
+                <strong>{t('qrTitle')}</strong>
+                {verifyHost && <span>{verifyHost}</span>}
+              </div>
+            )}
           </footer>
         </div>
       </article>

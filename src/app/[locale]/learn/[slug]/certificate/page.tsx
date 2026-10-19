@@ -84,10 +84,18 @@ export default async function CertificatePage({ params, searchParams }: Props) {
   const pdfHref = `/${locale}${coursePath(slug)}/certificate/pdf`;
 
   // сертификат печатается на языке, на котором проходили курс
-  const site = siteUrl();
-  const verifyUrl = certificateVerifyUrl(site, certificate.locale, certificate.number);
-  const qrSrc = await qrDataUri(verifyUrl);
-  const verifyHost = `${new URL(site).host}/${certificate.locale}/cert`;
+  // адрес сайта в env может быть не URL: тогда лист без QR и адреса проверки, печать работает (не 500)
+  let qrSrc: string | null = null;
+  let verifyHost: string | null = null;
+  try {
+    const site = siteUrl();
+    const host = new URL(site).host;
+    qrSrc = await qrDataUri(certificateVerifyUrl(site, certificate.locale, certificate.number));
+    verifyHost = `${host}/${certificate.locale}/cert`;
+  } catch {
+    qrSrc = null;
+    verifyHost = null;
+  }
 
   return (
     <>

@@ -1,4 +1,5 @@
-// PDF сертификата: только свой, по сессии. Чужой или несуществующий — одинаковый 404.
+// PDF сертификата: только свой, по сессии. Чужой или несуществующий — одинаковый 404;
+// при навигации (Accept: text/html) — одинаковый 303 на /{locale}/learn.
 // Файл не хранится: генерируется на запросе; повторный запрос с тем же ETag даёт 304 без рендера.
 import { getTranslations } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
@@ -8,6 +9,7 @@ import { routing } from '@/lib/i18n/routing';
 import { certPdfAllowed } from '@/lib/learn/limits';
 import { certificatePdfEtag } from '@/lib/learn/pdf/etag';
 import { loadCertificatePdfInput } from '@/lib/learn/pdf/data';
+import { describeRenderError } from '@/lib/learn/pdf/errorReason';
 import { planCertificatePdf } from '@/lib/learn/pdf/plan';
 import { PdfConfigError } from '@/lib/learn/pdf/types';
 import { coursePath, routeParam } from '@/lib/learn/server';
@@ -96,7 +98,7 @@ export async function GET(request: Request, { params }: Ctx) {
   };
   if (etagMatches(request.headers.get('if-none-match'), etag)) return new Response(null, { status: 304, headers });
 
-  // 6. тяжёлый модуль — лениво. В журнал при ошибке — только номер, без ФИО
+  // 6. тяжёлый модуль — лениво. В журнал при ошибке — номер и причина без ПДн (ФИО и курс вырезаются)
   try {
     const { renderCertificatePdf } = await import('@/lib/learn/pdf/render');
     const body = await renderCertificatePdf(input);
@@ -109,8 +111,8 @@ export async function GET(request: Request, { params }: Ctx) {
         'Content-Length': String(body.byteLength),
       },
     });
-  } catch {
-    console.error(`certificate pdf: render failed, number=${input.number}`);
+  } catch (e) {
+    console.error(`certificate pdf: render failed, number=${input.number}, ${describeRenderError(e, input)}`);
     return nav ? redirect303(unavailableHref) : text('Internal error', 500);
   }
 }

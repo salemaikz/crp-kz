@@ -45,7 +45,7 @@ function sheetLabels(locale: Locale, number: string): CertificatePdfLabels {
 
 /**
  * Сертификат пользователя по курсу для PDF. null — нет опубликованного курса или сертификата
- * (вызывающий отвечает одинаковым 404). Доступ к курсу не проверяется: сертификат сохраняется
+ * (вызывающий отвечает одинаковым 404, а при навигации, Accept: text/html, — одинаковым 303 на /{locale}/learn). Доступ к курсу не проверяется: сертификат сохраняется
  * после окончания доступа (SPEC §2). Email и id пользователя в результат не попадают.
  */
 export async function loadCertificatePdfInput(userId: string, slug: string): Promise<CertificatePdfInput | null> {

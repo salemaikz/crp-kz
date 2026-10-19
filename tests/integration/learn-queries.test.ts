@@ -47,6 +47,7 @@ test('клиент демо: «Целина» частично пройдена,
   const certs = await listCertificates(client);
   assert.equal(certs.length, 1);
   assert.equal(certs[0]?.courseSlug, 'razbor');
+  assert.equal(certs[0]?.courseStatus, 'published');
   assert.equal(certs[0]?.number, razbor.certificateNumber);
 });
 

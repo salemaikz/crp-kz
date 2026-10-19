@@ -46,7 +46,10 @@ mock.module(src('components/learn/PrintButton.tsx'), {
   namedExports: { PrintButton: () => createElement('button', { 'data-testid': 'print-certificate' }) },
 });
 mock.module(src('components/learn/CertificateSheet.tsx'), {
-  namedExports: { CertificateSheet: () => createElement('div', { 'data-testid': 'certificate' }) },
+  namedExports: {
+    CertificateSheet: ({ qrSrc }: { qrSrc?: string | null }) =>
+      createElement('div', { 'data-testid': 'certificate', 'data-qr': qrSrc ? 'yes' : 'no' }),
+  },
 });
 mock.module('next/image', { defaultExport: () => createElement('img') });
 
@@ -108,6 +111,24 @@ test('CERT_PDF выключен: печать без пояснения про P
   assert.ok(out.includes('print-certificate'));
   assert.ok(!out.includes('pdfUnavailable'));
   assert.ok(out.includes('learn.certificate.printHint'));
+});
+
+test('NEXT_PUBLIC_SITE_URL не URL вне демо: страница рендерится без QR, печать работает', async () => {
+  const keepSite = process.env.NEXT_PUBLIC_SITE_URL;
+  process.env.NEXT_PUBLIC_SITE_URL = 'not a url';
+  try {
+    process.env.FEATURE_CERT_PDF = '0';
+    delete process.env.DEMO_MODE;
+    current = { id: 'pdf-ru' };
+    const out = renderToStaticMarkup(
+      await CertificatePage({ params: Promise.resolve({ locale: 'ru', slug: PDF_COURSE_SLUG }), searchParams: Promise.resolve({}) }),
+    );
+    assert.ok(out.includes('print-certificate'));
+    assert.ok(out.includes('data-qr="no"'));
+  } finally {
+    if (keepSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = keepSite;
+  }
 });
 
 test('?pdf=unavailable: PDF не предлагается снова, есть печать и пояснение', async () => {
