@@ -25,5 +25,5 @@
 | Заказчик | [`docs/context/CRP.md`](docs/context/CRP.md) |
 
 Задачи — в [Issues](https://github.com/salemaikz/crp-kz/issues). Метка
-`tier:T0/T1/T2` показывает, какой модели отдавать задачу
+`tier:T0/T1/T2→T1/T2` показывает, какой модели отдавать задачу
 ([`docs/agents/ROUTING.md`](docs/agents/ROUTING.md)).

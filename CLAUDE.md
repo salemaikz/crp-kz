@@ -41,7 +41,8 @@ Claude Code.
 `.claude/settings.json`:
 - подагенты без явной модели идут на Sonnet (`CLAUDE_CODE_SUBAGENT_MODEL`);
 - инструментам Read и Edit запрещены файлы с секретами (`.env`, `.env.local`,
-  `.env.production`, `.env.*.local`). `.env.example` разрешён.
+  `.env.development`, `.env.test`, `.env.staging`, `.env.production`,
+  `.env.*.local`). `.env.example` разрешён.
 
 Через Bash это не блокируется, поэтому правило из `AGENTS.md` действует
 отдельно: секреты не читать и не выводить никаким способом.
