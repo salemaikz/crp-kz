@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { demoSnapshotPath } from '../../src/lib/db';
 import { listMigrations, migrate } from '../../src/lib/db/migrate';
-import { refreshSnapshotTime, snapshotMetaPath } from '../../src/lib/db/snapshot';
+import { refreshSnapshotTime, shiftTimestamps, snapshotMetaPath } from '../../src/lib/db/snapshot';
 import { seed } from '../../src/lib/db/seed';
 import { createPgliteDb, openPglite, wrapPglite } from '../../src/lib/db/pglite';
 
@@ -122,7 +122,15 @@ test('demoSnapshotPath: только демо в production и только ес
   }
 });
 
-test('схема: все BIGINT-колонки public, кроме *_kzt, оканчиваются на _at (иначе сдвиг времени их пропустит)', async () => {
+/**
+ * BIGINT-колонки, которые не время и не деньги, а осознанное исключение из правила имён.
+ * Формат 'таблица.колонка'. Сейчас пусто: размер файла — INTEGER (файл ≤ 25 МБ), счётчики — INT.
+ * Прежде чем добавлять сюда, подумайте, не хватит ли INTEGER: колонка вне правила сдвига времени
+ * не двигается снимком, а не-временная BIGINT с суффиксом _at сдвинулась бы по ошибке.
+ */
+const NON_TIME_BIGINT = new Set<string>([]);
+
+test('схема: все BIGINT-колонки public, кроме *_kzt и исключений, оканчиваются на _at (иначе сдвиг времени их пропустит)', async () => {
   const db = wrapPglite(await openPglite());
   try {
     await migrate(db);
@@ -130,8 +138,18 @@ test('схема: все BIGINT-колонки public, кроме *_kzt, ока�
       SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND data_type = 'bigint' AND table_name <> 'schema_migrations'`;
     assert.ok(cols.length > 0);
-    const bad = cols.filter((c) => !c.columnName.endsWith('_at') && !c.columnName.endsWith('_kzt'));
+    const bad = cols.filter(
+      (c) =>
+        !c.columnName.endsWith('_at') &&
+        !c.columnName.endsWith('_kzt') &&
+        !NON_TIME_BIGINT.has(`${c.tableName}.${c.columnName}`),
+    );
     assert.deepEqual(bad, [], 'временная BIGINT-колонка без суффикса _at (или деньги без _kzt)');
+    // исключение, которого в схеме нет, — устаревшая запись
+    const present = new Set(cols.map((c) => `${c.tableName}.${c.columnName}`));
+    assert.deepEqual([...NON_TIME_BIGINT].filter((e) => !present.has(e)), [], 'устаревшее исключение');
+    // исключение не должно оканчиваться на _at: такую колонку снимок сдвинул бы
+    assert.deepEqual([...NON_TIME_BIGINT].filter((e) => e.endsWith('_at')), []);
   } finally {
     await db.close();
   }
@@ -175,6 +193,93 @@ test('полный снимок: время сдвигается до «сейч
       await db.close();
     }
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('сдвиг кратен суткам: время суток событий сида не плывёт', async () => {
+  const DAY = 86_400_000;
+  const dir = await tmp();
+  try {
+    // собрано в 15:30 UTC три дня назад, загружено «сейчас» в 02:10 UTC
+    const now = Date.UTC(2026, 9, 19, 2, 10);
+    const builtAt = Date.UTC(2026, 9, 16, 15, 30);
+    const file = path.join(dir, 'snap.tar.gz');
+    const pg = await openPglite();
+    const src = wrapPglite(pg);
+    await migrate(src);
+    await seed(src, { nowMs: builtAt });
+    await writeFile(file, Buffer.from(await (await pg.dumpDataDir('gzip')).arrayBuffer()));
+    await writeFile(snapshotMetaPath(file), JSON.stringify({ builtAt, seeded: true }));
+    await src.close();
+
+    const db = await createPgliteDb(undefined, { snapshotPath: file });
+    try {
+      const before = (await db.sql<{ v: number }>`SELECT min(created_at) AS v FROM orders`)[0]!.v;
+      await refreshSnapshotTime(db, file, now);
+      const after = (await db.sql<{ v: number }>`SELECT min(created_at) AS v FROM orders`)[0]!.v;
+      assert.equal((after - before) % DAY, 0, 'сдвиг — целое число суток');
+      assert.equal(after - before, 3 * DAY, 'границы суток 16.10 → 19.10 (UTC)');
+      assert.equal(after % DAY, before % DAY, 'время суток то же');
+    } finally {
+      await db.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('сдвиг: только обычные таблицы (представление не двигает данные второй раз), одним UPDATE на таблицу', async () => {
+  const db = wrapPglite(await openPglite());
+  try {
+    await migrate(db);
+    // простое представление автообновляемо: UPDATE по нему сдвинул бы строки orders повторно
+    await db.exec('CREATE VIEW orders_times AS SELECT id, created_at FROM orders');
+    // CHECK между временными колонками: по одной колонке за раз он бы сработал
+    await db.exec(
+      'CREATE TABLE span_probe (id TEXT PRIMARY KEY, from_at BIGINT, to_at BIGINT, CHECK (to_at >= from_at))',
+    );
+    await db.exec("INSERT INTO span_probe VALUES ('a', 100, 100), ('b', NULL, NULL), ('c', 5, NULL)");
+    const user = "INSERT INTO users (id, email, password_hash, name, role, locale, created_at) VALUES ('u', 'u@x.kz', 'h', 'U', 'learner', 'ru', 1000)";
+    await db.exec(user);
+    const shifted = await shiftTimestamps(db, 50);
+    assert.ok(shifted > 0);
+    assert.equal((await db.sql<{ v: number }>`SELECT created_at AS v FROM users WHERE id = 'u'`)[0]!.v, 1050);
+    const rows = await db.sql<{ id: string; fromAt: number | null; toAt: number | null }>`SELECT id, from_at, to_at FROM span_probe ORDER BY id`;
+    assert.deepEqual(rows, [
+      { id: 'a', fromAt: 150, toAt: 150 },
+      { id: 'b', fromAt: null, toAt: null },
+      { id: 'c', fromAt: 55, toAt: null },
+    ]);
+  } finally {
+    await db.close();
+  }
+});
+
+test('снимок без описания (.json): предупреждение и сдвига нет', async () => {
+  const dir = await tmp();
+  const warn = console.warn;
+  const calls: string[] = [];
+  console.warn = (...a: unknown[]) => void calls.push(a.join(' '));
+  try {
+    const db = wrapPglite(await openPglite());
+    try {
+      await migrate(db);
+      await db.exec("INSERT INTO users (id, email, password_hash, name, role, locale, created_at) VALUES ('u', 'u@x.kz', 'h', 'U', 'learner', 'ru', 1000)");
+      const file = path.join(dir, 'snap.tar.gz'); // .json рядом нет
+      await refreshSnapshotTime(db, file);
+      assert.equal(calls.length, 1);
+      assert.match(calls[0]!, /snap\.json/);
+      assert.equal((await db.sql<{ v: number }>`SELECT created_at AS v FROM users WHERE id = 'u'`)[0]!.v, 1000);
+      // битое описание — то же самое
+      await writeFile(snapshotMetaPath(file), '{not json');
+      await refreshSnapshotTime(db, file);
+      assert.equal(calls.length, 2);
+    } finally {
+      await db.close();
+    }
+  } finally {
+    console.warn = warn;
     await rm(dir, { recursive: true, force: true });
   }
 });
