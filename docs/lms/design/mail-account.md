@@ -400,7 +400,7 @@ RETURNING *
 - `secret_expires_at <= now` → `cancelled`, `secret = NULL`. Мёртвые ссылки не отправляем.
 - Успех → `sent`, `sent_at`, `provider_id`, `secret = NULL`, `secret_expires_at = NULL`.
 - Ошибка → `attempts < 5`: `queued`, `next_attempt_at = now + RETRY_DELAYS_MS[attempts-1]`; иначе
-  `failed`, секрет обнуляется, audit `mail.failed` `{ mailId, template }`. `last_error` — первые
+  `failed`, секрет обнуляется, audit `mail.fail` `{ mailId, template }`. `last_error` — первые
   500 знаков, адреса email вырезаются регэкспом.
 - Доставка «хотя бы один раз». Если процесс упал между ответом SMTP и UPDATE, после аренды
   письмо уйдёт повторно — допустимо.
@@ -757,7 +757,7 @@ export async function queueAssignmentNotices(sql: Sql, input: {
   - notice-письма лимиты получателя не трогают.
 - `mail-worker.test.ts` (подставной транспорт):
   - успех → `sent`, `secret` NULL;
-  - ошибка → `queued` с `next_attempt_at`, `attempts=1`; 5 ошибок → `failed` и audit `mail.failed`;
+  - ошибка → `queued` с `next_attempt_at`, `attempts=1`; 5 ошибок → `failed` и audit `mail.fail`;
   - истёкшая ссылка → `cancelled`, `send` не вызван;
   - просроченная аренда `sending` подхватывается снова;
   - `purgeMail` удаляет письма старше 90 дней и старые токены, обнуляет истёкшие секреты.

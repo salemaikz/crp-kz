@@ -354,7 +354,7 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/learn/[slug]` | зачисленный | **learn** — программа с прогрессом |
 | `/[locale]/learn/[slug]/[lesson]` | зачисленный | **learn** — урок: блоки, тест, «Урок пройден», дальше/назад |
 | `/[locale]/learn/[slug]/certificate` | зачисленный | **learn** — сертификат (печать браузером или PDF (`CERT_PDF`)) |
-| `/[locale]/learn/[slug]/certificate/pdf` | владелец сертификата | **learn** — PDF сертификата; гость — на вход, чужой или несуществующий — 404 |
+| `/[locale]/learn/[slug]/certificate/pdf` | владелец сертификата | **learn** — PDF сертификата; гость — на вход, чужой или несуществующий — 404 (при навигации браузера — 303 на `/{locale}/learn`; ошибка рендера — 303 на страницу сертификата с печатью) |
 | `/[locale]/cert/[number]` | все | **learn** — публичная проверка: ФИО, курс, дата |
 | `/[locale]/team` | руководитель | **team** — сотрудники, назначения, отчёт |
 | `/[locale]/team/report.csv` | руководитель | **team** — CSV (UTF-8 BOM) |

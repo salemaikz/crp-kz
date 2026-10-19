@@ -89,7 +89,9 @@
 - Маршрут `GET /[locale]/learn/[slug]/certificate/pdf`:
   - отдаёт только **свой** сертификат (по сессии);
   - гость — перенаправление на вход;
-  - чужой или несуществующий — 404.
+  - чужой или несуществующий — 404; при навигации браузера (`Accept: text/html`) — одинаковый
+    303 на `/{locale}/learn`, а при 503 и 500 — 303 на страницу сертификата `?pdf=unavailable`
+    с печатью браузером (уточнено после волны 2).
 - Шрифты:
   - статические TTF-срезы Geologica Bold SHRP=100, Onest Regular и Onest SemiBold с латиницей,
     кириллицей и казахскими буквами;
@@ -475,7 +477,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ loca
   // 3. user = getCurrentUser(); нет → 303 на /{locale}/login?next=/{locale}/learn/{slug}/certificate
   //    (next — на страницу сертификата, а не на PDF)
   // 4. лимит: rateLimit(`cert-pdf:${user.id}`, 10, 60_000) — нет → 429 + Retry-After
-  // 5. input = loadCertificatePdfInput(user.id, slug); null → 404 (одинаково для «нет курса» и «нет сертификата»)
+  // 5. input = loadCertificatePdfInput(user.id, slug); null → 404 (одинаково для «нет курса» и «нет сертификата»);
+  //    при навигации (Accept: text/html) — одинаковый 303 на /{locale}/learn (уточнено после волны 2)
+  // 5а. planCertificatePdf(input) не ok (имя или курс пустые после очистки, выброшены буквы, не влезает
+  //    по высоте) → 303 на /{locale}/learn/{slug}/certificate, где печать браузером — для любого Accept
   // 6. etag = certificatePdfEtag(input); If-None-Match совпал → 304 (после шагов 3–5!)
   // 7. const { renderCertificatePdf } = await import('@/lib/learn/pdf/render');  // тяжёлый модуль — лениво
   //    body = await renderCertificatePdf(input)
@@ -483,7 +488,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ loca
   //    Content-Type: application/pdf
   //    Content-Disposition: attachment; filename="<number>.pdf"   (номер — ASCII по CERT_NUMBER_RE)
   //    Cache-Control: private, no-cache;  ETag;  Vary: Cookie;  X-Content-Type-Options: nosniff
-  // Ошибки рендера → 500 без деталей; console.error без ФИО (только number).
+  // Ошибки рендера → 500 без деталей (при навигации — 303 на страницу сертификата ?pdf=unavailable);
+  // console.error: номер, класс, code; первая строка message — только для libuv-кодов и MODULE_NOT_FOUND.
 }
 ```
 
@@ -585,8 +591,9 @@ HTML-лист `CertificateSheet` остаётся для просмотра на
    20.10.2026 · kz · регистрация · 21.10.2026 14:05», ссылка на редакцию.
 5. **Сертификат (флаг включён).** «Ваш сертификат» → «Скачать PDF» → файл `CRP-2026-AB23CD.pdf`
    на языке прохождения курса. Повторный клик — тот же файл (`304`, если браузер прислал ETag).
-6. **Чужой пользователь открывает ту же ссылку PDF** — 404. Гость — вход, затем возврат на
-   страницу сертификата.
+6. **Чужой пользователь открывает ту же ссылку PDF** — в браузере 303 на «Моё обучение» (без
+   перечисления; запрос без `Accept: text/html` — 404). Гость — вход, затем возврат на страницу
+   сертификата.
 7. **Флаги выключены (production по умолчанию).** Ссылок «Документы» нет, `/legal/*` → 404,
    галочки прежние и без ссылок, согласия пишутся по-старому. Сертификат — печать браузером,
    маршрут PDF → 404.
@@ -755,8 +762,8 @@ HTML-лист `CertificateSheet` остаётся для просмотра на
 | Path traversal через `[doc]` и `[version]` | Путь к файлу строится только из записи реестра. Параметр лишь ищет запись (`docKindFromSlug`, `findVersion`) |
 | XSS из markdown документа | `react-markdown` без raw HTML; `urlTransform` пропускает только `http(s)`, `mailto`, `tel`, относительные адреса; тексты приходят через PR и ревью |
 | Согласие от имени другого пользователя | `userId` — только из сессии или нового аккаунта в той же транзакции. Согласия — в той же транзакции, что пользователь или заказ |
-| ПДн в журналах | `legal_texts` без ПДн. В `audit_log` согласия не дублируются. В логах ошибок PDF — только номер |
-| IDOR на PDF | Сертификат ищется по `(user.id из сессии, course по slug)`. Номер из URL не принимается. Чужой или несуществующий — одинаковый 404 (без перечисления) |
+| ПДн в журналах | `legal_texts` без ПДн. В `audit_log` согласия не дублируются. В логах ошибок PDF — номер, класс ошибки и code; первая строка message — только для кодов libuv (`ENOENT`…) и `MODULE_NOT_FOUND`, где в ней путь файла или модуля, а не входной текст (уточнено после волны 2: на Netlify без причины в логе нельзя было найти пропавший файл pdfkit) |
+| IDOR на PDF | Сертификат ищется по `(user.id из сессии, course по slug)`. Номер из URL не принимается. Чужой или несуществующий — одинаковый 404, при навигации — одинаковый 303 на `/{locale}/learn` (без перечисления) |
 | Утечка email в PDF | `CertificatePdfInput` не содержит email и id пользователя (тип). Тест: в байтах PDF нет `@` и email |
 | Нагрузка на CPU через генерацию PDF | Только вошедший владелец, лимит 10 в минуту на пользователя, `304` по ETag без рендера. Тяжёлый модуль грузится лениво |
 | Кэширование чужого PDF прокси или CDN | `Cache-Control: private, no-cache`, `Vary: Cookie`. Публичного URL у файла нет |
