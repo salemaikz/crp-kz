@@ -3,7 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 // E2E на `next start` в демо-режиме: DEMO_MODE=1 (next start — это production, без флага
 // приложение без DATABASE_URL не стартует), без DATABASE_URL — PGlite + сид.
-const PORT = 3100;
+// E2E_PORT — для параллельных прогонов из разных рабочих копий: иначе второй прогон
+// переиспользует чужой сервер (reuseExistingServer) и проверяет не тот код.
+const PORT = Number(process.env.E2E_PORT) || 3100;
 const chromiumPath = process.env.PLAYWRIGHT_CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 // Локально — предустановленный Chromium; в CI его нет, берётся из `npx playwright install`.
 const executablePath = existsSync(chromiumPath) ? chromiumPath : undefined;
