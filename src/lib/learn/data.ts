@@ -2,6 +2,7 @@
 import { enrollmentState, listEnrollments, type AccessResult, type Enrollment } from '../access';
 import type { L10n, Locale } from '../content/types';
 import { getDb, type Sql } from '../db';
+import { isFeatureActive } from '../features';
 import { visibleCover } from '../files/url';
 import { contentHasQuiz } from './content';
 import { buildProgress } from './outline';
@@ -30,7 +31,7 @@ export async function getCourse(ref: CourseRef, sql?: Sql): Promise<CourseInfo |
           SELECT id, slug, title, summary, cover, level, duration_min, sequential, status, visibility
           FROM courses WHERE id = ${ref.id}`;
   const row = rows[0];
-  return row ? { ...row, cover: visibleCover(row.cover) } : null;
+  return row ? { ...row, cover: visibleCover(row.cover, isFeatureActive('UPLOADS')) } : null;
 }
 
 type OutlineRow = OutlineLesson & { moduleTitle: L10n; courseId: string };
@@ -103,7 +104,7 @@ export async function listLearnerCourses(userId: string, sql?: Sql): Promise<Lea
     await s<CourseInfo>`
     SELECT id, slug, title, summary, cover, level, duration_min, sequential, status, visibility
     FROM courses WHERE id = ANY(${ids}) AND status = 'published'`
-  ).map((c) => ({ ...c, cover: visibleCover(c.cover) }));
+  ).map((c) => ({ ...c, cover: visibleCover(c.cover, isFeatureActive('UPLOADS')) }));
   const lessonRows = await s<OutlineRow>`
     SELECT l.id, l.slug, l.title, l.duration_min, l.module_id, l.course_id, m.title AS module_title
     FROM lessons l JOIN course_modules m ON m.id = l.module_id

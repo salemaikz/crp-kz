@@ -40,16 +40,3 @@ test('visibleCover: адрес файла прячется при неактив
   assert.equal(visibleCover('/covers/a.png', false), '/covers/a.png');
   assert.equal(visibleCover('https://cdn.example/a.png', false), 'https://cdn.example/a.png');
 });
-
-test('visibleCover без второго параметра берёт флаг UPLOADS (в тестах — демо, включён)', () => {
-  const saved = process.env.FEATURE_UPLOADS;
-  try {
-    delete process.env.FEATURE_UPLOADS;
-    assert.equal(visibleCover(fileUrl(ID)), fileUrl(ID));
-    process.env.FEATURE_UPLOADS = '0';
-    assert.equal(visibleCover(fileUrl(ID)), null);
-  } finally {
-    if (saved === undefined) delete process.env.FEATURE_UPLOADS;
-    else process.env.FEATURE_UPLOADS = saved;
-  }
-});

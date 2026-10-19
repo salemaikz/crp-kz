@@ -1,5 +1,5 @@
-// Адреса файлов (D-034): чистые функции для сервера и браузера.
-import { isFeatureActive } from '../features';
+// Адреса файлов (D-034): чистые функции для сервера и браузера. Импортов здесь быть не должно:
+// файл попадает в клиентский бандл (проверяет tests/unit/core-static-guards.test.ts).
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,9 +21,10 @@ export function isUuid(s: string): boolean {
 
 /**
  * Обложка для витрины и обучения: при неактивной загрузке файлов адрес /api/files/… вернул бы
- * 404 и сломал картинку, поэтому заменяется на null.
+ * 404 и сломал картинку, поэтому заменяется на null. Флаг передаёт вызывающий сервер
+ * (isFeatureActive('UPLOADS')) — читать его здесь нельзя, см. комментарий вверху.
  */
-export function visibleCover(cover: string | null, uploadsActive: boolean = isFeatureActive('UPLOADS')): string | null {
+export function visibleCover(cover: string | null, uploadsActive: boolean): string | null {
   if (cover === null) return null;
   return cover.startsWith('/api/files/') && !uploadsActive ? null : cover;
 }
