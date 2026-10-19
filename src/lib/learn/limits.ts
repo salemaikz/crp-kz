@@ -12,6 +12,14 @@ export const CERT_LIMITS = {
   perNumber: { limit: 20, windowMs: 60_000 },
 } as const;
 
+/** PDF сертификата: рендер нагружает процессор, поэтому лимит на пользователя (по сессии, не по IP). */
+export const CERT_PDF_LIMIT = { limit: 10, windowMs: 60_000 } as const;
+
+export function certPdfAllowed(userId: string, nowMs = Date.now()): { ok: boolean; retryAfterMs: number } {
+  const l = CERT_PDF_LIMIT;
+  return rateLimit(`cert-pdf:${userId}`, l.limit, l.windowMs, nowMs);
+}
+
 /** Ключ номера: регистр и пробелы не важны; длина ограничена, чтобы ключи не раздували память. */
 function numberKey(number: string): string {
   return number.trim().toUpperCase().slice(0, 40);
