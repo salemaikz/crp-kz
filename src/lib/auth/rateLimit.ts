@@ -76,4 +76,14 @@ export const AUTH_LIMITS = {
   registerPerIp: { limit: 20, windowMs: 60 * 60_000 },
   registerPerEmail: { limit: 10, windowMs: 60 * 60_000 },
   registerUnknownIp: { limit: 60, windowMs: 60_000 },
+  /** Запрос ссылки сброса. Неизвестный IP общего ведра не имеет (письма защищает лимит на email). */
+  resetRequestPerIp: { limit: 10, windowMs: 60 * 60_000 },
+  resetRequestPerEmail: { limit: 3, windowMs: 60 * 60_000 },
+  /** Смена пароля по ссылке: bcrypt, поэтому при неизвестном IP — общее ведро (как у входа). */
+  resetSubmitPerIp: { limit: 20, windowMs: 15 * 60_000 },
+  resetSubmitUnknownIp: { limit: 300, windowMs: 60_000 },
+  /** Подтверждение email: bcrypt нет, токен 256 бит; при неизвестном IP лимита нет. */
+  verifySubmitPerIp: { limit: 30, windowMs: 15 * 60_000 },
+  /** Повторная отправка письма подтверждения. */
+  verifyResendPerUser: { limit: 3, windowMs: 60 * 60_000 },
 } as const;

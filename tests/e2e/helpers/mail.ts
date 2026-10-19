@@ -1,9 +1,14 @@
 // Помощник e2e: достать ссылку из последнего письма получателю. В демо письма не уходят наружу,
 // администратор видит их на странице «Письма», а ссылку — в блоке демо-ссылки (только в демо).
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, type Browser } from '@playwright/test';
-import admin from '../../../messages/ru/admin.json';
+import type adminMessages from '../../../messages/ru/admin.json';
 
-export type MailTemplateName = keyof typeof admin.mail.template;
+export type MailTemplateName = keyof typeof adminMessages.mail.template;
+
+// JSON читаем файлом: ESM Playwright не принимает import без атрибута type: json, а import type стирается
+const admin = JSON.parse(readFileSync(path.join(process.cwd(), 'messages/ru/admin.json'), 'utf8')) as typeof adminMessages;
 
 /**
  * Открывает отдельный контекст браузера (сессия покупателя не затрагивается), входит демо-админом,

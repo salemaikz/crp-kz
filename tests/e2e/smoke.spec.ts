@@ -36,3 +36,10 @@ test('демо-вход клиентом ведёт в «Моё обучение
   await expect(page).toHaveURL(/\/ru\/learn/);
   await expect(page.getByRole('banner').getByRole('link', { name: 'Моё обучение' }).first()).toBeAttached();
 });
+
+test('страница входа ведёт по ссылке «Забыли пароль?» к восстановлению', async ({ page }) => {
+  await page.goto('/ru/login');
+  await page.getByRole('link', { name: 'Забыли пароль?' }).click();
+  await expect(page).toHaveURL(/\/ru\/password\/forgot$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Восстановление пароля' })).toBeVisible();
+});

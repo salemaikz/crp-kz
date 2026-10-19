@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
 import { safeNext } from '@/lib/auth/safeNext';
 import { isDemo } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
 import { Link } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { AuthShell } from '@/components/layout/AuthShell';
@@ -36,7 +37,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
 
   return (
     <AuthShell title={t('login.title')} lead={t('login.lead')}>
-      <LoginForm next={next} />
+      <LoginForm next={next} showForgot={isFeatureActive('PASSWORD_RESET')} />
       <p className="auth__switch">
         {t('login.noAccount')}{' '}
         <Link href={next ? { pathname: '/register', query: { next } } : '/register'} className="text-link">

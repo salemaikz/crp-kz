@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
+import { VerifyEmailNotice } from '@/components/account/VerifyEmailNotice';
 import { DemoBanner, Footer, Header } from '@/components/layout';
 import { htmlLang } from '@/lib/content/l10n';
 import { siteUrl } from '@/lib/env';
@@ -54,6 +55,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         <NextIntlClientProvider>
           <DemoBanner />
           <Header />
+          <VerifyEmailNotice />
           <main id="main" tabIndex={-1}>
             {children}
           </main>
