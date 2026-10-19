@@ -100,6 +100,14 @@ test('versionsToken: сортировка по виду документа и р
   assert.equal(versionsToken(['offer'], { allowDrafts: false }), 'offer@none');
 });
 
+test('versionsToken: дубли и cross_border отбрасываются, пустой список даёт пустую строку', () => {
+  const base = versionsToken(['pd_processing', 'offer'], { allowDrafts: true });
+  assert.equal(versionsToken(['offer', 'pd_processing', 'offer', 'cross_border'], { allowDrafts: true }), base);
+  assert.equal(versionsToken(['cross_border'], { allowDrafts: true }), '');
+  assert.equal(versionsToken([], { allowDrafts: true }), '');
+  assert.ok(!base.includes('null'));
+});
+
 test('docKindFromSlug отвергает обходы пути и регистр', () => {
   for (const bad of ['../offer', 'OFFER', 'pd_consent', 'offer/..', '%2e%2e']) assert.equal(docKindFromSlug(bad), null, bad);
   for (const kind of LEGAL_DOC_KINDS) assert.equal(docKindFromSlug(LEGAL_DOC_SLUG[kind]), kind);

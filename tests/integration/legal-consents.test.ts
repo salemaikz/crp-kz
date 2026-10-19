@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, afterEach, before, test } from 'node:test';
+import { after, afterEach, before, mock, test } from 'node:test';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import {
   consentTokenFresh,
   insertConsents,
   listUserConsents,
   prepareConsents,
+  toPrepared,
 } from '../../src/lib/legal/consents';
 import { currentVersion, versionsToken } from '../../src/lib/legal/registry';
 import { normalizeLegalSource } from '../../src/lib/legal/source';
@@ -130,4 +131,30 @@ test('listUserConsents: свежие первыми, номер заказа и 
   assert.ok(rows[0] && rows[1] && rows[0].createdAt >= rows[1].createdAt);
   assert.ok(rows.every((r) => r.orderNumber === null && r.withdrawnAt === null));
   assert.deepEqual(await listUserConsents('нет-такого'), []);
+});
+
+test('нет действующей версии (демо до вступления в силу): токен не свежий, подготовка — понятный отказ', async () => {
+  legalOn();
+  mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-01T12:00:00Z') });
+  try {
+    assert.equal(versionsToken(CHECKOUT_CONSENTS, { allowDrafts: true }).includes('@none'), true);
+    const stale = versionsToken(CHECKOUT_CONSENTS, { allowDrafts: true });
+    assert.equal(consentTokenFresh(stale, CHECKOUT_CONSENTS), false);
+    await assert.rejects(prepareConsents(['pd_processing'], 'ru'), /нет действующей версии/);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('запасной ru: в согласие попадает язык показанного текста, а не запрошенный', async () => {
+  const v = currentVersion('pd_consent', { allowDrafts: true }) as LegalVersion;
+  const noKz: LegalVersion = { ...v, sha256: { ru: v.sha256.ru, kz: null } };
+  const text = await loadLegalText(noKz, 'kz');
+  const prepared = toPrepared('pd_processing', noKz.version, text);
+  assert.equal(prepared.locale, 'ru');
+  await db.tx((sql) => insertConsents(sql, { userId: 'u2', orderId: null, context: 'register', at: 300, consents: [prepared] }));
+  const [row] = await db.sql<{ locale: string; textSha256: string }>`
+    SELECT locale, text_sha256 FROM consents WHERE user_id = 'u2' AND created_at = 300`;
+  assert.equal(row?.locale, 'ru');
+  assert.equal(row?.textSha256, v.sha256.ru);
 });

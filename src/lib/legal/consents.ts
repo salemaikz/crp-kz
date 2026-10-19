@@ -33,6 +33,11 @@ export type PreparedConsent = {
   text: LegalText | null;
 };
 
+/** Согласие фиксирует язык фактически показанного текста (при запасном ru — 'ru', а не запрошенный). */
+export function toPrepared(kind: ConsentKind, version: string, text: LegalText): PreparedConsent {
+  return { kind, version, locale: text.locale, text };
+}
+
 /**
  * Подготовка вне транзакции (чтение файлов). LEGAL неактивен — легаси-версия без текста.
  * Вид без документа (cross_border) или без действующей версии — Error: принять нечего.
@@ -47,8 +52,7 @@ export async function prepareConsents(kinds: readonly ConsentKind[], locale: Loc
     const doc = CONSENT_DOC[kind];
     const version = doc ? currentVersion(doc, { allowDrafts }) : null;
     if (!doc || !version) throw new Error(`legal: для согласия «${kind}» нет действующей версии документа`);
-    const text = await loadLegalText(version, locale);
-    out.push({ kind, version: version.version, locale: text.locale, text });
+    out.push(toPrepared(kind, version.version, await loadLegalText(version, locale)));
   }
   return out;
 }
@@ -59,7 +63,11 @@ export async function prepareConsents(kinds: readonly ConsentKind[], locale: Loc
  */
 export function consentTokenFresh(token: unknown, kinds: readonly ConsentKind[]): boolean {
   if (!isLegalEnabled()) return true;
-  return typeof token === 'string' && token === versionsToken(kinds, { allowDrafts: legalAllowDrafts() });
+  if (typeof token !== 'string') return false;
+  const expected = versionsToken(kinds, { allowDrafts: legalAllowDrafts() });
+  // у какого-то вида нет действующей версии: принять нечего, форма получит legal_changed, а не 500
+  if (expected.includes('@none')) return false;
+  return token === expected;
 }
 
 /**

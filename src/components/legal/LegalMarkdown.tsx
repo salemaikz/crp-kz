@@ -3,7 +3,13 @@ import remarkGfm from 'remark-gfm';
 
 /** Только http(s), mailto, tel, якоря и относительные адреса; остальное (javascript:, data:) отбрасывается. */
 export function legalUrl(url: string): string {
-  return /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(url) ? url : '';
+  // браузер трактует обратную косую как '/' и отбрасывает управляющие символы и пробелы: такие адреса не пропускаем
+  for (const ch of url) {
+    const c = ch.charCodeAt(0);
+    if (ch === '\\' || c <= 0x20 || c === 0x7f) return '';
+  }
+  if (/^(https?:\/\/|mailto:|tel:|#)/i.test(url)) return url;
+  return /^\/(?!\/)/.test(url) ? url : '';
 }
 
 const components: Components = {
