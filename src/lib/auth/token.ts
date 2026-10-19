@@ -21,8 +21,10 @@ export function verifySession(token: string | null | undefined, secret: string, 
   if (!token || !TOKEN_RE.test(token)) return null;
   const dot = token.indexOf('.');
   const body = token.slice(0, dot);
-  const given = Buffer.from(token.slice(dot + 1), 'base64url');
-  const expected = mac(body, secret);
+  // У последнего символа base64url 32 байт 2 незначащих бита: разные строки декодируются в одни байты.
+  // Поэтому сравниваем строки — вычисленную каноническую подпись с переданной, равной длины.
+  const given = Buffer.from(token.slice(dot + 1), 'utf8');
+  const expected = Buffer.from(mac(body, secret).toString('base64url'), 'utf8');
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   let data: unknown;
   try {

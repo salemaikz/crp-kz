@@ -9,9 +9,9 @@ import { useHashParams } from '@/components/account/useHashParams';
 import { Alert, Button, SubmitButton } from '@/components/ui';
 
 /**
- * Кнопка подтверждения email (POST). Токен и next — из фрагмента #token=…&next=… (next уже безопасный путь
- * с локалью, поэтому переход — через router из next/navigation). Вошедший владелец уходит на next сразу;
- * без входа подтверждение не делает вход, а предлагает его.
+ * Кнопка подтверждения email (POST). Токен и next — из фрагмента #token=…&next=…: next уже безопасный путь
+ * с локалью (safeNext на сервере); переход — полной загрузкой, чтобы layout с плашкой построился заново.
+ * Вошедший владелец уходит на next сразу; без входа подтверждение не делает вход, а предлагает его.
  */
 export function VerifyEmail() {
   const t = useTranslations('auth');

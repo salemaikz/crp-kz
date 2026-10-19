@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
 import { openLatestMailLink } from './helpers/mail';
 
 // Сброс пароля (D-031): «Забыли пароль?» → письмо в «Письмах» (демо) → новый пароль → вход.
@@ -104,4 +104,43 @@ test('подтверждение email: плашка, «Отправить пи�
 
   await page.goto('/ru/learn');
   await expect(page.getByTestId('verify-notice')).toHaveCount(0);
+});
+
+/** Регистрация нового пользователя и письмо подтверждения; возвращает токен из ссылки. */
+async function registerAndGetVerifyToken(page: Page, browser: Browser, tag: string): Promise<string> {
+  const email = `e2e-verify-${tag}-${Date.now()}@example.kz`;
+  await page.goto('/ru/register');
+  await page.getByLabel('Имя и фамилия').fill('Тест Переход');
+  await page.getByLabel('Email').fill(email);
+  await page.locator('input[name="password"]').fill(OLD_PASSWORD);
+  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click();
+  await expect(page).toHaveURL(/\/ru\/learn/);
+  await page.getByTestId('verify-notice').getByRole('button', { name: 'Отправить письмо' }).click();
+  await expect(page.getByTestId('verify-resent')).toBeVisible();
+  const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
+  const token = /#token=([\w-]{43})/.exec(link)?.[1];
+  expect(token).toBeTruthy();
+  return token as string;
+}
+
+test('подтверждение email: next=/ru/courses — переход в каталог, плашки нет', async ({ page, browser }) => {
+  const token = await registerAndGetVerifyToken(page, browser, 'next');
+  await page.goto(`/ru/account/verify#token=${token}&next=${encodeURIComponent('/ru/courses')}`);
+  await page.getByRole('button', { name: 'Подтвердить email' }).click();
+  await expect(page).toHaveURL(/\/ru\/courses$/);
+  await expect(page.getByTestId('verify-notice')).toHaveCount(0);
+});
+
+test('подтверждение email: next=//evil.example/x не уводит с сайта (safeNext)', async ({ page, browser }) => {
+  const token = await registerAndGetVerifyToken(page, browser, 'evil');
+  const origin = new URL(page.url()).origin;
+  await page.goto(`/ru/account/verify#token=${token}&next=${encodeURIComponent('//evil.example/x')}`);
+  await page.getByRole('button', { name: 'Подтвердить email' }).click();
+  await expect(page.getByTestId('verify-done')).toBeVisible();
+  // даём возможному (ошибочному) переходу сработать, затем проверяем, что остались на своём сайте
+  await page.waitForTimeout(1000);
+  expect(new URL(page.url()).origin).toBe(origin);
+  // сам next остался во фрагменте, но переходом не стал: страница по-прежнему наша
+  expect(new URL(page.url()).pathname).toBe('/ru/account/verify');
 });

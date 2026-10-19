@@ -24,6 +24,21 @@ test('чужой секрет, подмена данных или подписи
   assert.equal(verifySession(`${body}.${sig}x`, SECRET, NOW), null);
 });
 
+test('неканоническая подпись (другие незначащие биты последнего символа) — отказ', () => {
+  const token = signSession(payload, SECRET);
+  const [body, sig] = token.split('.') as [string, string];
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const last = alphabet.indexOf(sig.at(-1) as string);
+  // последний символ: 4 значащих бита и 2 незначащих — меняем только младшие два
+  const alt = alphabet[(last & ~3) | ((last + 1) & 3)] as string;
+  const forged = sig.slice(0, -1) + alt;
+  assert.notEqual(forged, sig);
+  // байты подписи при этом декодируются одинаково
+  assert.deepEqual(Buffer.from(forged, 'base64url'), Buffer.from(sig, 'base64url'));
+  assert.equal(verifySession(`${body}.${forged}`, SECRET, NOW), null);
+  assert.deepEqual(verifySession(`${body}.${sig}`, SECRET, NOW), payload);
+});
+
 test('истёкший токен — отказ', () => {
   const token = signSession({ ...payload, exp: NOW - 1 }, SECRET);
   assert.equal(verifySession(token, SECRET, NOW), null);
