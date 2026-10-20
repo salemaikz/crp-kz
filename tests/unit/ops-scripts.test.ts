@@ -916,7 +916,7 @@ test('deploy.sh: сбой switch_current не меняет previous', opts, () =
   assert.equal(currentId(ctx), curBefore);
 });
 
-test('deploy.sh: сбой записи previous после переключения не удаляет релиз и не даёт код 2', opts, () => {
+test('deploy.sh: сбой записи previous после переключения — код 0, релиз цел, откат без --to на предыдущий', opts, () => {
   const ctx = makeCtx();
   assert.equal(deploy(ctx, 'v0.1.0').status, 0);
   assert.equal(deploy(ctx, 'v0.2.0').status, 0);
