@@ -9,7 +9,7 @@ import { writeAudit } from '../audit';
 import { getDb, newId, now, type Sql } from '../db';
 import { UPLOAD_QUOTA_LOCK_KEY } from '../db/locks';
 import { isFeatureActive } from '../features';
-import { maxBytesFor, quotaConfig, storageConfig } from '../storage/config';
+import { maxBytesFor, minFreeBytes, quotaConfig, storageConfig } from '../storage/config';
 import { getStorage, newStorageKey, StorageUnavailableError } from '../storage';
 import { FILE_TYPES, PURPOSE_TYPES, UPLOAD_LIMITS } from '../storage/limits';
 import { sanitizeFileName } from '../storage/names';
@@ -105,7 +105,7 @@ export async function storeUpload(input: UploadInput): Promise<StoredFile> {
     const storage = getStorage();
     const health = await storage.health();
     if (!health.ok) throw new UploadError('storage_unavailable', 503);
-    if (health.freeBytes !== null && health.freeBytes < UPLOAD_LIMITS.minFreeDiskBytes + declared) {
+    if (health.freeBytes !== null && health.freeBytes < minFreeBytes() + declared) {
       throw new UploadError('storage_unavailable', 503);
     }
 

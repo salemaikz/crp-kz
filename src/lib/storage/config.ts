@@ -37,6 +37,13 @@ export function maxBytesFor(kind: FileKind, env: Env = process.env): number {
   return isDemo(env) && isServerless(env) ? Math.min(base, UPLOAD_LIMITS.serverlessDemoBytes) : base;
 }
 
+/** Сколько места должно оставаться после загрузки: в демо на serverless — по размеру /tmp площадки. */
+export function minFreeBytes(env: Env = process.env): number {
+  return isDemo(env) && isServerless(env)
+    ? Math.min(UPLOAD_LIMITS.minFreeDiskBytes, UPLOAD_LIMITS.serverlessDemoMinFreeBytes)
+    : UPLOAD_LIMITS.minFreeDiskBytes;
+}
+
 function positiveInt(raw: string | undefined, fallback: number): number {
   const v = raw?.trim();
   if (!v || !/^\d{1,15}$/.test(v)) return fallback;

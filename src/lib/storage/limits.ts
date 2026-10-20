@@ -31,6 +31,8 @@ export const UPLOAD_LIMITS = {
   uploadsPerUser: { limit: 60, windowMs: 10 * 60_000 },
   concurrentPerUser: 3,
   minFreeDiskBytes: 1024 * MiB,
+  /** Демо на serverless: весь /tmp площадки около 512 МБ, порог в 1 ГиБ закрыл бы загрузку совсем. */
+  serverlessDemoMinFreeBytes: 64 * MiB,
   /** UPLOAD_QUOTA_BYTES по умолчанию. */
   totalQuotaBytesDefault: 20 * 1024 * MiB,
   /** UPLOAD_COURSE_QUOTA_BYTES по умолчанию. */

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { maxBytesFor, quotaConfig, storageConfig } from '../../src/lib/storage/config';
+import { maxBytesFor, minFreeBytes, quotaConfig, storageConfig } from '../../src/lib/storage/config';
 import { UPLOAD_LIMITS } from '../../src/lib/storage/limits';
 
 const PROD = { NODE_ENV: 'production', DATABASE_URL: 'postgres://example.invalid/db' };
@@ -50,4 +50,12 @@ test('квоты: значения по умолчанию и переопред
     total: UPLOAD_LIMITS.totalQuotaBytesDefault,
     course: UPLOAD_LIMITS.courseQuotaBytesDefault,
   });
+});
+
+test('minFreeBytes: в демо на Netlify и Vercel — 64 МиБ (весь /tmp ≈ 512 МБ), иначе 1 ГиБ', () => {
+  assert.equal(minFreeBytes({ DEMO_MODE: '1', NETLIFY: 'true' }), UPLOAD_LIMITS.serverlessDemoMinFreeBytes);
+  assert.equal(minFreeBytes({ VERCEL: '1' }), UPLOAD_LIMITS.serverlessDemoMinFreeBytes);
+  assert.ok(500 * 1024 * 1024 > minFreeBytes({ DEMO_MODE: '1', NETLIFY: 'true' }) + 4 * 1024 * 1024, 'файл 4 МБ влезает при 500 МиБ свободных');
+  assert.equal(minFreeBytes({ DEMO_MODE: '1' }), UPLOAD_LIMITS.minFreeDiskBytes);
+  assert.equal(minFreeBytes({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x' }), UPLOAD_LIMITS.minFreeDiskBytes);
 });
