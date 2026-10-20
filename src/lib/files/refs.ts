@@ -18,23 +18,43 @@ const LOCALES = ['ru', 'kz'] as const;
 
 // ![alt](url) и [текст](url); в тексте ссылки допускается один уровень вложенных скобок.
 const INLINE_LINK_RE = /(!?)\[((?:[^[\]]|\[[^\]]*\])*)\]\(\s*<?([^)\s>]*)/g;
-// [id]: url — определения ссылок; как будет использована, неизвестно, поэтому «любой вид».
-const DEFINITION_RE = /^[ ]{0,3}\[[^\]]+\]:\s*<?(\S+)/gm;
+// [label]: url — определения ссылок.
+const DEFINITION_RE = /^[ ]{0,3}\[([^\]]+)\]:\s*<?(\S+)/gm;
+// ![alt][label], ![label][] и ![label]: картинка по определению.
+const REF_IMAGE_RE = /!\[((?:[^[\]]|\[[^\]]*\])*)\](?:\[([^\]]*)\])?/g;
 
 function idsIn(target: string): string[] {
   return [...target.matchAll(FILE_URL_RE)].map((m) => (m[1] as string).toLowerCase());
 }
 
+const norm = (label: string): string => label.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/**
+ * Любое совпадение адреса файла в Markdown считается ссылкой (need='any'): GFM делает ссылкой и голый
+ * «https://…», и «<https://…>». Для ![..](..) и картинок по определению добавляется строгая запись
+ * need='image'. Повторы внутри блока схлопываются.
+ */
 function markdownRefs(markdown: string): Array<{ fileId: string; need: 'image' | 'any' }> {
   const out: Array<{ fileId: string; need: 'image' | 'any' }> = [];
+  for (const fileId of idsIn(markdown)) out.push({ fileId, need: 'any' });
   for (const m of markdown.matchAll(INLINE_LINK_RE)) {
-    const need = m[1] === '!' ? 'image' : 'any';
-    for (const fileId of idsIn(m[3] as string)) out.push({ fileId, need });
+    if (m[1] !== '!') continue;
+    for (const fileId of idsIn(m[3] as string)) out.push({ fileId, need: 'image' });
+  }
+  const imageLabels = new Set<string>();
+  for (const m of markdown.matchAll(REF_IMAGE_RE)) {
+    const label = m[2] === undefined || m[2] === '' ? (m[1] as string) : m[2];
+    imageLabels.add(norm(label));
   }
   for (const m of markdown.matchAll(DEFINITION_RE)) {
-    for (const fileId of idsIn(m[1] as string)) out.push({ fileId, need: 'any' });
+    if (!imageLabels.has(norm(m[1] as string))) continue;
+    for (const fileId of idsIn(m[2] as string)) out.push({ fileId, need: 'image' });
   }
-  return out;
+  const seen = new Set<string>();
+  return out.filter((r) => {
+    const k = `${r.need}:${r.fileId}`;
+    return !seen.has(k) && !!seen.add(k);
+  });
 }
 
 /** Все ссылки на файлы в контенте обеих локалей, в порядке блоков (дубликаты сохраняются). */

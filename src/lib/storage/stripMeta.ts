@@ -26,7 +26,14 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** JPEG: убираем APP1 (EXIF, XMP), APP13 (IPTC) и COM; всё с SOS и далее копируется как есть. */
+// Сегменты метаданных: APP1 (EXIF, XMP), APP11 (JUMBF, C2PA), APP13 (IPTC), COM.
+const JPEG_DROP = new Set([0xe1, 0xeb, 0xed, 0xfe]);
+
+/**
+ * JPEG: убираем APP1, APP11, APP13 и COM во всём файле, включая промежутки между сканами
+ * прогрессивного JPEG. Сжатые данные копируются как есть; на EOI файл заканчивается: хвост
+ * (Motion Photo с MP4, вторые кадры MPF со своим EXIF) отбрасывается. Нет EOI — StripError.
+ */
 function stripJpeg(b: Uint8Array): Uint8Array {
   if (b[0] !== 0xff || b[1] !== 0xd8) throw new StripError('нет SOI');
   const parts: Uint8Array[] = [b.subarray(0, 2)];
@@ -38,23 +45,46 @@ function stripJpeg(b: Uint8Array): Uint8Array {
       pos++;
       continue;
     }
+    if (marker === 0xd9) {
+      parts.push(b.subarray(pos, pos + 2));
+      return concat(parts);
+    }
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
       parts.push(b.subarray(pos, pos + 2));
       pos += 2;
       continue;
     }
-    if (marker === 0xda) {
-      parts.push(b.subarray(pos));
-      return concat(parts);
-    }
     if (pos + 4 > b.length) throw new StripError('обрезанный сегмент');
     const len = u16be(b, pos + 2);
     const end = pos + 2 + len;
     if (len < 2 || end > b.length) throw new StripError('обрезанный сегмент');
-    if (marker !== 0xe1 && marker !== 0xed && marker !== 0xfe) parts.push(b.subarray(pos, end));
+    if (!JPEG_DROP.has(marker)) parts.push(b.subarray(pos, end));
     pos = end;
+    if (marker === 0xda) pos = skipScan(b, pos, parts);
   }
-  throw new StripError('нет SOS');
+  throw new StripError('нет EOI');
+}
+
+/** Сжатые данные скана до ближайшего маркера (FF00 и RST0–7 — часть данных); возвращает позицию маркера. */
+function skipScan(b: Uint8Array, from: number, parts: Uint8Array[]): number {
+  let pos = from;
+  while (pos + 1 < b.length) {
+    if (b[pos] === 0xff) {
+      const next = b[pos + 1] as number;
+      if (next === 0xff) {
+        pos++;
+        continue;
+      }
+      if (next !== 0x00 && !(next >= 0xd0 && next <= 0xd7)) {
+        parts.push(b.subarray(from, pos));
+        return pos;
+      }
+      pos += 2;
+    } else {
+      pos++;
+    }
+  }
+  throw new StripError('нет EOI');
 }
 
 const PNG_DROP = new Set(['tEXt', 'iTXt', 'zTXt', 'eXIf', 'tIME']);

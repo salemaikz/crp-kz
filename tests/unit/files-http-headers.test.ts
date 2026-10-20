@@ -128,3 +128,23 @@ test('флаг выключен → 404 для всех', async () => {
     process.env.FEATURE_UPLOADS = '1';
   }
 });
+
+test('гость с неизвестным IP: отказы исчерпывают общее ведро, публичная обложка при этом отдаётся 200', async () => {
+  const guest = (o: Parameters<typeof deps>[0]): HttpDeps => ({ ...deps({ user: false, ...o }), clientIp: () => null });
+  let last: Response | null = null;
+  for (let i = 0; i < 601; i++) last = await handleDownload(req(), ID, guest({ file: null }));
+  assert.equal(last?.status, 429);
+  assert.ok(Number(last?.headers.get('retry-after')) >= 1);
+  assert.equal((await handleDownload(req(), ID, guest({ cache: 'public' }))).status, 200);
+  // отказ при исчерпанном ведре — 429 на русском; по cookie kz — на казахском
+  assert.equal(await (await handleDownload(req(), ID, guest({ file: null }))).text(), 'Слишком много запросов. Повторите немного позже.');
+  assert.match(await (await handleDownload(req({ cookie: 'NEXT_LOCALE=kz' }), ID, guest({ file: null }))).text(), /Сұраныс/);
+});
+
+test('вошедшему отказ отвечает локализованным 404', async () => {
+  const ru = await handleDownload(req(), ID, deps({ allow: false }));
+  assert.equal(ru.status, 404);
+  assert.equal(await ru.text(), 'Файл не найден');
+  const kz = await handleDownload(req({ cookie: 'NEXT_LOCALE=kz' }), ID, deps({ allow: false }));
+  assert.equal(await kz.text(), 'Файл табылмады');
+});

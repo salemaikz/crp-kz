@@ -183,15 +183,20 @@ test('purpose=submission пока закрыт для всех, кроме ад�
   await db.sql`UPDATE files SET purpose = 'lesson_material' WHERE id = ${F.unused as string}`;
 });
 
-test('публичное демо: файлы видит только админ, остальным — отказ как при отсутствии доступа', async () => {
+test('публичное демо: документы видит только админ, изображения идут по обычным правилам', async () => {
+  const img = await upload(png(40, 30), { purpose: 'lesson_material', courseId: pub.courseId, lessonId: pub.lessonIds[0] });
+  await link(img.id, pub.lessonIds[0] as string);
   const back = setEnv({ DATABASE_URL: undefined, DEMO_MODE: '1' });
   try {
     assert.deepEqual(await can(U.admin, F.pubOpen as string), { ok: true, cache: 'private' });
     assert.deepEqual(await can(U.admin, F.draftCourse as string), { ok: true, cache: 'private' });
-    // зачисленный слушатель, посторонний и гость; публичная обложка — тоже закрыта
-    for (const id of [F.pubOpen, F.coverPublic, F.coverPrivate]) {
-      for (const u of [U.lrn, U.oth, U.member, U.demoted, null]) assert.deepEqual(await can(u, id as string), { ok: false }, `${id} ${JSON.stringify(u)}`);
-    }
+    // документ: зачисленный слушатель, посторонний и гость получают отказ
+    for (const u of [U.lrn, U.oth, U.member, U.demoted, null]) assert.deepEqual(await can(u, F.pubOpen as string), { ok: false }, JSON.stringify(u));
+    // изображения: обложка публичного курса видна гостю, картинка урока — зачисленному слушателю
+    assert.deepEqual(await can(null, F.coverPublic as string), { ok: true, cache: 'public' });
+    assert.equal(yes(await can(U.lrn, img.id)), true);
+    assert.equal(yes(await can(U.oth, img.id)), false);
+    assert.equal(yes(await can(null, F.coverPrivate as string)), false);
   } finally {
     back();
   }

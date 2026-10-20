@@ -138,6 +138,20 @@ test('картинка Markdown на PDF и блок image на PDF → file_wro
   assert.deepEqual(await linked(), [doc.id]);
 });
 
+test('голый абсолютный адрес и <https://…> — тоже ссылки: чужой файл → file_not_found, свой попадает в lesson_files', async () => {
+  const e = await validation(save([textBlock(`Скачайте: https://learn.example/api/files/${foreignImg.id}`)]));
+  assert.deepEqual(e.issues?.map((i) => [i.code, i.path]), [['file_not_found', ['ru', 'blocks', 0, 'markdown']]]);
+  const e2 = await validation(save([textBlock(`Скачайте: <https://learn.example/api/files/${foreignImg.id}>`)]));
+  assert.equal(e2.issues?.[0]?.code, 'file_not_found');
+  await save([textBlock(`Памятка: https://learn.example/api/files/${doc.id}`)]);
+  assert.deepEqual(await linked(), [doc.id]);
+});
+
+test('картинка по определению на PDF → file_wrong_kind', async () => {
+  const e = await validation(save([textBlock(`![x][r]\n\n[r]: /api/files/${doc.id}`)]));
+  assert.equal(e.issues?.[0]?.code, 'file_wrong_kind');
+});
+
 test('ошибка проверки ссылок откатывает сохранение целиком', async () => {
   await save([imageBlock(img)]);
   await validation(save([textBlock('новое'), imageBlock(foreignImg)]));

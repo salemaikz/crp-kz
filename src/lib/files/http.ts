@@ -2,6 +2,8 @@
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeWebStream } from 'node:stream/web';
 import { safeNext } from '../auth/safeNext';
+import kzMessages from '../../../messages/kz/files.json';
+import ruMessages from '../../../messages/ru/files.json';
 import { getDb } from '../db';
 import { isFeatureActive } from '../features';
 import { getStorage, StorageUnavailableError } from '../storage';
@@ -130,9 +132,16 @@ function cookieLocale(h: Headers): 'ru' | 'kz' {
   return m?.[1] === 'kz' ? 'kz' : 'ru';
 }
 
+type DownloadKey = keyof typeof ruMessages.files.download;
+
+/** Текст ответа выдачи по локали из cookie (ru по умолчанию). */
+function t(h: Headers, key: DownloadKey): string {
+  return (cookieLocale(h) === 'kz' ? kzMessages : ruMessages).files.download[key];
+}
+
 /** Гость → вход с возвратом на файл, вошедший → 404. Существование файла не раскрывается. */
 function denied(req: Request, id: string, user: Viewer | null): Response {
-  if (user) return text('Not found', 404);
+  if (user) return text(t(req.headers, 'notFound'), 404);
   const next = safeNext(`/api/files/${id}`) ?? '/';
   return new Response(null, {
     status: 302,
@@ -172,19 +181,29 @@ const defaultSource: NonNullable<HttpDeps['source']> = {
 };
 
 export async function handleDownload(req: Request, rawId: string, deps: HttpDeps): Promise<Response> {
-  if (!isFeatureActive('UPLOADS')) return text('Not found', 404); // аварийный выключатель, в том числе для админа
+  if (!isFeatureActive('UPLOADS')) return text(t(req.headers, 'notFound'), 404); // аварийный выключатель, в том числе для админа
   const source = deps.source ?? defaultSource;
   const user = await deps.getUser();
 
-  const limit = allowDownload(user ? { userId: user.id } : { ip: deps.clientIp(req.headers) ?? 'unknown' });
-  if (!limit.ok) return text('Too many requests', 429, { 'Retry-After': String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))) });
+  const throttle = (): Response | null => {
+    const limit = allowDownload(user ? { userId: user.id } : { ip: deps.clientIp(req.headers) ?? 'unknown' });
+    if (limit.ok) return null;
+    return text(t(req.headers, 'tooMany'), 429, { 'Retry-After': String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))) });
+  };
+  // Вошедший: лимит на пользователя до любой работы. Гость: ведро общее при неизвестном IP, поэтому
+  // списывается только при отказе (защита от перебора id) — публичные обложки не ограничиваются.
+  if (user) {
+    const limited = throttle();
+    if (limited) return limited;
+  }
+  const refuse = (id: string): Response => (user ? null : throttle()) ?? denied(req, id, user);
 
   const id = rawId.toLowerCase();
-  if (!isUuid(id)) return denied(req, rawId, user);
+  if (!isUuid(id)) return refuse(rawId);
   const file = await source.findFile(id);
-  if (!file) return denied(req, id, user);
+  if (!file) return refuse(id);
   const decision = await source.canRead(user, file);
-  if (!decision.ok) return denied(req, id, user);
+  if (!decision.ok) return refuse(id);
 
   const cacheControl = decision.cache === 'public' ? 'public, max-age=86400' : 'private, no-cache';
   const etag = `"${file.sha256}"`;
@@ -195,7 +214,7 @@ export async function handleDownload(req: Request, rawId: string, deps: HttpDeps
   const object = await source.open(file);
   if (!object) {
     console.error('[files] объект отсутствует', id);
-    return text('Not found', 404);
+    return text(t(req.headers, 'notFound'), 404);
   }
   return new Response(object.body, {
     status: 200,

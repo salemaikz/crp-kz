@@ -15,9 +15,11 @@ type Viewer = { id: string; role: string } | null;
 /**
  * Решение о доступе. Роль админа сверяется с БД (сессия могла устареть).
  *
- * Публичное демо (пароль демо-админа открыт, любой может загрузить файл): файлы, загруженные через
- * /api/uploads, видит только администратор. Остальные получают тот же отказ, что и при отсутствии
- * доступа, — отличить «закрыто» от «нет такого файла» нельзя.
+ * Публичное демо (пароль демо-админа открыт, любой может загрузить файл): документы (PDF, DOCX и т. п.)
+ * видит только администратор, чтобы демо не раздавало чужие файлы с нашего домена. Остальные получают
+ * тот же отказ, что и при отсутствии доступа. Изображения (обложки и картинки уроков) очищены от
+ * метаданных и отдаются с nosniff и CSP sandbox, поэтому идут по обычным правилам: слушательскую часть
+ * (обложка у гостя, картинка в уроке) в демо можно принять.
  */
 export async function canReadFile(user: Viewer, file: FileRow): Promise<FileReadDecision> {
   if (file.status !== 'active') return DENY;
@@ -29,7 +31,7 @@ export async function canReadFile(user: Viewer, file: FileRow): Promise<FileRead
     isAdmin = row?.role === 'admin';
   }
   if (isAdmin) return PRIVATE; // админу видны и черновики
-  if (isDemo()) return DENY;
+  if (isDemo() && file.kind === 'document') return DENY;
 
   if (file.purpose === 'course_cover') return canReadCover(user, file);
   if (file.purpose === 'lesson_material') return canReadMaterial(user, file);

@@ -24,6 +24,34 @@ test('JPEG без метаданных остаётся тем же наборо
   assert.deepEqual(Buffer.from(stripImageMetadata('jpg', src)), src);
 });
 
+test('JPEG: хвост после EOI (вложенный кадр с EXIF, MP4 с GPS) отбрасывается, байты до EOI не меняются', () => {
+  const src = jpeg(12, 9);
+  const tail = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x0e]),
+    Buffer.from('Exif\0\0GPS-LAT-1', 'latin1'),
+    Buffer.from('ftypmp4 GPS+043.2389', 'latin1'),
+  ]);
+  const out = Buffer.from(stripImageMetadata('jpg', Buffer.concat([src, tail])));
+  assert.equal(has(out, 'GPS'), false);
+  assert.equal(has(out, 'ftyp'), false);
+  assert.deepEqual(out, src);
+});
+
+test('JPEG: данные скана с FF00 и RST не режутся; APP11 и COM между сканами удаляются; без EOI — StripError', () => {
+  const seg = (marker: number, data: Buffer) => Buffer.concat([Buffer.from([0xff, marker, (data.length + 2) >> 8, (data.length + 2) & 0xff]), data]);
+  const sos = seg(0xda, Buffer.from([1, 1, 0, 0, 0x3f, 0]));
+  const scan1 = Buffer.from([0x11, 0xff, 0x00, 0x22, 0xff, 0xd0, 0x33]);
+  const base = jpeg(8, 8);
+  const head = base.subarray(0, base.indexOf(Buffer.from([0xff, 0xda])));
+  const src = Buffer.concat([head, sos, scan1, seg(0xeb, Buffer.from('jumb-author')), seg(0xfe, Buffer.from('comment')), sos, Buffer.from([0x44, 0xff, 0xd9])]);
+  const out = Buffer.from(stripImageMetadata('jpg', src));
+  assert.equal(has(out, 'jumb-author'), false);
+  assert.equal(has(out, 'comment'), false);
+  assert.equal(out.includes(scan1), true);
+  assert.equal(out.length, src.length - (4 + 'jumb-author'.length) - (4 + 'comment'.length)) // удалены два сегмента с заголовками;
+  assert.throws(() => stripImageMetadata('jpg', src.subarray(0, src.length - 2)), StripError);
+});
+
 test('PNG: пропадает tEXt, IHDR и IDAT не изменены, CRC корректны', () => {
   const src = png(16, 12, { text: 'Ivan Ivanov' });
   const out = Buffer.from(stripImageMetadata('png', src));

@@ -22,7 +22,7 @@ test('блоки image и file', () => {
 });
 
 test('Markdown: картинка требует изображение, ссылка — любой вид', () => {
-  assert.deepEqual(ids(ru(text(`![схема](/api/files/${A})`))), [`ru:0:markdown:image:${A}`]);
+  assert.deepEqual(ids(ru(text(`![схема](/api/files/${A})`))), [`ru:0:markdown:any:${A}`, `ru:0:markdown:image:${A}`]);
   assert.deepEqual(ids(ru(text(`[памятка](/api/files/${A})`))), [`ru:0:markdown:any:${A}`]);
 });
 
@@ -30,20 +30,31 @@ test('Markdown: абсолютный адрес, запрос, нескольк�
   const md = `см. [а](https://crp.example/api/files/${A}?x=1) и ![б](/api/files/${B} "подпись") и [в](</api/files/${C}>)\n\n[ref]: /api/files/${A}`;
   assert.deepEqual(ids(ru(text(md))), [
     `ru:0:markdown:any:${A}`,
-    `ru:0:markdown:image:${B}`,
+    `ru:0:markdown:any:${B}`,
     `ru:0:markdown:any:${C}`,
-    `ru:0:markdown:any:${A}`,
+    `ru:0:markdown:image:${B}`,
   ]);
 });
 
-test('вложенные скобки в подписи картинки', () => {
-  assert.deepEqual(ids(ru(text(`![рис [1]](/api/files/${A})`))), [`ru:0:markdown:image:${A}`]);
+test('голый абсолютный адрес и <https://…> — ссылки любого вида (GFM делает их ссылками)', () => {
+  assert.deepEqual(ids(ru(text(`Скачайте: https://learn.example/api/files/${A}`))), [`ru:0:markdown:any:${A}`]);
+  assert.deepEqual(ids(ru(text(`Скачайте: <https://learn.example/api/files/${B}>`))), [`ru:0:markdown:any:${B}`]);
 });
 
-test('id с лишними символами не совпадает; голый адрес без ссылки не считается', () => {
+test('картинка по определению: ![x][r] требует изображение, [x][r] — любой вид', () => {
+  assert.deepEqual(ids(ru(text(`![x][r]\n\n[r]: /api/files/${A}`))), [`ru:0:markdown:any:${A}`, `ru:0:markdown:image:${A}`]);
+  assert.deepEqual(ids(ru(text(`![r]\n\n[R]: /api/files/${A}`))), [`ru:0:markdown:any:${A}`, `ru:0:markdown:image:${A}`]);
+  assert.deepEqual(ids(ru(text(`[x][r]\n\n[r]: /api/files/${A}`))), [`ru:0:markdown:any:${A}`]);
+});
+
+test('вложенные скобки в подписи картинки', () => {
+  assert.deepEqual(ids(ru(text(`![рис [1]](/api/files/${A})`))), [`ru:0:markdown:any:${A}`, `ru:0:markdown:image:${A}`]);
+});
+
+test('id с лишними символами не совпадает; голый адрес считается ссылкой (GFM автоссылка)', () => {
   assert.deepEqual(ids(ru(text(`![x](/api/files/${A}a)`))), []);
   assert.deepEqual(ids(ru(text(`![x](/api/files/${A}-1)`))), []);
-  assert.deepEqual(ids(ru(text(`просто текст /api/files/${A}`))), []);
+  assert.deepEqual(ids(ru(text(`просто текст /api/files/${A}`))), [`ru:0:markdown:any:${A}`]);
   assert.deepEqual(ids(ru(text('![x](/api/files/not-an-id)'))), []);
 });
 
@@ -56,7 +67,7 @@ test('ссылки в kz и дубликаты', () => {
     ru: doc([text(`![x](/api/files/${A})`)]),
     kz: doc([text('текст'), text(`![x](/api/files/${A}) ![y](/api/files/${A})`)]),
   };
-  assert.deepEqual(ids(c), [`ru:0:markdown:image:${A}`, `kz:1:markdown:image:${A}`, `kz:1:markdown:image:${A}`]);
+  assert.deepEqual(ids(c), [`ru:0:markdown:any:${A}`, `ru:0:markdown:image:${A}`, `kz:1:markdown:any:${A}`, `kz:1:markdown:image:${A}`]);
 });
 
 test('контент без файлов — пустой список', () => {
