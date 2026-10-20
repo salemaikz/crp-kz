@@ -239,6 +239,7 @@ export const UPLOAD_LIMITS = {
   uploadsPerUser: { limit: 60, windowMs: 10 * 60_000 },
   concurrentPerUser: 3,
   minFreeDiskBytes: 1024 * MiB,
+  serverlessDemoMinFreeBytes: 64 * MiB,      // демо на Vercel/Netlify: весь /tmp ≈ 512 МБ
   totalQuotaBytesDefault: 20 * 1024 * MiB,   // UPLOAD_QUOTA_BYTES
   courseQuotaBytesDefault: 2 * 1024 * MiB,   // UPLOAD_COURSE_QUOTA_BYTES
   orphanGraceMs: 24 * 60 * 60_000,
@@ -433,8 +434,10 @@ export async function handleDownload(req: Request, id: string, deps: HttpDeps): 
    - Для cover лимит — `maxBytesFor('image')`, для материала — максимум из image и document.
 5. Лимит частоты на пользователя — иначе `rate_limited`, 429.
    Слот одновременных загрузок (не больше 3) — иначе `busy`, 429.
-6. `storageConfig().ok` и `health().ok`, свободно ≥ `minFreeDiskBytes + declaredSize` —
-   иначе `storage_unavailable`, 503.
+6. `storageConfig().ok` и `health().ok`, свободно ≥ `minFreeBytes() + declaredSize`
+   (`minFreeDiskBytes`; в демо на serverless — 64 МиБ; serverless — `VERCEL`, `NETLIFY` при сборке
+   или `AWS_LAMBDA_FUNCTION_NAME` в рантайме) — иначе `storage_unavailable`, 503; причина отказа
+   (код и мегабайты) пишется в лог.
 7. Предварительная проверка квоты (без блокировки) — иначе `quota`, 507.
 8. Потоковая запись в `tempDir()/<uuid>` (`wx`, `0600`) с подсчётом байт и `sha256`.
    Если байт больше `declaredSize` или лимита — обрыв, `too_large`, 413. Ноль байт — `empty`.
