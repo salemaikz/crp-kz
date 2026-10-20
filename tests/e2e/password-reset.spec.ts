@@ -93,13 +93,14 @@ test('подтверждение email: плашка, «Отправить пи�
   await expect(page.getByTestId('verify-resent')).toBeVisible();
 
   const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
-  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}$/);
+  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}&next=%2Fru%2Flearn$/);
   // на GET ничего не тратится: страница открывается и ждёт нажатия
   await page.goto(link);
   await expect(page.getByRole('button', { name: 'Подтвердить email' })).toBeVisible();
   await page.getByRole('button', { name: 'Подтвердить email' }).click();
-  await expect(page.getByTestId('verify-done')).toContainText('Email подтверждён');
-  // плашка в общем layout исчезает сразу, без полной перезагрузки
+  // в ссылке есть next: после подтверждения возвращаемся туда, где просили письмо
+  await expect(page).toHaveURL(/\/ru\/learn$/);
+  // плашка в общем layout исчезает
   await expect(page.getByTestId('verify-notice')).toHaveCount(0);
 
   await page.goto('/ru/learn');

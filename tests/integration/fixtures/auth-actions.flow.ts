@@ -1,6 +1,7 @@
 // Сценарии server actions авторизации с подменой next/headers и next/navigation.
 // Запускается из core-auth-actions.test.ts в отдельном процессе с --experimental-test-module-mocks.
 import assert from 'node:assert/strict';
+import { tmpdir } from 'node:os';
 import { mock, test } from 'node:test';
 
 type CookieOpts = { httpOnly?: boolean; sameSite?: string; secure?: boolean; expires?: Date };
@@ -167,6 +168,22 @@ async function withEnv(vars: Record<string, string>, fn: () => Promise<void>): P
     }
   }
 }
+
+// Должен идти до остальных register-тестов: загруженные тексты кэшируются, и чтение файла не повторится.
+test('register: тексты согласий не прочитались — validation, пользователь не создан', async () => {
+  const cwd = process.cwd();
+  process.chdir(tmpdir()); // legal читает content/ от cwd: файла нет
+  try {
+    const r = await A.registerAction(
+      undefined,
+      fd({ name: 'Тест', email: 'noread@x.kz', password: 'longpassword', consent: 'on', locale: 'ru', legalToken }),
+    );
+    assert.equal(r?.error, 'validation');
+  } finally {
+    process.chdir(cwd);
+  }
+  assert.equal(await userCount('noread@x.kz'), 0);
+});
 
 test('register: согласие, слабый пароль, валидация, занятый email, успех', async () => {
   const base = { name: 'Тест', email: 'new@x.kz', password: 'longpassword', consent: 'on', locale: 'ru', legalToken };

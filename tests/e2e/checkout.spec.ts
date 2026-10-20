@@ -18,8 +18,12 @@ async function confirmEmail(page: Page, browser: Browser, email: string): Promis
   await expect(page.getByRole('button', { name: 'Отправить письмо' })).toHaveCount(1);
   await expect(panel.getByRole('button', { name: 'Отправить письмо' })).toBeVisible();
 
+  // повторное письмо с панели покупки: прежняя ссылка гасится, новая обязана вести обратно на форму
+  await panel.getByRole('button', { name: 'Отправить письмо' }).click();
+  await expect(page.getByTestId('verify-resent')).toBeVisible();
+
   const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
-  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}&next=/);
+  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}&next=%2Fru%2Fcourses%2Fsales-doubling%2Fbuy$/);
   await page.goto(link);
   // на странице подтверждения плашки из layout нет
   await expect(page.getByTestId('verify-notice')).toHaveCount(0);
@@ -192,7 +196,7 @@ test('плашка подтверждения из layout: кнопка пере
 
   const banner = page.getByTestId('verify-notice');
   await expect(banner).toBeVisible();
-  // кнопка плашки отправляет адрес страницы, где нажата (читается в момент нажатия)
+  // кнопка плашки отправляет путь текущей страницы (скрытое поле next из usePathname, без query)
   const sent = page.waitForRequest((r) => r.method() === 'POST' && (r.postData() ?? '').includes('/ru/learn'));
   await banner.getByRole('button', { name: 'Отправить письмо' }).click();
   await sent;
