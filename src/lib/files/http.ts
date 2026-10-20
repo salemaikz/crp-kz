@@ -132,11 +132,11 @@ function cookieLocale(h: Headers): 'ru' | 'kz' {
   return m?.[1] === 'kz' ? 'kz' : 'ru';
 }
 
-type DownloadKey = keyof typeof ruMessages.files.download;
+type DownloadKey = keyof typeof ruMessages.download;
 
 /** Текст ответа выдачи по локали из cookie (ru по умолчанию). */
 function t(h: Headers, key: DownloadKey): string {
-  return (cookieLocale(h) === 'kz' ? kzMessages : ruMessages).files.download[key];
+  return (cookieLocale(h) === 'kz' ? kzMessages : ruMessages).download[key];
 }
 
 /** Гость → вход с возвратом на файл, вошедший → 404. Существование файла не раскрывается. */
