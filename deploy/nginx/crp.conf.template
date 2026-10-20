@@ -1,0 +1,103 @@
+# Сайт платформы обучения ЦРП. Шаблон: install-ops.sh подставляет {{DOMAIN}}, {{ROOT}}, {{PORT}}
+# и кладёт результат в /etc/nginx/sites-available/crp.conf. Файл подключается внутри http {}.
+# Блок между BEGIN-TLS и END-TLS install-ops.sh вырезает, пока нет сертификата (до certbot).
+
+upstream crp_app { server 127.0.0.1:{{PORT}}; keepalive 16; }
+
+limit_req_zone  $binary_remote_addr zone=crp_req:10m    rate=20r/s;
+limit_req_zone  $binary_remote_addr zone=crp_health:1m  rate=2r/s;
+limit_conn_zone $binary_remote_addr zone=crp_conn:10m;
+
+# Без query string и Referer: в них ключи заказов, токены сброса пароля и подтверждения email.
+log_format crp_noquery '$remote_addr [$time_iso8601] "$request_method $uri $server_protocol" '
+                       '$status $body_bytes_sent $request_time $upstream_response_time "$http_user_agent"';
+
+server {
+  listen 80;
+  listen [::]:80;
+  server_name {{DOMAIN}};
+  access_log /var/log/nginx/crp.access.log crp_noquery;
+  location /.well-known/acme-challenge/ { root /var/www/certbot; }
+  location / { return 301 https://$host$request_uri; }
+}
+
+# BEGIN-TLS
+# Чужой Host: обрыв рукопожатия (защита от подмены Host и сканеров).
+server {
+  listen 443 ssl default_server;
+  listen [::]:443 ssl default_server;
+  ssl_reject_handshake on;
+}
+
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name {{DOMAIN}};
+  ssl_certificate     /etc/letsencrypt/live/{{DOMAIN}}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/{{DOMAIN}}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache shared:CRP:10m;
+  ssl_session_timeout 1d;
+  ssl_session_tickets off;
+  server_tokens off;
+
+  access_log /var/log/nginx/crp.access.log crp_noquery;
+  error_log  /var/log/nginx/crp.error.log warn;
+
+  client_max_body_size 2m;            # server actions до 1 МБ (Next), запас на multipart
+  client_body_timeout 15s;
+  client_header_timeout 15s;
+  send_timeout 30s;
+  keepalive_timeout 30s;
+  limit_req_status 429;               # не 503: 503 отдаёт только приложение
+  limit_conn_status 429;
+  limit_conn crp_conn 50;
+
+  include /etc/nginx/snippets/crp-security-headers.conf;
+
+  proxy_http_version 1.1;
+  proxy_set_header Host              $host;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  # Перезаписываем, а не дописываем: цепочка из одного доверенного значения (TRUSTED_PROXY_HOPS=1).
+  proxy_set_header X-Forwarded-For   $remote_addr;
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header Connection        "";
+  proxy_read_timeout 60s;
+  proxy_buffering off;                # стриминг App Router
+
+  # Заголовки ответов приложения не скрываем и не подменяем: CSP у /api/files/ (с sandbox) остаётся,
+  # nginx добавляет к нему общий.
+
+  location /_next/static/ {
+    root {{ROOT}}/shared/static;      # ассеты всех живых релизов: без 404 у старых страниц
+    access_log off;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    include /etc/nginx/snippets/crp-security-headers.conf;   # add_header не наследуется
+  }
+  location = /api/health {
+    limit_req zone=crp_health burst=10 nodelay;
+    proxy_pass http://crp_app;
+  }
+  location = /api/uploads {           # 30 МБ только здесь, поток без буфера
+    limit_req zone=crp_req burst=10 nodelay;
+    client_max_body_size 30m;
+    client_body_timeout 120s;
+    proxy_request_buffering off;
+    proxy_read_timeout 180s;
+    proxy_pass http://crp_app;
+  }
+  location / {
+    limit_req zone=crp_req burst=60 nodelay;
+    proxy_pass http://crp_app;
+  }
+
+  error_page 502 504 /maintenance.html;   # только ошибки самого nginx (приложение недоступно)
+  location = /maintenance.html {
+    root {{ROOT}}/shared/maintenance;
+    internal;
+  }
+}
+# END-TLS

@@ -1,0 +1,6 @@
+# /etc/sudoers.d/crpdeploy (права 0440, проверка: visudo -cf). Ставит install-ops.sh.
+# crpdeploy собирает релизы. Ему нужно ровно два действия с чужими правами:
+# управлять PM2 от пользователя crp и делать бэкап перед миграциями от postgres.
+# Скрипты в /usr/local/lib/crp принадлежат root: код из релиза от postgres или root не запускается.
+crpdeploy ALL=(crp) NOPASSWD: /usr/bin/pm2
+crpdeploy ALL=(postgres) NOPASSWD: /usr/local/lib/crp/backup.sh --label pre-deploy-*

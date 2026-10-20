@@ -1,0 +1,28 @@
+# /etc/logrotate.d/crp: журналы PM2 и крона, хранение 14 дней. В журналах только счётчики и id, без ПДн.
+# copytruncate: PM2 и крон держат файл открытым, поэтому переименовывать его нельзя.
+# Два блока, потому что файлы пишут разные пользователи: logrotate обязан работать от владельца файла.
+# Списки файлов не пересекаются: logrotate не принимает один файл в двух блоках.
+
+# Пишет пользователь crp: PM2 и крон приложения.
+/var/log/crp/*-out.log /var/log/crp/*-err.log /var/log/crp/mail.log /var/log/crp/reminders.log /var/log/crp/files-sweep.log /var/log/crp/healthcheck.log /var/log/crp/backup-files.log {
+  daily
+  rotate 14
+  compress
+  delaycompress
+  copytruncate
+  missingok
+  notifempty
+  su crp adm
+}
+
+# Пишет пользователь postgres: бэкап БД.
+/var/log/crp/backup.log {
+  daily
+  rotate 14
+  compress
+  delaycompress
+  copytruncate
+  missingok
+  notifempty
+  su postgres adm
+}

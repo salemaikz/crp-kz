@@ -1,0 +1,10 @@
+# Фрагмент pg_hba.conf (заменяет строки по умолчанию). Порядок важен: первое совпадение побеждает.
+# postgres - только локальный сокет по peer (бэкап, восстановление, разовые работы DBA).
+local   all   postgres                       peer
+# Приложение и выкладка - только TCP на localhost, только по TLS, пароль scram-sha-256.
+hostssl crp   crp_app     127.0.0.1/32       scram-sha-256
+hostssl crp   crp_owner   127.0.0.1/32       scram-sha-256
+# Остальное запрещено.
+local   all   all                            reject
+host    all   all         0.0.0.0/0          reject
+host    all   all         ::/0               reject

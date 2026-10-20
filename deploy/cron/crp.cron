@@ -1,0 +1,24 @@
+# /etc/cron.d/crp: задачи платформы обучения ЦРП (устанавливает install-ops.sh).
+# Время сервера: UTC (журналы и epoch-мс проще сопоставлять). Переменную часового пояса cron
+# не используем: на Debian и Ubuntu она не поддерживается надёжно. Время Астаны = UTC+5, оно
+# указано в комментариях. Скрипты сами считают неделю и дату по Астане.
+# Приложения запускаются через run-script.sh: flock (без наложений) и timeout.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# Бэкап БД в 02:30 по Астане; в ночь на воскресенье по Астане (суббота, 21:30 UTC) с проверкой восстановления.
+30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp/backup.log 2>&1
+30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp/backup.log 2>&1
+# Бэкап загруженных файлов в 03:00 по Астане (при пустом STORAGE_DIR ничего не делает).
+0 22 * * *     crp /usr/local/lib/crp/backup.sh --files               >> /var/log/crp/backup-files.log 2>&1
+
+# Очередь писем: раз в минуту. При транспорте outbox только чистит старое и выходит с кодом 0.
+* * * * *      crp /usr/local/lib/crp/run-script.sh mail-worker       >> /var/log/crp/mail.log 2>&1
+# Напоминания о сроках: ежечасно с 09:00 до 19:00 по Астане (04:00-14:00 UTC). Флаг REMINDERS проверяет сам скрипт.
+0 4-14 * * *   crp /usr/local/lib/crp/run-script.sh send-reminders    >> /var/log/crp/reminders.log 2>&1
+# Чистка файлов в 04:00 по Астане. Работает и при выключенном UPLOADS: мусор убирается всегда (PLAN К-11).
+0 23 * * *     crp /usr/local/lib/crp/run-script.sh files-sweep       >> /var/log/crp/files-sweep.log 2>&1
+
+# Мониторинг каждые 5 минут.
+*/5 * * * *    crp /usr/local/lib/crp/healthcheck.sh                  >> /var/log/crp/healthcheck.log 2>&1
