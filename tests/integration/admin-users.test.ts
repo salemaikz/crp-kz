@@ -258,6 +258,35 @@ test('sendResetLink: лимит писем на получателя — отк�
   assert.equal((await resetAudit('user.password_reset_link', 'u2')).length, 5);
 });
 
+test('sendResetLink: сработал общий предел писем — отдельная причина global_cap, а не лимит адреса', async () => {
+  // у u1 писем нет, но в очереди за час уже есть чужие письма со ссылками
+  await withEnv({ MAIL_AUTH_HOURLY_CAP: '1' }, async () => {
+    assert.deepEqual(await sendResetLink(admin2, 'u1'), { sent: false, reason: 'global_cap' });
+  });
+  assert.equal(await resetMails('u1'), 0);
+  assert.equal((await resetAudit('user.password_reset_link', 'u1')).length, 0);
+  assert.equal((await resetAudit('user.password_reset_request', 'u1')).length, 0);
+});
+
+test('sendResetLink: запись user.password_reset_link в одной транзакции с письмом — сбой журнала откатывает письмо', async () => {
+  await db.sql`CREATE OR REPLACE FUNCTION fail_reset_link_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.action = 'user.password_reset_link' THEN RAISE EXCEPTION 'сбой журнала'; END IF;
+      RETURN NEW;
+    END $$`;
+  await db.sql`CREATE TRIGGER fail_reset_link_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_reset_link_audit()`;
+  try {
+    await assert.rejects(sendResetLink(admin2, 'u1'));
+  } finally {
+    await db.sql`DROP TRIGGER IF EXISTS fail_reset_link_audit ON audit_log`;
+    await db.sql`DROP FUNCTION IF EXISTS fail_reset_link_audit()`;
+  }
+  assert.equal(await resetMails('u1'), 0, 'письма в очереди нет');
+  assert.equal((await resetAudit('user.password_reset_request', 'u1')).length, 0);
+  const tokens = await db.sql`SELECT 1 FROM auth_tokens WHERE user_id = 'u1'`;
+  assert.equal(tokens.length, 0, 'токен не выдан');
+});
+
 test('sendResetLink: флаг выключен — FEATURE_DISABLED без записей; нет пользователя — NOT_FOUND; не админ — FORBIDDEN', async () => {
   await withEnv({ FEATURE_PASSWORD_RESET: '0' }, async () => {
     await rejects(sendResetLink(admin2, 'u1'), 'FEATURE_DISABLED');

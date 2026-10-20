@@ -174,7 +174,7 @@ export async function revokeAccessAction(locale: string, userId: string, courseI
 
 /**
  * Ссылка для смены пароля из карточки пользователя. «Поставлено в очередь» (ok) — только когда письмо
- * действительно встало в очередь; иначе error = причина (not_found, demo_seed, rate_limited, unavailable).
+ * действительно встало в очередь; иначе error = причина (not_found, demo_seed, rate_limited, global_cap, unavailable).
  */
 export async function sendResetLinkAction(locale: string, userId: string): Promise<ActionResult> {
   const loc = localeOf(locale);

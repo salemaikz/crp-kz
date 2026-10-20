@@ -3,10 +3,15 @@ import type { Sql } from '../db';
 import { enqueueMail } from '../mail/outbox';
 import { toL10n } from './l10n';
 
+const DAY_MS = 86_400_000;
+/** Писем «назначен курс» по одному назначению за сутки: частая смена срока не превращается в рассылку. */
+export const ASSIGNMENT_MAILS_PER_DAY = 3;
+
 /**
  * Поставить письма «назначен курс» сотрудникам, которым назначение выдано или обновлено.
  * Ключ идемпотентности — `assigned:{enrollmentId}:{dueAt|none}`: повтор с тем же сроком письма
- * не даёт, с новым сроком — даёт. Вызывающий проверяет флаг REMINDERS. Возвращает число поставленных.
+ * не даёт, с новым сроком — даёт, но не больше ASSIGNMENT_MAILS_PER_DAY за сутки на одно назначение
+ * (сам срок при этом обновляется, молчит только письмо). Вызывающий проверяет флаг REMINDERS. Возвращает число поставленных.
  */
 export async function queueAssignmentNotices(
   sql: Sql,
@@ -25,8 +30,19 @@ export async function queueAssignmentNotices(
   const [course] = await sql<{ slug: string; title: unknown }>`SELECT slug, title FROM courses WHERE id = ${input.courseId}`;
   if (!course) return 0;
 
+  // уже поставленные за сутки письма по этим назначениям (ключ начинается с assigned:{id}:)
+  const prefixes = people.map((p) => `assigned:${p.enrollmentId}:`);
+  const recent = await sql<{ prefix: string; n: number }>`
+    SELECT left(dedupe_key, length(dedupe_key) - length(split_part(dedupe_key, ':', 3))) AS prefix, count(*) AS n
+    FROM mail_outbox
+    WHERE template = 'assignment_new' AND created_at > ${input.nowMs - DAY_MS}
+      AND left(dedupe_key, length(dedupe_key) - length(split_part(dedupe_key, ':', 3))) = ANY(${prefixes})
+    GROUP BY 1`;
+  const sentToday = new Map(recent.map((r) => [r.prefix, Number(r.n)]));
+
   let queued = 0;
   for (const p of people) {
+    if ((sentToday.get(`assigned:${p.enrollmentId}:`) ?? 0) >= ASSIGNMENT_MAILS_PER_DAY) continue;
     const res = await enqueueMail(sql, {
       template: 'assignment_new',
       locale: p.locale,

@@ -6,7 +6,7 @@ import { getDb, now, type Sql } from '../db';
 import { writeAudit } from '../audit';
 import { isDemo } from '../env';
 import { isFeatureActive } from '../features';
-import { cancelSecrets, enqueueMail, normalizeRecipient } from '../mail/outbox';
+import { cancelSecrets, checkAuthMailCaps, enqueueMail, normalizeRecipient } from '../mail/outbox';
 import type { EnqueueResult } from '../mail/types';
 import { consumeToken, issueToken } from './tokens';
 import { safeNextPath } from './safeNext';
@@ -28,7 +28,7 @@ function isDemoSeedAccount(user: { id: string; email: string }): boolean {
 /** Исход запроса ссылки. Публичная форма его скрывает (нет перечисления аккаунтов), админ видит причину. */
 export type PasswordResetRequestResult =
   | { sent: true }
-  | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' | 'unavailable' };
+  | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' | 'global_cap' | 'unavailable' };
 
 /**
  * Запрос ссылки для смены пароля. Письмо уходит, только если аккаунт есть. Нет аккаунта, демо-аккаунт
@@ -36,12 +36,15 @@ export type PasswordResetRequestResult =
  * возвращается вызывающему. Публичное действие её не показывает (всегда «отправлено»): иначе форма
  * позволяла бы перечислять аккаунты. Вся работа — одна транзакция; если письмо не встало в очередь,
  * она откатывается и прежняя ссылка остаётся рабочей. actorId — админ, отправивший ссылку
- * (NULL — публичная форма).
+ * (NULL — публичная форма). auditLink — админская отправка: запись user.password_reset_link делается в
+ * той же транзакции, что и письмо (сбой записи откатывает и письмо). Причина global_cap — сработал общий
+ * предохранитель писем со ссылками (признак атаки или сбоя); публичная форма её не показывает.
  */
 export async function requestPasswordReset(input: {
   email: string;
   locale: Locale;
   actorId?: string | null;
+  auditLink?: boolean;
   nowMs?: number;
 }): Promise<PasswordResetRequestResult> {
   if (!isFeatureActive('PASSWORD_RESET')) return { sent: false, reason: 'unavailable' };
@@ -54,6 +57,9 @@ export async function requestPasswordReset(input: {
         SELECT id, email, name FROM users WHERE email = ${email} FOR UPDATE`;
       if (!user) return { sent: false, reason: 'not_found' };
       if (isDemoSeedAccount(user)) return { sent: false, reason: 'demo_seed' };
+      // причину лимита узнаём до issueToken (он различает отказы лишь как null); блокировка и подсчёт повторяются дёшево
+      const cap = await checkAuthMailCaps(sql, user.email, t);
+      if (cap) return { sent: false, reason: cap === 'global_cap' ? 'global_cap' : 'rate_limited' };
       const secret = await issueToken(sql, { userId: user.id, email: user.email, kind: 'password_reset', nowMs: t });
       if (!secret) return { sent: false, reason: 'rate_limited' }; // лимит писем: ничего не отправляем
       const res = await enqueueMail(sql, {
@@ -74,6 +80,15 @@ export async function requestPasswordReset(input: {
         entityId: user.id,
         createdAt: t,
       });
+      if (input.auditLink) {
+        await writeAudit(sql, {
+          actorId: input.actorId ?? null,
+          action: 'user.password_reset_link',
+          entity: 'user',
+          entityId: user.id,
+          createdAt: t,
+        });
+      }
       return { sent: true };
     });
   } catch (e) {

@@ -282,10 +282,53 @@ test('assignCourse: письмо assignment_new назначенным; проп
   assert.equal(letters[2]?.params.dueAt, null);
 });
 
-test('assignCourse: отклонённое назначение писем не оставляет (транзакция целиком)', async () => {
+test('assignCourse: четвёртая смена срока за сутки письма не ставит, срок обновляется', async () => {
+  await db.sql`DELETE FROM mail_outbox`;
+  await course('limitC');
+  const base = Date.now() + 10 * DAY;
+  for (let i = 0; i < 3; i++) {
+    await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'limitC', userIds: ['a1'], dueAt: base + i * DAY });
+  }
+  assert.equal((await noticeMails()).length, 3);
+  const last = base + 3 * DAY;
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'limitC', userIds: ['a1'], dueAt: last });
+  assert.equal((await noticeMails()).length, 3, 'четвёртого письма нет');
+  assert.equal((await getEnrollment('a1', 'limitC'))?.dueAt, last, 'срок обновлён');
+  // другой сотрудник и другой курс лимитом не затронуты
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'limitC', userIds: ['a2'], dueAt: last });
+  assert.equal((await noticeMails()).length, 4);
+});
+
+test('assignCourse: отклонённое назначение (не член организации) писем не оставляет', async () => {
   await db.sql`DELETE FROM mail_outbox`;
   await rejects(assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1', 'b1'] }), 'not_member');
   assert.equal((await noticeMails()).length, 0);
+});
+
+test('assignCourse: сбой после постановки письма откатывает и письмо, и новый срок', async () => {
+  await db.sql`DELETE FROM mail_outbox`;
+  // a1 уже назначен курс; новый срок даёт новое письмо (см. тест выше)
+  const dueBefore = (await getEnrollment('a1', 'noticeC'))?.dueAt ?? null;
+  const dueNew = Date.now() + 20 * DAY;
+  // запись журнала team.assign идёт после постановки письма: ломаем её триггером
+  await db.sql`CREATE OR REPLACE FUNCTION fail_team_assign_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.action = 'team.assign' THEN RAISE EXCEPTION 'сбой журнала'; END IF;
+      RETURN NEW;
+    END $$`;
+  await db.sql`CREATE TRIGGER fail_team_assign_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_team_assign_audit()`;
+  try {
+    await assert.rejects(assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1'], dueAt: dueNew }));
+  } finally {
+    await db.sql`DROP TRIGGER IF EXISTS fail_team_assign_audit ON audit_log`;
+    await db.sql`DROP FUNCTION IF EXISTS fail_team_assign_audit()`;
+  }
+  assert.equal((await noticeMails()).length, 0, 'письмо откатилось вместе с назначением');
+  assert.equal((await getEnrollment('a1', 'noticeC'))?.dueAt ?? null, dueBefore, 'срок не изменился');
+
+  // без сбоя то же назначение письмо ставит: тест не пустой
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1'], dueAt: dueNew });
+  assert.equal((await noticeMails()).length, 1);
 });
 
 test('assignCourse: при выключенном REMINDERS письмо не ставится, назначение выдаётся', async () => {

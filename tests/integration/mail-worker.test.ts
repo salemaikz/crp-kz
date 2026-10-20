@@ -215,6 +215,45 @@ test('поздний ответ после перехвата письма др�
   assert.equal(r.attempts, 2);
 });
 
+test('медленный транспорт: хвост пачки, чью аренду перехватил второй воркер, первый воркер не отправляет', async () => {
+  const a = await letter({ createdAt: T0 });
+  const b = await letter({ createdAt: T0 + 1 });
+  let clk = T0;
+  const second = fakeTransport();
+  let nested = false;
+  const first = fakeTransport(async () => {
+    if (!nested) {
+      nested = true;
+      // отправка первого письма «длилась» дольше аренды: крон запускает второй воркер
+      clk = T0 + LEASE_MS + 1;
+      await deliverPending({ transport: second.transport, nowMs: clk });
+    }
+    return {};
+  });
+  const res = await deliverPending({ transport: first.transport, nowMs: T0, clock: () => clk });
+  // второе письмо первый воркер не трогал: его отправил только второй воркер
+  assert.deepEqual(first.calls.map((m) => m.id), [a]);
+  assert.deepEqual(second.calls.map((m) => m.id).sort(), [a, b].sort());
+  assert.equal(res.sent, 0);
+  assert.equal((await row(b)).status, 'sent');
+});
+
+test('срок ссылки и sent_at считаются на момент отправки, а не захвата пачки', async () => {
+  const a = await letter();
+  const b = await letter({ template: 'password_reset', secretExpiresAt: T0 + MIN, createdAt: T0 + 1 });
+  let clk = T0;
+  const { transport, calls } = fakeTransport(async () => {
+    clk = T0 + 2 * MIN; // пока уходило первое письмо, ссылка второго истекла
+    return {};
+  });
+  const res = await deliverPending({ transport, nowMs: T0, clock: () => clk });
+  assert.equal(calls.length, 1);
+  assert.equal(res.sent, 1);
+  assert.equal(res.cancelled, 1);
+  assert.equal((await row(a)).sentAt, T0 + 2 * MIN);
+  assert.equal((await row(b)).status, 'cancelled');
+});
+
 test('пачка ограничена параметром batch, порядок — по времени создания', async () => {
   const a = await letter({ createdAt: T0 - 3 });
   const b = await letter({ createdAt: T0 - 2 });

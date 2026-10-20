@@ -52,7 +52,9 @@ async function queueLearnerReminders(
         ).map((r) => r.dedupeKey),
   );
 
-  for (const r of reminders) {
+  // единый порядок вставок (по ключу): параллельные прогоны берут блокировки в одном порядке
+  const ordered = [...reminders].sort((a, b) => (a.dedupeKey < b.dedupeKey ? -1 : a.dedupeKey > b.dedupeKey ? 1 : 0));
+  for (const r of ordered) {
     const person = byId.get(r.row.userId);
     if (!person) continue;
     if (r.kind === 'due_soon' && quiet.has(`assigned:${r.row.key}:${r.row.dueAt}`)) continue;
@@ -120,8 +122,9 @@ async function queueDigests(
 
 /**
  * Сформировать напоминания по всем организациям. Флаг REMINDERS выключен — { disabled: true },
- * ничего не пишется. Транзакция на одну организацию. Журнал `reminders.run` пишется, когда что-то
- * поставлено: часовой крон иначе засорял бы ленту пустыми записями. actorId — админ или NULL (крон).
+ * ничего не пишется. Транзакция на одну организацию. Журнал `reminders.run` пишется всегда, когда запуск
+ * ручной (actorId — админ), и только при непустом результате у крона (actorId = NULL): пустые часовые
+ * прогоны засоряли бы ленту.
  */
 export async function planReminders(opts: { nowMs?: number; actorId: string | null }): Promise<PlanResult> {
   if (!isFeatureActive('REMINDERS')) return { disabled: true };
@@ -144,7 +147,7 @@ export async function planReminders(opts: { nowMs?: number; actorId: string | nu
     });
   }
 
-  if (total.dueSoon + total.overdue + total.digests > 0) {
+  if (opts.actorId !== null || total.dueSoon + total.overdue + total.digests > 0) {
     await writeAudit(db.sql, {
       actorId: opts.actorId,
       action: 'reminders.run',

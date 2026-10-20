@@ -48,7 +48,7 @@ export async function UserConsents({ consents, locale }: { consents: ConsentView
                   {c.context === 'register' || c.context === 'checkout'
                     ? ` · ${t(`context.${c.context}`, { number: c.orderNumber ?? '' })}`
                     : ''}
-                  {` · ${formatDate(c.createdAt, locale, { short: true })}`}
+                  {` · ${formatDate(c.createdAt, locale, { short: true, withTime: true })}`}
                 </span>
               </li>
             );

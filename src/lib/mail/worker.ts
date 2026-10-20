@@ -51,10 +51,17 @@ export type DeliverResult = { sent: number; retried: number; failed: number; can
  * Отправить пачку писем. Захват — одной командой с FOR UPDATE SKIP LOCKED: два воркера не берут
  * одно письмо. Нужен MAIL_FROM: без адреса отправителя письма не уходят.
  */
-export async function deliverPending(opts: { transport: MailTransport; nowMs?: number; batch?: number }): Promise<DeliverResult> {
+export async function deliverPending(opts: {
+  transport: MailTransport;
+  nowMs?: number;
+  batch?: number;
+  /** Часы для проверки аренды и отметок отправки; по умолчанию nowMs (фиксированные в тестах) или now(). */
+  clock?: () => number;
+}): Promise<DeliverResult> {
   const from = mailFrom();
   if (!from) throw new Error('MAIL_FROM не задан: письма не отправляются');
-  const t = opts.nowMs ?? now();
+  const clock = opts.clock ?? (() => opts.nowMs ?? now());
+  const t = opts.nowMs ?? clock();
   const batch = opts.batch ?? 20;
   const replyTo = mailReplyTo() ?? undefined;
   const db = await getDb();
@@ -76,10 +83,18 @@ export async function deliverPending(opts: { transport: MailTransport; nowMs?: n
   const claimed = [...claimedRaw].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
   const result: DeliverResult = { sent: 0, retried: 0, failed: 0, cancelled: 0 };
   for (const row of claimed) {
+    // перед каждой отправкой аренда проверяется и продлевается: пока шли предыдущие письма пачки, она
+    // могла истечь, и письмо уже взял другой воркер. Тогда пропускаем: дубль не отправляем.
+    const tn = clock();
+    const owned = await db.sql`
+      UPDATE mail_outbox SET lease_until_at = ${tn + LEASE_MS}
+      WHERE id = ${row.id} AND status = 'sending' AND attempts = ${row.attempts} AND lease_until_at >= ${tn}
+      RETURNING id`;
+    if (owned.length === 0) continue;
     // обновления привязаны к номеру попытки: если аренда истекла и письмо взял другой воркер, наш
     // поздний ответ его состояние не затирает
     const dead =
-      SECRET_TEMPLATES.includes(row.template) && (row.secret === null || (row.secretExpiresAt !== null && row.secretExpiresAt <= t));
+      SECRET_TEMPLATES.includes(row.template) && (row.secret === null || (row.secretExpiresAt !== null && row.secretExpiresAt <= tn));
     if (dead) {
       // мёртвые ссылки не отправляем
       const done = await db.sql`
@@ -108,22 +123,23 @@ export async function deliverPending(opts: { transport: MailTransport; nowMs?: n
       error = sanitizeError(e);
     }
 
+    const tf = clock(); // момент ответа транспорта: от него sent_at и паузы повтора
     if (error === null) {
       const done = await db.sql`
         UPDATE mail_outbox
-        SET status = 'sent', sent_at = ${t}, provider_id = ${providerId}, secret = NULL, secret_expires_at = NULL,
-            lease_until_at = NULL, last_error = NULL, updated_at = ${t}
+        SET status = 'sent', sent_at = ${tf}, provider_id = ${providerId}, secret = NULL, secret_expires_at = NULL,
+            lease_until_at = NULL, last_error = NULL, updated_at = ${tf}
         WHERE id = ${row.id} AND status = 'sending' AND attempts = ${row.attempts}
         RETURNING id`;
       if (done.length > 0) result.sent += 1;
       continue;
     }
 
-    const next = nextAfterFailure(row.attempts, t);
+    const next = nextAfterFailure(row.attempts, tf);
     if (next.status === 'queued') {
       const done = await db.sql`
         UPDATE mail_outbox
-        SET status = 'queued', next_attempt_at = ${next.nextAttemptAt}, lease_until_at = NULL, last_error = ${error}, updated_at = ${t}
+        SET status = 'queued', next_attempt_at = ${next.nextAttemptAt}, lease_until_at = NULL, last_error = ${error}, updated_at = ${tf}
         WHERE id = ${row.id} AND status = 'sending' AND attempts = ${row.attempts}
         RETURNING id`;
       if (done.length > 0) result.retried += 1;
@@ -134,7 +150,7 @@ export async function deliverPending(opts: { transport: MailTransport; nowMs?: n
       const done = await sql`
         UPDATE mail_outbox
         SET status = 'failed', secret = NULL, secret_expires_at = NULL, next_attempt_at = NULL, lease_until_at = NULL,
-            last_error = ${error}, updated_at = ${t}
+            last_error = ${error}, updated_at = ${tf}
         WHERE id = ${row.id} AND status = 'sending' AND attempts = ${row.attempts}
         RETURNING id`;
       if (done.length === 0) return;
@@ -145,7 +161,7 @@ export async function deliverPending(opts: { transport: MailTransport; nowMs?: n
         entity: 'mail',
         entityId: row.id,
         meta: { mailId: row.id, template: row.template },
-        createdAt: t,
+        createdAt: tf,
       });
     });
   }

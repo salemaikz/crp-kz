@@ -96,7 +96,7 @@ export function RoleForm({ action, current, self }: RoleProps) {
 }
 
 /** Причины, по которым ссылка не ушла: у каждой свой текст в admin.users.sendResetFailed. */
-const RESET_REASONS = ['not_found', 'demo_seed', 'rate_limited', 'unavailable'] as const;
+const RESET_REASONS = ['not_found', 'demo_seed', 'rate_limited', 'global_cap', 'unavailable'] as const;
 
 /**
  * «Отправить ссылку для смены пароля». Ответ «поставлено в очередь» показывается только при успехе

@@ -1,6 +1,7 @@
 // Напоминания: кто получает письма, идемпотентность, изоляция организаций, флаг, журнал.
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, test } from 'node:test';
+import { setDb } from '../../src/lib/db';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
 import { AdminError } from '../../src/lib/admin/errors';
 import { planReminders } from '../../src/lib/reminders';
@@ -236,6 +237,28 @@ test('журнал: reminders.run с сущностью reminders, счётчи�
   await planReminders({ nowMs: NOW, actorId: null });
   const cron = await db.sql<{ actorId: string | null }>`SELECT actor_id FROM audit_log WHERE action = 'reminders.run' AND actor_id IS NULL`;
   assert.equal(cron.length, 1, 'пустой повтор записи не добавляет');
+
+  // ручной запуск админа пишется всегда, даже когда нового нет
+  await planReminders({ nowMs: NOW, actorId: 'mgrA' });
+  const manual = await db.sql<{ meta: Record<string, unknown> }>`
+    SELECT meta FROM audit_log WHERE action = 'reminders.run' AND actor_id = 'mgrA'`;
+  assert.equal(manual.length, 2, 'повторное нажатие кнопки тоже в журнале');
+  assert.ok(manual.some((m) => m.meta.dueSoon === 0 && m.meta.overdue === 0 && m.meta.digests === 0));
+});
+
+test('на настоящем сиде: ровно 2 «срок прошёл», 1 «скоро срок» и сводка manager@crp.demo', async () => {
+  const fresh = await createTestDb();
+  try {
+    const { seed } = await import('../../src/lib/db/seed');
+    await seed(fresh, { nowMs: NOW });
+    const res = await planReminders({ nowMs: NOW, actorId: null });
+    assert.deepEqual(res, { disabled: false, dueSoon: 1, overdue: 2, digests: 1 });
+    const digests = await fresh.sql<{ toEmail: string }>`SELECT to_email FROM mail_outbox WHERE template = 'manager_digest'`;
+    assert.deepEqual(digests.map((d) => d.toEmail), ['manager@crp.demo']);
+  } finally {
+    setDb(db); // обратно к БД остальных тестов файла
+    await fresh.close();
+  }
 });
 
 test('сид не создаёт строк mail_outbox: время в ключах и params не должно уезжать при сдвиге снимка', async () => {
@@ -273,4 +296,6 @@ test('runRemindersAs: только администратор; без флага
   const [a] = await db.sql<{ actorId: string }>`SELECT actor_id FROM audit_log WHERE action = 'reminders.run'`;
   assert.equal(a?.actorId, 'adm');
   assert.deepEqual(await runRemindersAs({ id: 'adm', role: 'admin' }), { learners: 0, digests: 0 });
+  const runs = await db.sql`SELECT 1 FROM audit_log WHERE action = 'reminders.run' AND actor_id = 'adm'`;
+  assert.equal(runs.length, 2, 'нажатие без новых писем тоже попадает в журнал');
 });

@@ -2,7 +2,6 @@
 // Каждая функция сама проверяет администратора и флаг: тестируются без Next, вызываются из действий и страницы.
 import type { Locale } from '../content/types';
 import { getDb, now } from '../db';
-import { writeAudit } from '../audit';
 import { requestPasswordReset, type PasswordResetRequestResult } from '../auth/recovery';
 import { isFeatureActive } from '../features';
 import { listUserConsents, type ConsentView } from '../legal/consents';
@@ -23,18 +22,9 @@ export async function sendResetLink(actor: Actor, userId: string): Promise<Passw
   if (!user) throw new AdminError('NOT_FOUND');
 
   const t = now();
-  // requestPasswordReset сам пишет user.password_reset_request с actorId
-  const res = await requestPasswordReset({ email: user.email, locale: user.locale, actorId: actor.id, nowMs: t });
-  if (res.sent) {
-    await writeAudit(db.sql, {
-      actorId: actor.id,
-      action: 'user.password_reset_link',
-      entity: 'user',
-      entityId: user.id,
-      createdAt: t,
-    });
-  }
-  return res;
+  // requestPasswordReset сам пишет user.password_reset_request и (auditLink) user.password_reset_link
+  // в одной транзакции с письмом
+  return requestPasswordReset({ email: user.email, locale: user.locale, actorId: actor.id, auditLink: true, nowMs: t });
 }
 
 /**
