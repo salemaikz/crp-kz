@@ -1,8 +1,8 @@
 # Проект «ops»: выкладка на сервер ЦРП в Казахстане (#24, ops.1)
 
 > Проект до реализации. После реализации источник истины — код и docs/lms/BUILD.md; решения — DECISIONS.md. Статусы решений — только в DECISIONS.md.
-> После волны 5 (2026-10-20) §3 и §7 сверены с кодом, `deploy/**` и `docs/ops/RUNBOOK.md`; что
-> ещё меняется, помечено «5B-хвосты»/«D-039…D-041» и расписано в PLAN §5, «Волна 5 — хвосты после ревью».
+> После волны 5 (2026-10-20) §3 и §7 сверены с кодом, `deploy/**` и `docs/ops/RUNBOOK.md`; решения —
+> D-039…D-041, правки после ревью — PLAN §5, «Волна 5 — хвосты после ревью».
 
 Уровень: T2 (доступы, ПДн, миграции, бэкапы). Автор: architect. Код не написан, файлы репозитория
 не менялись.
@@ -178,7 +178,7 @@ schema_migrations`. От имени `crp_app` это ошибка: в PG15+ пр
 **Каталоги релизов + симлинк `current` + PM2 cluster с одним экземпляром + `pm2 startOrReload`.**
 
 ```
-/srv/crp/                          root:crp 0751
+/srv/crp/                          crpdeploy:crp 0751 — current меняет crpdeploy; группа crp без записи; o+x для nginx
   repo.git/                        bare-зеркало github.com/salemaikz/crp-kz (crpdeploy)
   releases/                        crpdeploy:crp 2750 — setgid: новые релизы получают группу crp
     <UTC-ts>-<tag>/                .next/cache — 2770 (пишет crp)
@@ -198,18 +198,18 @@ schema_migrations`. От имени `crp_app` это ошибка: в PG15+ пр
   backup-recipients.txt root 0644  открытые ключи age
 /usr/local/lib/crp/                root 0755 — копии deploy/bin/* и grants.sql (ставит install-ops.sh)
 /var/lib/crp/files                 crp 0700 — STORAGE_DIR (uploads.md)
-/var/lib/crp-ops/                  postgres:crp 0775 — статусы бэкапа и мониторинга (5B-хвосты: 1775)
-/var/log/crp/                      crp:adm 0755 — логи PM2 и крона (5B-хвосты: 0750)
-  backup/backup.log                postgres:adm — журнал бэкапа БД (5B-хвосты: /var/log/crp-backup/)
+/var/lib/crp-ops/                  postgres:crp 1775 (sticky) — статусы бэкапа и мониторинга
+/var/log/crp/                      crp:adm 0750 — логи PM2 и крона
+/var/log/crp-backup/backup.log     postgres:adm (каталог 0750) — журнал бэкапа БД
 /var/backups/crp/                  root 0711: daily, weekly, monthly, manual (postgres 0700), files (crp 0700)
 ```
 
-Пометки «5B-хвосты» — граница пользователей ОС (D-041): postgres не пишет туда, где crp может
-подменить файл или подкаталог. Сейчас crp владеет `/var/log/crp` и может переименовать
-подкаталог `backup/` и подложить символическую ссылку `backup.log` на файл postgres (например,
-`postgresql.auto.conf`); крон от postgres допишет в неё строки, и Postgres не стартует. То же с
-предсказуемым `backup-status.json.tmp` в `/var/lib/crp-ops` (группа crp пишет в каталог).
-Исправление — PLAN §5, «Волна 5 — хвосты после ревью», 5B-хвосты.
+Граница пользователей ОС (D-041): postgres не пишет туда, где `crp` может подменить файл или
+подкаталог. Журнал бэкапа лежит вне каталога `crp`, статусы в `/var/lib/crp-ops` с sticky-битом
+пишутся через `mktemp`, `chmod` и `mv -T`. Корень `/srv/crp` принадлежит `crpdeploy`, потому что
+`deploy.sh` и `rollback.sh` меняют в нём `current`; группа `crp` в корне имеет только r-x. Подкаталог
+`.next/cache` получает default ACL `g:crp:rwX`, чтобы `crpdeploy` мог удалить старый релиз; уборка
+старых релизов не фатальна (RUNBOOK, раздел 4).
 
 ОС-пользователи:
 - `crp` — запускает PM2 и крон приложения, только читает код;
@@ -551,9 +551,11 @@ nginx"`. OCSP stapling не настраиваем: Let's Encrypt закрыл O
 Режим `--files` (от `crp`, отдельная строка крона): `tar -C $STORAGE_DIR -czf - . | age -R … >
 files/files-<ts>.tar.gz.age`, ротация по `BACKUP_KEEP_DAILY` и статус `files-status.json`. Если
 `STORAGE_DIR` не задан или пуст (флаг `UPLOADS` выключен), режим ничего не делает и выходит с
-кодом 0. Вторая копия файлов — 5B-хвосты: свой адрес и ключ (`BACKUP_FILES_REMOTE`,
-`BACKUP_FILES_REMOTE_SSH_KEY`, запасное значение — общие `BACKUP_REMOTE*`), потому что ключ
-для `files/` читает пользователь приложения.
+кодом 0. Вторая копия файлов: свой адрес и ключ (`BACKUP_FILES_REMOTE`,
+`BACKUP_FILES_REMOTE_SSH_KEY`), потому что ключ для `files/` читает пользователь приложения.
+Пустой `BACKUP_FILES_REMOTE` — запасной `BACKUP_REMOTE`; ключ без запасного: без
+`BACKUP_FILES_REMOTE_SSH_KEY` или при совпадении с ключом БД (сравниваются настоящие пути) или если
+ключ БД читается пользователем crp, копия файлов не уходит, `offsite=false` (D-041).
 
 **Отвергли:**
 - *gpg с паролем на сервере* — копия на внешнем хранилище расшифровывается тем же паролем,
@@ -590,7 +592,7 @@ files/files-<ts>.tar.gz.age`, ротация по `BACKUP_KEEP_DAILY` и ста�
 | `GET 127.0.0.1:$port/api/health` | `status=ok`, ответ < 5 с |
 | PM2: процесс `online`, рост `restart_time` | fail, если процесс не `online`; warn, если +3 рестарта за час |
 | Свежесть бэкапа (`backup`, `backup_files`) | `ok=true` и `at` моложе 26 ч; `backup_files` — только если `STORAGE_DIR` не пуст |
-| Вторая копия (`backup_offsite`) | только при заданном `BACKUP_REMOTE`: `offsite=false` в статусе — warn, 48 ч подряд — fail. 5B-хвосты: `files-status.json` учитывается при тех же условиях, что `backup_files`, и только свежий (моложе 26 ч) |
+| Вторая копия (`backup_offsite`) | только при заданном `BACKUP_REMOTE`: `offsite=false` в статусе — warn, 48 ч подряд — fail. `files-status.json` учитывается при тех же условиях, что `backup_files`, и только свежий (моложе 26 ч) |
 | Свободное место на `/`, `/var/backups`, `STORAGE_DIR` | warn < 20 %, fail < 10 % |
 | Срок сертификата TLS (`openssl s_client` на 127.0.0.1:443 с SNI домена) | warn < 21 дня, fail < 7 дней |
 | Внешний взгляд | `curl -fsS https://$DOMAIN/api/health` — проверяет DNS, TLS и nginx |
@@ -620,8 +622,8 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
 # Бэкап БД 02:30 Астаны; в ночь на воскресенье по Астане (суббота 21:30 UTC) — с полной проверкой восстановления
-30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp/backup/backup.log 2>&1
-30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp/backup/backup.log 2>&1
+30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp-backup/backup.log 2>&1
+30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp-backup/backup.log 2>&1
 # Бэкап загруженных файлов 03:00 Астаны
 0 22 * * *     crp /usr/local/lib/crp/backup.sh --files               >> /var/log/crp/backup-files.log 2>&1
 # Очередь писем (mail-account.md): раз в минуту; при транспорте outbox только чистит старое, код 0
@@ -635,8 +637,8 @@ MAILTO=""
 ```
 
 Журнал бэкапа БД пишет `postgres`, поэтому он лежит в своём подкаталоге `backup/` (владелец
-postgres) и ротируется отдельным блоком logrotate с `su postgres adm`. В 5B-хвостах он
-переезжает в `/var/log/crp-backup/backup.log`: каталог `/var/log/crp` принадлежит `crp`, и
+postgres) и ротируется отдельным блоком logrotate с `su postgres adm`. Он
+лежит в `/var/log/crp-backup/backup.log`: каталог `/var/log/crp` принадлежит `crp`, и
 подкаталог postgres внутри него можно подменить (§3.1, D-041). `files-sweep` флаг `UPLOADS` не
 проверяет: мусор убирается всегда.
 
@@ -679,7 +681,7 @@ postgres) и ротируется отдельным блоком logrotate с `
 `BACKUP_OWNER_ROLE=crp_owner`, `BACKUP_APP_ROLE=crp_app`, `BACKUP_DIR=/var/backups/crp`,
 `BACKUP_AGE_RECIPIENTS_FILE=/etc/crp/backup-recipients.txt`, `BACKUP_KEEP_DAILY=14`,
 `BACKUP_KEEP_WEEKLY=8`, `BACKUP_KEEP_MONTHLY=6`, `BACKUP_REMOTE=` (пусто до решения),
-`BACKUP_REMOTE_SSH_KEY=` (путь к ключу), `STORAGE_DIR=/var/lib/crp/files`. 5B-хвосты добавляют
+`BACKUP_REMOTE_SSH_KEY=` (путь к ключу), `STORAGE_DIR=/var/lib/crp/files`. Для `--files` добавлены
 `BACKUP_FILES_REMOTE=` и `BACKUP_FILES_REMOTE_SSH_KEY=` для `--files`.
 
 `/etc/crp/monitor.env`: `DOMAIN=`, `ALERT_TELEGRAM_BOT_TOKEN=`, `ALERT_TELEGRAM_CHAT_ID=`.
@@ -709,7 +711,7 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
    --email … --name … --owner-org-name "ЦРП" --owner-org-slug crp`. Пароль вводится в
    приглашении, не в командной строке. Демо-данных на проде нет: preflight проверяет, что нет
    `@crp.demo`. Повышение существующего аккаунта (`--promote`) и подтверждение личности вне
-   системы (`--identity-confirmed`) — §3.16, D-039; текст для RUNBOOK §3 — 5B-хвосты.
+   системы (`--identity-confirmed`) — §3.16, D-039; текст — RUNBOOK §3.
 4. **Выкладка.** Тег ставится на `main` после зелёного CI. Затем `deploy.sh vX.Y.Z`. Что
    значат коды выхода. Как читать `deploy.log`. Ассеты старых страниц продолжают отдаваться.
 5. **Миграции.** Только добавляющие и идемпотентные. Удаление колонки или таблицы — в два
@@ -1077,7 +1079,7 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 | 20 | Подмена зависимостей при сборке | `npm ci` строго по lock-файлу, версии закреплены (BUILD §1). Проверить на стейдже `--ignore-scripts`; если сборка проходит — включить |
 | 21 | Пароль админа в истории shell или в `ps` | `create-admin` не принимает пароль аргументом: приглашение без эха или stdin |
 | 23 | Повышение чужого аккаунта: заранее зарегистрирован похожий адрес, или старая сессия повышаемого осталась на общем компьютере | `--promote` закрывает все сессии повышаемого; неподтверждённый адрес — `unverified`, пока сотрудник лично не подтвердит адрес и ящик (`--identity-confirmed`: новый пароль, сессии и ссылки погашены). Остаточный риск — ошибка в адресе; ограничение доменом ЦРП — вопрос владельцу (D-039) |
-| 24 | Взломанное приложение (`crp`) портит файлы `postgres` через подменённый журнал или статус бэкапа | Граница пользователей ОС (D-041): postgres пишет только в каталоги, где `crp` не может подменить файл или подкаталог; статусы — через `mktemp` и `chmod` до `mv`. Сейчас нарушено, исправляют 5B-хвосты |
+| 24 | Взломанное приложение (`crp`) портит файлы `postgres` через подменённый журнал или статус бэкапа | Граница пользователей ОС (D-041): postgres пишет только в каталоги, где `crp` не может подменить файл или подкаталог; статусы — через `mktemp` и `chmod` до `mv`. Корень установки принадлежит `crpdeploy` (r-x для группы crp), поэтому владение им не даёт `crp` новых путей записи |
 | 22 | Clickjacking, XSS со сторонних источников | `X-Frame-Options DENY` + `frame-ancestors 'none'`. CSP разрешает внешний источник только `youtube-nocookie` во фрейме |
 
 ---

@@ -253,6 +253,20 @@ test('install-ops.sh: releases с setgid, журнал бэкапа вне ка�
   assert.match(read('logrotate', 'crp'), /crp-backup\/backup\.log \{[^}]*su postgres adm/);
 });
 
+test('install-ops.sh: корень с current принадлежит пользователю выкладки, а не root (gate5-fixes)', () => {
+  const t = read('bin', 'install-ops.sh');
+  assert.match(t, /install -d -m 0751 -o crpdeploy -g crp "\$ROOT"$/m);
+  assert.doesNotMatch(t, /-o root -g crp "\$ROOT"/);
+  // группа crp в корне без записи (0751), приложение новых путей записи не получает
+  assert.doesNotMatch(t, /(chmod|install -d -m) (0?[0-7]?[0-7][2367][0-7]|[0-7]*[2367]) [^\n]*"\$ROOT"$/m);
+  assert.match(read('bin', 'lib.sh'), /ln -s [^\n]*\|\| die 2 "нет права записи в \$CRP_ROOT"/);
+  assert.match(read('bin', 'lib.sh'), /mv -T [^\n]*\|\| die 2 "нет права записи в \$CRP_ROOT"/);
+});
+
+test('install-ops.sh: предупреждает, если имя статуса занято каталогом или ссылкой', () => {
+  assert.match(read('bin', 'install-ops.sh'), /-d \/var\/lib\/crp-ops\/\$st \|\| -L [^\n]*\n[^\n]*занят каталогом или ссылкой/);
+});
+
 test('nginx: журнал ошибок не пишет строки запросов с query', () => {
   assert.match(read('nginx', 'crp.conf.template'), /error_log\s+\S+\s+crit;/);
 });

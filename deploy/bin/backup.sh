@@ -87,6 +87,7 @@ write_status() {
     return 0
   fi
   rm -f "$tmp" 2>/dev/null || true
+  say "не удалось записать статус $(basename "$STATUS_FILE"): имя занято или нет права (RUNBOOK, раздел 7)"
 }
 cleanup() {
   if [[ -n "$CHECK_DB" ]]; then dropdb --if-exists "$CHECK_DB" >/dev/null 2>&1 || true; fi
@@ -145,8 +146,14 @@ push_offsite() {
       say "нужен свой ключ файлов BACKUP_FILES_REMOTE_SSH_KEY (D-041): общий ключ БД для копии файлов не используется"
       return 1
     fi
-    if [[ -n "$REMOTE_KEY" && "$key" == "$REMOTE_KEY" ]]; then
+    # Сравниваем настоящие пути: ссылка или ./ не должны скрыть тот же файл.
+    if [[ -n "$REMOTE_KEY" && "$(realpath -e -- "$key" 2>/dev/null || echo "$key")" == "$(realpath -e -- "$REMOTE_KEY" 2>/dev/null || echo "$REMOTE_KEY")" ]]; then
       say "ключ файлов совпадает с ключом БД: заведите отдельный BACKUP_FILES_REMOTE_SSH_KEY (D-041)"
+      return 1
+    fi
+    # Ключ БД читается пользователем, от которого идут файлы (crp): взлом приложения дал бы запись в хранилище дампов.
+    if [[ -n "$REMOTE_KEY" && -r "$REMOTE_KEY" ]]; then
+      say "ключ БД читается этим пользователем: закройте его (владелец postgres, 0600), копия файлов не отправлена (D-041)"
       return 1
     fi
   fi

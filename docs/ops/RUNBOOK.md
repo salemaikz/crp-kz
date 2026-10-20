@@ -34,7 +34,7 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 Каталоги и владельцы:
 
 ```
-/srv/crp/                      root:crp 0751
+/srv/crp/                      crpdeploy:crp 0751 (current меняет crpdeploy; группа crp без записи; o+x для nginx)
   repo.git/                    зеркало репозитория (crpdeploy)
   releases/<UTC>-<тег>/        crpdeploy:crp 2750 (setgid на releases: группа crp у новых релизов); .next/cache 2770
     RELEASE.json               {id, tag, sha, builtAt}
@@ -59,6 +59,11 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 /var/backups/crp/              root 0711: daily, weekly, monthly, manual (postgres 0700), files (crp 0700)
 ```
 
+Владелец корня `/srv/crp` — `crpdeploy`: `deploy.sh` и `rollback.sh` создают в нём `current.tmp` и
+переименовывают его в `current`. Для `crp` корень открыт только на чтение и проход (группа crp, r-x),
+новых путей записи у приложения нет; подкаталоги `releases` (2750) и `shared` принадлежат `crpdeploy`.
+Нет права записи в корне означает код 2 и строку «нет права записи в <корень>» в `deploy.log`.
+
 Пользователи ОС: `crp` запускает PM2 и крон приложения и только читает код; `crpdeploy`
 собирает релизы и знает пароль владельца схемы. `sudoers` даёт `crpdeploy` ровно два права:
 `pm2` от имени `crp` и `backup.sh --label pre-deploy-*` от имени `postgres`.
@@ -76,19 +81,23 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 2. SSH только по ключам, `PermitRootLogin no`, `ufw allow 22,80,443`, `fail2ban` для sshd,
    `unattended-upgrades` (security), swap 2 ГБ.
 3. Node 22 (NodeSource), `npm i -g pm2@<точная версия>`.
-4. `apt install postgresql-16`; положить `deploy/postgres/postgresql.conf.d/crp.conf` в
+4. `apt install postgresql-16`; положить `deploy/postgres/postgresql.conf.d/crp.conf` (из выгрузки комплекта, шаг 7) в
    `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
-5. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f deploy/postgres/roles.sql`,
+5. Роли и БД (комплект выгружен на шаге 7): `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
    затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
-6. `apt install nginx certbot python3-certbot-nginx age rsync jq`.
+6. `apt install nginx certbot python3-certbot-nginx age rsync jq acl`.
 7. Пользователи без пароля и без оболочки для входа:
    `useradd --create-home --shell /usr/sbin/nologin crp`, затем
    `useradd --create-home --shell /usr/sbin/nologin --groups crp crpdeploy` (crp для crpdeploy
    дополнительная группа). Группу новых релизов задаёт setgid на `releases` (его ставит
-   `install-ops.sh`); `deploy.sh` останавливается с кодом 2, если группа релиза не `crp`. `git clone --mirror <адрес репозитория> /srv/crp/repo.git`, владелец
-   `crpdeploy`.
-8. Выгрузить комплект нужного тега и поставить: `git -C /srv/crp/repo.git archive <тег> deploy | tar -x -C <временный каталог>`,
-   затем `sudo <временный каталог>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
+   `install-ops.sh`); `deploy.sh` останавливается с кодом 2, если группа релиза не `crp`.
+   Корень и зеркало репозитория: `install -d -m 0751 -o crpdeploy -g crp /srv/crp`, затем
+   `sudo -u crpdeploy git clone --mirror <адрес репозитория> /srv/crp/repo.git`. Зеркало принадлежит
+   `crpdeploy`, поэтому любой `git` по нему запускается от этого пользователя: от root git
+   (версии 2.35.2 и новее) отвечает «detected dubious ownership». Выгрузка комплекта нужного тега:
+   `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && sudo -u crpdeploy git -C /srv/crp/repo.git archive <тег> deploy | tar -x -C "$d"`
+   (`<каталог выгрузки>` ниже и в шагах 4 и 5 — это `$d`; postgres должен его читать).
+8. Поставить комплект: затем `sudo <каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
    скрипт ставит только порт 80. Получить сертификат:
    `certbot certonly --webroot -w /var/www/certbot -d <домен>`, затем
    `install-ops.sh --domain <домен>` ещё раз (подключит TLS). Таймер `certbot.timer` с
@@ -100,7 +109,7 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
     репозиторий, чат и issue не попадают.
 11. Открытые ключи age хранителей в `/etc/crp/backup-recipients.txt` (см. раздел 6).
 12. Первая выкладка: `sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z`.
-13. `pm2 startup systemd -u crp` и `pm2 save` (команду выводит сам pm2).
+13. `sudo -u crp -H pm2 startup systemd -u crp --hp /home/crp`: pm2 выведет команду, её выполняет root. Затем `sudo -u crp -H pm2 save`.
 14. Первый администратор (раздел 3), первый бэкап и учебное восстановление (раздел 6.2).
 
 ## 3. Первый администратор
@@ -188,7 +197,19 @@ sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z
 13. `pm2 startOrReload` и `pm2 save`.
 14. До 90 с ждёт `/api/health` с новым `release`. Не дождался: автоматический `rollback.sh`.
 15. Оставляет 5 последних релизов, а также `current` и `previous`. Из общей статики удаляет только
-    файлы, которых нет ни в одном оставленном релизе.
+    файлы, которых нет ни в одном оставленном релизе. Уборка не фатальна: если релиз не удалился
+    (в `deploy.log` строка «не удалось удалить релиз»), выкладка всё равно кончается кодом 0, а лишний
+    каталог удаляют вручную от `crpdeploy`. Код 1 остаётся только для сбоя health после переключения.
+
+### Права на .next/cache
+
+Каталог `.next/cache` (2770, группа crp) пишет приложение от `crp`. Подкаталоги, которые оно создаёт
+с umask 022, получили бы `crp:crp 0755`, и `crpdeploy` не смог бы удалить такой релиз. Выбран
+default ACL: `deploy.sh` ставит `setfacl -d -m g:crp:rwX` на `.next/cache` (нужен пакет `acl`, он в
+списке шага 6 раздела 2). Новые подкаталоги получают группе crp права rwX, а `crpdeploy` входит в
+группу crp. Нет `setfacl` или ФС без ACL: выкладка идёт, в журнал пишется предупреждение, а старые
+релизы могут не удаляться (см. шаг 15). umask 007 для процесса в PM2 не выбран: PM2 не задаёт umask
+дочернему процессу.
 
 ### Сборка не ходит в БД
 
@@ -281,6 +302,9 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
    Сервер, настроенный по прежней версии (один общий ключ для postgres и crp): завести ключ файлов,
    сделать ключ БД `chown postgres:postgres` и `chmod 0600`, убедиться, что `sudo -u crp test -r <ключ БД>`
    возвращает ошибку, и убрать из хранилища доступ старого ключа к каталогу файлов.
+   Пустой `BACKUP_FILES_REMOTE` берёт запасной `BACKUP_REMOTE`, а ключ запасного не имеет: без
+   `BACKUP_FILES_REMOTE_SSH_KEY`, при совпадении с ключом БД (сравниваются настоящие пути) или если
+   ключ БД читается пользователем crp, копия файлов не уходит и `offsite=false` (D-041).
 3. Ключ хоста хранилища один раз добавить в `known_hosts` обоих пользователей (проверка включена,
    `StrictHostKeyChecking=yes`).
 4. Проверить: `sudo -u postgres /usr/local/lib/crp/backup.sh` и `sudo -u crp /usr/local/lib/crp/backup.sh --files`,
@@ -327,7 +351,9 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 (бэкап БД; каталог postgres:adm 0750, вне каталога crp, D-041) и `/var/log/nginx/crp.*`, хранение
 14 дней (`deploy/logrotate/crp`). На сервере, установленном по прежней раскладке, после запуска нового
 `install-ops.sh` и первой записи в новый журнал старый каталог `/var/log/crp/backup/` удалить:
-`rm -r /var/log/crp/backup`. В журнале доступа nginx нет
+`rm -r /var/log/crp/backup`. Если `install-ops.sh` предупредил, что `/var/lib/crp-ops/backup-status.json` или
+`manual-status.json` занят каталогом или ссылкой, удалите их от root (`rm -r`) и запустите установку снова;
+`backup.sh` пишет в журнал «не удалось записать статус», когда такое имя занято. В журнале доступа nginx нет
 query string и Referer: там бывают ключи заказов и токены. Журнал ошибок nginx ведётся с уровня
 crit, потому что записи уровня error содержат строку запроса. Журнал Postgres не пишет значения
 параметров запросов (`log_parameter_max_length = 0`). Крон-скрипты пишут только счётчики и id. **Логи с прода не вставлять в ИИ-сессии**

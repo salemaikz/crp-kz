@@ -461,6 +461,42 @@ test('backup.sh --files: свой ключ обязателен, общий кл
   assert.doesNotMatch(readFileSync(rsyncLog(db), 'utf8'), /\/k\/files/);
 });
 
+test('backup.sh --files: ключ файлов - ссылка на ключ БД, либо ключ БД читается - отказ (D-041)', opts, () => {
+  const rsyncLog = (b: ReturnType<typeof makeBackupCtx>) => join(b.ctx.dir, 'rsync.log');
+  const withFile = (b: ReturnType<typeof makeBackupCtx>) => writeFileSync(join(b.storage, 'f.txt'), 'x');
+  const set = (b: ReturnType<typeof makeBackupCtx>, extra: string) => writeFileSync(b.envFile, `${readFileSync(b.envFile, 'utf8')}${extra}`);
+  const link = makeBackupCtx();
+  withFile(link);
+  const dbKey = join(link.ctx.dir, 'db.key');
+  writeFileSync(dbKey, 'k');
+  symlinkSync(dbKey, join(link.ctx.dir, 'files.key'));
+  set(link, `BACKUP_REMOTE=${join(link.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=${dbKey}\nBACKUP_FILES_REMOTE_SSH_KEY=${join(link.ctx.dir, 'files.key')}\n`);
+  const r = link.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(link) });
+  assert.equal(r.status, 0, out(r));
+  assert.match(r.stdout, /совпадает с ключом БД/);
+  assert.equal(link.status('files-status.json').offsite, false);
+
+  // ключ БД читается текущим пользователем (файл существует и открыт): отказ даже при своём ключе файлов
+  const open = makeBackupCtx();
+  withFile(open);
+  const db2 = join(open.ctx.dir, 'db2.key');
+  writeFileSync(db2, 'k');
+  set(open, `BACKUP_REMOTE=${join(open.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=${db2}\nBACKUP_FILES_REMOTE_SSH_KEY=/k/files\n`);
+  const r2 = open.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(open) });
+  assert.equal(r2.status, 0, out(r2));
+  assert.match(r2.stdout, /ключ БД читается этим пользователем/);
+  assert.equal(existsSync(rsyncLog(open)), false);
+  assert.equal(open.status('files-status.json').offsite, false);
+});
+
+test('backup.sh: статус занят каталогом - строка в журнал, бэкап не падает', opts, () => {
+  const b = makeBackupCtx();
+  mkdirSync(join(b.ops, 'backup-status.json'));
+  const r = b.run();
+  assert.equal(r.status, 0, out(r));
+  assert.match(r.stdout, /не удалось записать статус backup-status\.json/);
+});
+
 test('backup.sh --files: ни одного адреса - второй копии нет, offsite=false', opts, () => {
   const b = makeBackupCtx();
   writeFileSync(join(b.storage, 'f.txt'), 'x');
@@ -586,6 +622,42 @@ test('deploy.sh: чужая группа релиза - код 2, каталог
   assert.equal(r.status, 2, out(r));
   assert.match(out(r), /группа каталога релиза/);
   assert.deepEqual(releases(ctx), []);
+});
+
+// --- Корень установки и уборка (gate5-fixes).
+
+test('switch_current: нет права записи в корень - код 2 и понятная причина в deploy.log', opts, () => {
+  const ctx = makeCtx();
+  // От root права каталога не действуют: отказ ln даёт заглушка в PATH.
+  const bin = join(ctx.dir, 'failbin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'ln'), '#!/bin/sh\nexit 1\n');
+  chmodSync(join(bin, 'ln'), 0o755);
+  const r = spawnSync('bash', ['-c', `. "${join(BIN, 'lib.sh')}"; switch_current r1; echo после`], {
+    env: { ...env(ctx), PATH: `${bin}:${env(ctx).PATH}` },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, out(r));
+  assert.doesNotMatch(r.stdout, /после/);
+  assert.match(readFileSync(join(ctx.root, 'shared', 'state', 'deploy.log'), 'utf8'), /нет права записи в/);
+});
+
+test('deploy.sh: уборка старого релиза не удалась - выкладка всё равно код 0', opts, () => {
+  const ctx = makeCtx();
+  const realRm = spawnSync('sh', ['-c', 'command -v rm'], { encoding: 'utf8' }).stdout.trim();
+  const bin = join(ctx.dir, 'rmbin');
+  mkdirSync(bin);
+  // rm -rf по каталогу релиза падает, как падает удаление чужих подкаталогов .next/cache
+  writeFileSync(join(bin, 'rm'), `#!/bin/sh\ncase "$*" in *-rf*/releases/*) exit 1;; esac\nexec ${realRm} "$@"\n`);
+  chmodSync(join(bin, 'rm'), 0o755);
+  const extra = { CRP_KEEP_RELEASES: '1', PATH: `${bin}:${env(ctx).PATH}` };
+  assert.equal(deploy(ctx, 'v0.1.0', extra).status, 0);
+  assert.equal(deploy(ctx, 'v0.2.0', extra).status, 0);
+  const r = deploy(ctx, 'v0.3.0', extra);
+  assert.equal(r.status, 0, out(r));
+  assert.match(readFileSync(join(ctx.root, 'shared', 'state', 'deploy.log'), 'utf8'), /не удалось удалить релиз .*v0\.1\.0/);
+  assert.match(currentId(ctx), /v0\.3\.0$/);
+  assert.equal(count(ctx, 'health:3000:ok'), 3);
 });
 
 // --- healthcheck.sh: curl и pm2 подменены в каталоге теста; запросы curl пишутся в файл.

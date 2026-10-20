@@ -155,6 +155,14 @@ if [[ -n "$APP_GROUP" ]]; then
   if ! { chgrp "$APP_GROUP" "$REL/.next/cache" && chmod 2770 "$REL/.next/cache"; }; then
     die 2 "не удалось выдать группе $APP_GROUP запись в .next/cache"
   fi
+  # Подкаталоги, которые создаст crp (umask 022), по умолчанию получили бы права 0755 и стали бы
+  # неудаляемыми для crpdeploy. Default ACL даёт группе rwX на всё новое. Без ACL уборка старых
+  # релизов нефатальна (шаг 15), но такие релизы останутся на диске.
+  if command -v setfacl >/dev/null 2>&1; then
+    setfacl -d -m "g:$APP_GROUP:rwX" "$REL/.next/cache" 2>/dev/null || log "setfacl не удался: старые релизы могут не удаляться (RUNBOOK, раздел 4)"
+  else
+    log "нет setfacl (пакет acl): старые релизы могут не удаляться (RUNBOOK, раздел 4)"
+  fi
 fi
 log "step=build"
 
@@ -240,9 +248,14 @@ keep["$ID"]=1
 if [[ -n "$PREV" ]]; then keep["$PREV"]=1; fi
 for r in "${all[@]}"; do
   if [[ -z "${keep[$r]:-}" ]]; then
-    rm -rf "${RELEASES_DIR:?}/$r"
-    rm -f "$STATE_DIR/build-$r.log" "$STATE_DIR/smoke-$r.log"
-    log "step=cleanup удалён релиз $r"
+    # Уборка не фатальна: выкладка уже прошла health. Чужие подкаталоги .next/cache (crp, umask 022)
+    # crpdeploy не удалит; код 1 означал бы «сбой, выполнен откат» после успешной выкладки.
+    if rm -rf "${RELEASES_DIR:?}/$r"; then
+      rm -f "$STATE_DIR/build-$r.log" "$STATE_DIR/smoke-$r.log"
+      log "step=cleanup удалён релиз $r"
+    else
+      log "не удалось удалить релиз $r"
+    fi
   fi
 done
 live="$(mktemp)"

@@ -834,7 +834,7 @@ NEXT_TELEMETRY_DISABLED=
 комплектом. Задачи ниже независимы по файлам и идут параллельно (не больше двух worktree сразу).
 
 **5A-хвосты. create-admin и сид в рантайме** — T2→T1, `builder`; ревью Opus (доступы, сид).
-Зависит от 5A.
+Зависит от 5A. Сделано.
 - ТЗ: D-039, D-040; ops §3.13 «Сид в рантайме», §3.16.
 - Файлы: `src/lib/ops/{createAdmin,createAdminArgs}.ts`; `scripts/create-admin.ts`;
   `src/lib/db/seed-guard.ts`; `src/lib/db/index.ts` (только `shouldSeed` и предупреждение);
@@ -916,14 +916,17 @@ NEXT_TELEMETRY_DISABLED=
 
 **5B-хвосты. Комплект: вторая копия файлов, offsite, граница пользователей ОС** —
 `backup.sh`, `healthcheck.sh`, `install-ops.sh` — T2→T1 (ревью `architect`); остальное — T1.
-Зависит от 5B.
-- ТЗ: D-041; ops §3.1 (пометки «5B-хвосты»), §3.7, §3.9, §3.10, §3.16 (текст для RUNBOOK §3).
+Зависит от 5B. Сделано; исправления по проверке перед слиянием волны (владелец корня установки,
+нефатальная уборка релизов, запасной ключ файлов) — задача gate5-fixes, также сделано.
+- ТЗ: D-041; ops §3.1, §3.7, §3.9, §3.10, §3.16 (текст для RUNBOOK §3).
 - Файлы: `deploy/bin/{backup,healthcheck,install-ops,restore}.sh`; `deploy/cron/crp.cron`;
   `deploy/logrotate/crp`; `deploy/env/backup.env.example`; `docs/ops/RUNBOOK.md`;
   `tests/unit/{ops-scripts,ops-deploy-files}.test.ts`; `tests/fixtures/ops-shims/**`.
 - Шаги:
   1. Вторая копия файлов: в `backup.sh --files` адрес `BACKUP_FILES_REMOTE` и ключ
-     `BACKUP_FILES_REMOTE_SSH_KEY`; пустые — запасные `BACKUP_REMOTE` и `BACKUP_REMOTE_SSH_KEY`.
+     `BACKUP_FILES_REMOTE_SSH_KEY`; пустой `BACKUP_FILES_REMOTE` — запасной `BACKUP_REMOTE`;
+     ключ без запасного: без `BACKUP_FILES_REMOTE_SSH_KEY` или при совпадении с ключом БД копия
+     файлов не уходит, `offsite=false` (D-041).
      Пример и комментарий в `deploy/env/backup.env.example` (ключ для files — свой, `crp` 0600,
      свой каталог и `rrsync -wo -no-del -no-overwrite`); RUNBOOK §6.1 — как завести два ключа.
   2. `healthcheck.sh check_offsite`: `backup-status.json` — при заданном `BACKUP_REMOTE`;
@@ -947,7 +950,7 @@ NEXT_TELEMETRY_DISABLED=
   `files-status.json` не включает `backup_offsite`; ни один путь, куда пишет `postgres`, не лежит
   в каталоге, где `crp` может подменить файл или подкаталог.
 - Тесты: `ops-scripts` — `--files` передаёт в ssh `-i <BACKUP_FILES_REMOTE_SSH_KEY>` и шлёт в
-  `BACKUP_FILES_REMOTE`; без них — запасные общие; `check_offsite`: пустой `STORAGE_DIR` и
+  `BACKUP_FILES_REMOTE`; без ключа файлов или с ключом БД — отказ, `offsite=false`; без адреса файлов — запасной `BACKUP_REMOTE`; `check_offsite`: пустой `STORAGE_DIR` и
   `files-status.json` с `offsite=false` → проверки нет или `ok`; статус старше 26 ч не учитывается;
   подложенная ссылка `<status>.tmp`/предсказуемое имя не трогает цель, статус 0644, временных
   файлов не остаётся. `ops-deploy-files` — путь журнала бэкапа в cron и logrotate,
@@ -963,7 +966,7 @@ NEXT_TELEMETRY_DISABLED=
 - Готово и критерий: три прогона `uploads.spec.ts` подряд на одном заранее запущенном `next start`
   (`DEMO_MODE=1`, без перезапуска между прогонами) — зелёные; полный `npm run test:e2e` зелёный.
 
-**mail-хвосты** — T1, `builder` или `mechanic` для текста.
+**mail-хвосты** — T1, `builder` или `mechanic` для текста. Сделано.
 - `docs/lms/design/mail-account.md` (~стр. 410, `purgeMail`): «удаляет письма старше
   `MAIL_RETENTION_DAYS` (не меньше 31: меньшее значение поднимается до 31 с одним
   предупреждением на процесс)».
@@ -977,7 +980,6 @@ NEXT_TELEMETRY_DISABLED=
 - зона admin (T1, ревью Opus): `changeRole` в `src/lib/admin/users.ts` при повышении до `admin`
   закрывает сессии пользователя в той же транзакции (правило D-039 для UI); `meta` журнала без
   `name` (PLAN §2.6: без ФИО), подпись берёт имя по `entityId`;
-- оркестратор (T0): BUILD §2 «Сид» — условие сида по D-040.
 
 ### Итог (после волны 5)
 

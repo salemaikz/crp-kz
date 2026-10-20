@@ -68,8 +68,8 @@ current_id() {
 switch_current() {
   local id="$1"
   rm -f "$CRP_ROOT/current.tmp"
-  ln -s "releases/$id" "$CRP_ROOT/current.tmp"
-  mv -T "$CRP_ROOT/current.tmp" "$CRP_ROOT/current"
+  ln -s "releases/$id" "$CRP_ROOT/current.tmp" || die 2 "нет права записи в $CRP_ROOT"
+  mv -T "$CRP_ROOT/current.tmp" "$CRP_ROOT/current" || die 2 "нет права записи в $CRP_ROOT"
 }
 
 # Записать id релиза в shared/state/previous (атомарно).

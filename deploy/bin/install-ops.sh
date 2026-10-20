@@ -46,7 +46,9 @@ GRANTS="$DEPLOY_DIR/postgres/grants.sql"
 [[ -r "$GRANTS" ]] || { echo "install-ops.sh: нет deploy/postgres/grants.sql (нужен restore.sh)" >&2; exit 2; }
 
 # --- Каталоги. Права по RUNBOOK, раздел 1.
-run install -d -m 0751 -o root -g crp "$ROOT"
+# Корень принадлежит crpdeploy: deploy.sh и rollback.sh меняют в нём симлинк current (ln, mv -T). Группа crp
+# получает только r-x, записи в корне у приложения нет; o+x нужен nginx (читает shared/static).
+run install -d -m 0751 -o crpdeploy -g crp "$ROOT"
 # setgid: новые релизы наследуют группу crp, иначе PM2 от crp не прочитает релиз, собранный crpdeploy.
 run install -d -m 2750 -o crpdeploy -g crp "$ROOT/releases"
 run install -d -m 0755 -o crpdeploy -g crp "$ROOT/shared"
@@ -64,6 +66,12 @@ run install -d -m 0750 -o postgres -g adm /var/log/crp-backup
 # Sticky-бит: crp создаёт свои файлы статусов, но не удаляет и не переименовывает файлы postgres.
 run install -d -m 1775 -o postgres -g crp /var/lib/crp-ops
 run install -d -m 0700 -o crp -g crp /var/lib/crp /var/lib/crp/files
+# Имя статуса занято каталогом или ссылкой: файл postgres не создать, healthcheck и backup.sh работать не будут.
+for st in backup-status.json manual-status.json; do
+  if [[ -d /var/lib/crp-ops/$st || -L /var/lib/crp-ops/$st ]]; then
+    say "ВНИМАНИЕ: /var/lib/crp-ops/$st занят каталогом или ссылкой: удалите его вручную и запустите установку снова (RUNBOOK, раздел 7)"
+  fi
+done
 # Статусы postgres создаём заранее: имена заняты файлами postgres, crp (группа каталога) не сможет
 # занять их каталогом или ссылкой; backup.sh дополнительно пишет через mv -T.
 for st in backup-status.json manual-status.json; do
