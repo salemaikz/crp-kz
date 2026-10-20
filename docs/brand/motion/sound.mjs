@@ -83,6 +83,50 @@ const voices = {
       out[start + i] += Math.sin(phase) * Math.min(t / 0.003, 1) * Math.exp(-t / 0.14) * gain;
     }
   },
+
+  // Ритм для роликов с битом — те же простые формы: синус, шум, огибающие.
+  // Бочка: быстрый спад высоты 160 → 45 Гц и короткий щелчок в начале.
+  kick(out, start, { gain = 0.45 }) {
+    let phase = 0;
+    for (let i = 0; i < RATE * 0.4; i++) {
+      const t = i / RATE;
+      phase += (2 * Math.PI * (45 + 115 * Math.exp(-t / 0.03))) / RATE;
+      const click = t < 0.002 ? 0.3 * (1 - t / 0.002) : 0;
+      out[start + i] += (Math.sin(phase) + click) * Math.exp(-t / 0.12) * gain;
+    }
+  },
+  // Хэт: шум минус его сглаженная копия — остаются только высокие, очень коротко.
+  hat(out, start, { gain = 0.035, decay = 0.025 }, seed) {
+    const rnd = noise(seed);
+    let low = 0;
+    for (let i = 0; i < RATE * decay * 6; i++) {
+      const t = i / RATE;
+      const x = rnd();
+      low += (x - low) * 0.25;
+      out[start + i] += (x - low) * Math.exp(-t / decay) * gain;
+    }
+  },
+  // Бас: синус с октавой выше, короткий «щипок».
+  bass(out, start, { note = 'A1', gain = 0.3, decay = 0.3 }) {
+    const f = freq(note);
+    for (let i = 0; i < RATE * decay * 4; i++) {
+      const t = i / RATE;
+      const s = Math.sin(2 * Math.PI * f * t) + 0.35 * Math.sin(4 * Math.PI * f * t) * Math.exp(-t / 0.08);
+      out[start + i] += s * Math.min(t / 0.005, 1) * Math.exp(-t / decay) * gain;
+    }
+  },
+  // Подложка: аккорд из чуть расстроенных синусов, мягкая атака и затухание за dur мс.
+  pad(out, start, { notes = 'A3 C4 E4', dur = 2000, gain = 0.05 }) {
+    const fs = notes.split(' ').map(freq);
+    const n = Math.round((RATE * dur) / 1000);
+    for (let i = 0; i < n; i++) {
+      const t = i / RATE;
+      const env = Math.min(t / 0.4, 1) * Math.min((n - i) / (RATE * 0.6), 1);
+      let s = 0;
+      for (const f of fs) s += Math.sin(2 * Math.PI * f * t) + Math.sin(2 * Math.PI * f * 1.003 * t);
+      out[start + i] += (s / fs.length) * env * gain;
+    }
+  },
 };
 
 // Небольшая комната (схема Шрёдера): гребенчатые фильтры с затуханием и два фазовращателя (all-pass).
