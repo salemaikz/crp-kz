@@ -246,7 +246,7 @@ revokeEnrollment(userId, courseId, actorId, sql?, opts?: { orderId?, orgId? }): 
   урока и в каждом server action (прогресс, тест, сертификат).
 - Платный курс никогда не даёт `self`.
 - Неопубликованный урок, модуль или курс слушателю не виден.
-- **Файлы урока** (сервер — готов, интерфейс — волна 4). Доступ к `/api/files/[id]` — по
+- **Файлы урока.** Доступ к `/api/files/[id]` — по
   `lesson_files` опубликованных уроков и `loadCourseAccess` (без второй реализации); обложки — по
   видимости курса (D-034). В демо загруженные документы выдаются только администратору,
   изображения — по обычным правилам (D-038). Файл урока принадлежит курсу урока:
@@ -368,7 +368,7 @@ isManagerOf(userId, orgId): Promise<boolean>
 | `/[locale]/admin/orders` | admin | **checkout** — заказы: «Оплачено» / «Отменить» / «Возврат» |
 | `/[locale]/admin/users` | admin | **admin** — пользователи, выдать или отозвать доступ |
 | `/[locale]/admin/mail`, `/[locale]/admin/mail/[id]` | admin | **mail** — страница «Письма» (D-030) |
-| `/[locale]/admin/courses/[id]/files` | admin | **files** — файлы курса (волна 4) |
+| `/[locale]/admin/courses/[id]/files` | admin | **files** — файлы курса |
 | `/[locale]/login`, `/register` | гость | **foundation** |
 | `/[locale]/password/forgot`, `/[locale]/password/reset`, `/[locale]/account/verify` | гость / вошедший | **foundation** |
 | `/[locale]/legal`, `/[locale]/legal/[doc]`, `/[locale]/legal/[doc]/[version]` | все | **legal** — юридические документы (тексты — черновики до юриста ЦРП) |
