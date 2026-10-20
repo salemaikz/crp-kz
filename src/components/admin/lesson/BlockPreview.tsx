@@ -36,7 +36,7 @@ export function BlockPreview({ blocks, filesEnabled = true }: { blocks: readonly
               </h3>
             );
           case 'text':
-            return <Markdown key={b.id}>{b.markdown}</Markdown>;
+            return <Markdown key={b.id} filesEnabled={filesEnabled}>{b.markdown}</Markdown>;
           case 'divider':
             return <hr key={b.id} className="adm-preview__hr" />;
           case 'callout': {

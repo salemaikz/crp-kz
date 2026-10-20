@@ -1,6 +1,6 @@
 'use client';
 // Редакторы блоков по типам: заголовок, текст (Markdown + предпросмотр), видео, выноска, тест.
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Checkbox, Input, Select, Textarea } from '@/components/ui';
@@ -72,14 +72,20 @@ export function TextEditor({
   const tf = useTranslations('files');
   const id = useId();
   const canUpload = uploads?.enabled === true && uploads.storageOk;
+  // загрузка завершается позже рендера, где выбрали файл: берём актуальный блок
+  const latest = useRef(block);
+  useLayoutEffect(() => {
+    latest.current = block;
+  });
 
   // картинка попадает в позицию курсора; если поле ни разу не трогали, курсор в конце текста
   const insertImage = (fileId: string) => {
     // Textarea из ui не пробрасывает ref в типах, поэтому поле берём по id
     const el = document.getElementById(`${id}-md`) as HTMLTextAreaElement | null;
-    const at = el ? { start: el.selectionStart, end: el.selectionEnd } : { start: block.markdown.length, end: block.markdown.length };
-    const { value, caret } = insertAtCursor(block.markdown, at.start, at.end, `![](${fileUrl(fileId)})`);
-    onChange({ ...block, markdown: value });
+    const current = el ? el.value : latest.current.markdown;
+    const at = el ? { start: el.selectionStart, end: el.selectionEnd } : { start: current.length, end: current.length };
+    const { value, caret } = insertAtCursor(current, at.start, at.end, `![](${fileUrl(fileId)})`);
+    onChange({ ...latest.current, markdown: value });
     requestAnimationFrame(() => {
       el?.focus();
       el?.setSelectionRange(caret, caret);
@@ -116,7 +122,7 @@ export function TextEditor({
       <div className="adm-split__preview">
         <span className="adm-row__label">{t('preview')}</span>
         <div className="adm-split__paper" aria-live="off">
-          {block.markdown.trim() ? <Markdown>{block.markdown}</Markdown> : <p className="adm-preview__empty">{t('previewEmpty')}</p>}
+          {block.markdown.trim() ? <Markdown filesEnabled={uploads?.enabled === true}>{block.markdown}</Markdown> : <p className="adm-preview__empty">{t('previewEmpty')}</p>}
         </div>
       </div>
     </div>

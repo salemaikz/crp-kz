@@ -65,9 +65,23 @@ export function limitFor(kind: UploadKind, name: string, limits: UploadLimits): 
 
 export type UploadErrorView = { code: UploadErrorCode | 'generic'; params?: Record<string, string | number> };
 
-/** Предпроверка до отправки: пустой файл и размер выше предела. null — отправлять. */
+/** Картинка и обложка принимают только изображения; документ по расширению отсекаем до отправки. */
+export function wrongKindByName(name: string, kind: UploadKind): boolean {
+  if (kind === 'file') return false;
+  const ext = nameExt(name);
+  if (ext === 'jpeg') return false;
+  return ext in FILE_TYPES && !IMAGE_EXTS.includes(ext as FileExt);
+}
+
+/** Сервер определяет тип по содержимому: для картинки и обложки в ответе должно быть изображение. */
+export function isWrongKind(kind: UploadKind, file: { kind: string }): boolean {
+  return kind !== 'file' && file.kind !== 'image';
+}
+
+/** Предпроверка до отправки: пустой файл, не тот тип по расширению и размер выше предела. null — отправлять. */
 export function precheck(file: { name: string; size: number }, kind: UploadKind, limits: UploadLimits): UploadErrorView | null {
   if (file.size === 0) return { code: 'empty' };
+  if (wrongKindByName(file.name, kind)) return { code: 'bad_type' };
   const max = limitFor(kind, file.name, limits);
   if (file.size > max) return { code: 'too_large', params: { max } };
   return null;

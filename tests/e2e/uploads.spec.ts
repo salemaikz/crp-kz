@@ -295,4 +295,43 @@ test('админ: обложка курса видна гостю в катал�
   // «Убрать обложку» возвращает цветную панель
   await card.getByTestId('cover-remove').click();
   await expect(card.getByTestId('cover-empty')).toBeVisible();
+  await expect(card.getByTestId('cover-saved')).toHaveCount(0);
+});
+
+test('админ: две загрузки подряд дают оба блока', async ({ page }) => {
+  await login(page, 'admin');
+  await openEditor(page);
+  const before = await page.locator('.adm-block').count();
+
+  // обе загрузки стартуют до завершения первой; блоки добавляются к актуальному списку
+  let done = 0;
+  const bothDone = new Promise<void>((resolve) => {
+    page.on('response', (r) => {
+      if (r.url().includes('/api/uploads') && r.request().method() === 'POST' && ++done === 2) resolve();
+    });
+  });
+  await page.getByTestId('add-block-image-input').first().setInputFiles({ name: 'один.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await page.getByTestId('add-block-file-input').first().setInputFiles({ name: 'два.pdf', mimeType: 'application/pdf', buffer: pdf() });
+  await bothDone;
+  await expect(page.locator('.adm-block')).toHaveCount(before + 2);
+  await expect(page.locator('[data-block-type="image"]')).not.toHaveCount(0);
+  await expect(page.locator('[data-block-type="file"]')).not.toHaveCount(0);
+});
+
+test('админ с доступом к курсу: документ в уроке со ссылкой «Скачать», без демо-подписи', async ({ page }) => {
+  await login(page, 'admin');
+  await page.goto('/ru/admin/users');
+  await page.getByTestId('user-search').fill('admin@');
+  await page.getByRole('button', { name: 'Найти' }).click();
+  await page.getByRole('link', { name: /admin@/ }).first().click();
+  const grant = page.getByTestId('grant-form');
+  await grant.getByLabel('Курс').selectOption({ label: COURSE?.title.ru ?? '' });
+  await page.getByTestId('grant-submit').click();
+  await expect(grant.getByText('Доступ выдан')).toBeVisible();
+
+  await page.goto(LESSON_URL);
+  const card = page.getByTestId('file-block').filter({ hasText: 'Памятка менеджера' });
+  await expect(card.getByTestId('file-download')).toHaveAttribute('href', `/api/files/${ids.pdf}`);
+  await expect(page.getByTestId('file-demo-hidden')).toHaveCount(0);
+  await expect(page.locator(`.lrn-prose a[href="/api/files/${ids.pdf}"]`)).toHaveCount(1);
 });

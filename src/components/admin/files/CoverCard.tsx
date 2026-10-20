@@ -80,7 +80,12 @@ export function CoverCard({ locale, courseId, coverFileId, limits, storageOk, de
               variant="text"
               tone="danger"
               label={t('cover.remove')}
-              action={() => clearCourseCoverAction(locale, courseId)}
+              action={() => {
+                // прежние «сохранено» и ошибка к убранной обложке не относятся
+                setSaved(false);
+                setError(null);
+                return clearCourseCoverAction(locale, courseId);
+              }}
               testId="cover-remove"
             />
           )}
@@ -88,7 +93,7 @@ export function CoverCard({ locale, courseId, coverFileId, limits, storageOk, de
       ) : (
         <p className="adm-upload__error">{t('errors.storage_unavailable')}</p>
       )}
-      {saved && (
+      {saved && coverFileId && (
         <p className="adm-cover__saved" role="status" data-testid="cover-saved">
           {t('cover.saved')}
         </p>

@@ -9,6 +9,7 @@ import type { StoredFile } from '@/lib/files/types';
 import './files.css';
 import {
   acceptFor,
+  isWrongKind,
   parseUploadResponse,
   precheck,
   purposeOf,
@@ -121,7 +122,10 @@ export function UploadButton({
     if (lessonId) params.set('lessonId', lessonId);
     setPercent(0);
     const res = await send(file, `/api/uploads?${params.toString()}`, setPercent);
-    if (res.ok) {
+    if (res.ok && isWrongKind(kind, res.file)) {
+      // сервер принял документ через «Изображение»: блок не создаём, файл остаётся сиротой и уберётся сам
+      setError({ code: 'bad_type' });
+    } else if (res.ok) {
       try {
         await onUploaded(res.file);
       } catch {

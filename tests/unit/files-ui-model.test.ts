@@ -10,7 +10,9 @@ import {
   limitFor,
   nameExt,
   parseUploadResponse,
+  isWrongKind,
   precheck,
+  wrongKindByName,
   purposeOf,
   typesLabel,
 } from '@/components/admin/files/uploadModel';
@@ -108,4 +110,15 @@ test('проблемы файлов: тексты file_not_found и file_wrong_k
   const tt = (key: string, v?: Record<string, string | number>) => (v ? `${key}:${v.field}` : key);
   const empty = { path: ['ru', 'blocks', 0, 'alt'], code: 'too_small', message: 'x', type: 'string', minimum: 1 };
   assert.equal(describeIssue(empty, tt, { alt: 'Текст вместо изображения' }), 'required:Текст вместо изображения');
+});
+
+test('картинка и обложка не принимают документ: по имени до отправки и по ответу сервера', () => {
+  assert.deepEqual(precheck({ name: 'memo.pdf', size: 1024 }, 'image', limits), { code: 'bad_type' });
+  assert.deepEqual(precheck({ name: 'memo.DOCX', size: 1024 }, 'cover', limits), { code: 'bad_type' });
+  assert.equal(precheck({ name: 'photo.jpeg', size: 1024 }, 'image', limits), null);
+  assert.equal(precheck({ name: 'memo.pdf', size: 1024 }, 'file', limits), null);
+  assert.equal(wrongKindByName('noext', 'image'), false);
+  assert.equal(isWrongKind('image', { kind: 'document' }), true);
+  assert.equal(isWrongKind('cover', { kind: 'image' }), false);
+  assert.equal(isWrongKind('file', { kind: 'document' }), false);
 });

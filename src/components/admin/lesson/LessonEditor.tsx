@@ -179,7 +179,8 @@ export function LessonEditor({ initial, save, uploads }: Props) {
 
   const panel = (loc: Locale) => {
     const blocks = loc === 'ru' ? ru : kz;
-    const setBlocks = (next: Block[]) => {
+    // принимает и готовый список, и функцию от актуального: загрузка файла кончается позже клика
+    const setBlocks = (next: Block[] | ((prev: Block[]) => Block[])) => {
       touch();
       if (loc === 'ru') setRu(next);
       else setKz(next);

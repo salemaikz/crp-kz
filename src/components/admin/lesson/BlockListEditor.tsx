@@ -18,7 +18,8 @@ import { describeIssue, issuesForBlock } from './issueText';
 type Props = {
   locale: 'ru' | 'kz';
   blocks: Block[];
-  onChange: (next: Block[]) => void;
+  /** Список или функция от актуального списка (нужна для загрузок, завершающихся позже рендера). */
+  onChange: (next: Block[] | ((prev: Block[]) => Block[])) => void;
   issues: readonly ContentIssue[];
   /** Загрузка файлов: нет — кнопок «Изображение» и «Файл» нет. */
   uploads?: LessonUploads;
@@ -65,18 +66,19 @@ export function BlockListEditor({ locale, blocks, onChange, issues, uploads }: P
   const add = (type: AddableBlockType) => {
     const b = newBlock(type);
     setFocusId(b.id);
-    onChange([...blocks, b]);
+    onChange((prev) => [...prev, b]);
   };
   // блок из загруженного файла; файл попадает в урок только после «Сохранить»
   const addUploaded = (make: (f: StoredFile) => Block) => (f: StoredFile) => {
     const b = make(f);
     setFocusId(b.id);
-    onChange([...blocks, b]);
+    onChange((prev) => [...prev, b]);
   };
   const sizeOf = (bytes: number) =>
     formatFileSize(bytes, appLocale, { b: tf('units.b'), kb: tf('units.kb'), mb: tf('units.mb'), gb: tf('units.gb') });
   const fieldLabels = { alt: tf('image.alt'), label: tf('file.label') };
-  const replace = (i: number, next: Block) => onChange(blocks.map((b, k) => (k === i ? next : b)));
+  // по id и от актуального списка, а не по индексу из замыкания
+  const replace = (id: string, next: Block) => onChange((prev) => prev.map((b) => (b.id === id ? next : b)));
 
   return (
     <div className="adm-blocks" data-locale={locale}>
@@ -147,7 +149,7 @@ export function BlockListEditor({ locale, blocks, onChange, issues, uploads }: P
                   </div>
                 </div>
                 <div className="adm-block__body">
-                  <BlockBody block={b} onChange={(next) => replace(i, next)} autoFocus={focusId === b.id} uploads={uploads} />
+                  <BlockBody block={b} onChange={(next) => replace(b.id, next)} autoFocus={focusId === b.id} uploads={uploads} />
                 </div>
                 {own.length > 0 && (
                   <ul className="adm-block__errors" role="alert">
