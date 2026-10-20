@@ -28,6 +28,8 @@ async function status(): Promise<number> {
   const db = await openDriver(); // без prepareDb и накатки
   try {
     const st = await migrationStatus(db);
+    // Строка для скриптов выкладки (ops §3.13); дальше — имена для человека
+    console.log(`applied=${st.applied.length - st.unknown.length} pending=${st.pending.length} unknown=${st.unknown.length}`);
     const list = (title: string, items: string[]) =>
       console.log(`${title} (${items.length})${items.length ? `:\n  ${items.join('\n  ')}` : ''}`);
     list('Накатаны', st.applied.filter((n) => !st.unknown.includes(n)));
