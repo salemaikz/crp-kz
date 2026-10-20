@@ -59,3 +59,11 @@ test('minFreeBytes: в демо на Netlify и Vercel — 64 МиБ (весь /
   assert.equal(minFreeBytes({ DEMO_MODE: '1' }), UPLOAD_LIMITS.minFreeDiskBytes);
   assert.equal(minFreeBytes({ NODE_ENV: 'production', DATABASE_URL: 'postgres://x' }), UPLOAD_LIMITS.minFreeDiskBytes);
 });
+
+test('serverless распознаётся и в рантайме функции Netlify (AWS Lambda), а не только по NETLIFY при сборке', () => {
+  const lambda = { DEMO_MODE: '1', AWS_LAMBDA_FUNCTION_NAME: '___netlify-server-handler' };
+  assert.equal(minFreeBytes(lambda), UPLOAD_LIMITS.serverlessDemoMinFreeBytes);
+  assert.equal(maxBytesFor('document', lambda), UPLOAD_LIMITS.serverlessDemoBytes);
+  // не демо на serverless — порог сервера
+  assert.equal(minFreeBytes({ VERCEL: '1', DATABASE_URL: 'postgres://x', NODE_ENV: 'production' }), UPLOAD_LIMITS.minFreeDiskBytes);
+});

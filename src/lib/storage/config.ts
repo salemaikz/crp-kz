@@ -9,7 +9,10 @@ export type StorageConfig =
   | { ok: true; provider: 'local'; root: string; demo: boolean; serverless: boolean }
   | { ok: false; reason: 'not_configured' | 'relative_path' | 'inside_app_dir' | 'provider_not_implemented' };
 
-const isServerless = (env: Env): boolean => env.VERCEL === '1' || env.NETLIFY === 'true';
+// NETLIFY=true есть только при сборке; в рантайме функции Netlify (это AWS Lambda) его нет, зато есть
+// AWS_LAMBDA_FUNCTION_NAME. Без этого на Netlify-демо порог места и лимит тела были бы как на сервере.
+const isServerless = (env: Env): boolean =>
+  env.VERCEL === '1' || env.NETLIFY === 'true' || Boolean(env.AWS_LAMBDA_FUNCTION_NAME?.trim());
 
 export function storageConfig(env: Env = process.env): StorageConfig {
   const provider = env.STORAGE_PROVIDER?.trim() || 'local';

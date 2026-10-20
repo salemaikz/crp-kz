@@ -101,11 +101,22 @@ export async function storeUpload(input: UploadInput): Promise<StoredFile> {
   let key: string | null = null;
   try {
     // 6. хранилище готово и место есть
-    if (!storageConfig().ok) throw new UploadError('storage_unavailable', 503);
+    // В лог — только код причины и мегабайты: без этого 503 на площадке не разобрать
+    const config = storageConfig();
+    if (!config.ok) {
+      console.warn(`upload: storage unavailable, reason=config:${config.reason}`);
+      throw new UploadError('storage_unavailable', 503);
+    }
     const storage = getStorage();
     const health = await storage.health();
-    if (!health.ok) throw new UploadError('storage_unavailable', 503);
-    if (health.freeBytes !== null && health.freeBytes < minFreeBytes() + declared) {
+    if (!health.ok) {
+      console.warn('upload: storage unavailable, reason=health');
+      throw new UploadError('storage_unavailable', 503);
+    }
+    const need = minFreeBytes() + declared;
+    if (health.freeBytes !== null && health.freeBytes < need) {
+      const mib = (n: number) => Math.floor(n / 1024 / 1024);
+      console.warn(`upload: storage unavailable, reason=free_space free_mib=${mib(health.freeBytes)} need_mib=${mib(need)}`);
       throw new UploadError('storage_unavailable', 503);
     }
 
