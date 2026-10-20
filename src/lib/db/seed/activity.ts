@@ -1,6 +1,7 @@
 // Сид: назначения, покупки, прогресс, заказы, сертификат и журнал. Всё детерминировано от базы.
 import { createHash } from 'node:crypto';
 import { seedId } from '../../content/ids';
+import { LEGACY_CONSENT_VERSION } from '../../legal/types';
 import type { Sql } from '../core';
 import { isFreeCourse, type SeededCourse, type SeededLesson } from './courses';
 import { demoEmail, SEED_BUYERS, SEED_PEOPLE, seedOrgId, seedUserId } from './people';
@@ -8,7 +9,8 @@ import { DAY, HOUR } from './time';
 
 type Ctx = { sql: Sql; json: (v: unknown) => unknown; base: number };
 
-const CONSENT_VERSION = '2026-10-19';
+// демо-строки остаются легаси (text_sha256 NULL): снимок демо-БД не меняется
+const CONSENT_VERSION = LEGACY_CONSENT_VERSION;
 const CERT_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 /** Курсы сида по ролям в сценарии (по видимости/цене, «Целина» — по названию). */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { createOrderAction, type CheckoutFormState } from '@/lib/orders/actions';
@@ -14,6 +14,10 @@ type Props = {
   priceKzt: number;
   /** Вошедший пользователь (покупка только после входа, D-020): имя подставляется, email — аккаунта. */
   user: { name: string; email: string };
+  /** LEGAL активен: две галочки (D-035) и токен показанных версий; иначе прежняя одна. */
+  legal: { enabled: boolean; token: string };
+  /** Подписи галочек со ссылками на документы (только при legal.enabled). */
+  consentLabels?: { offer: ReactNode; pd: ReactNode };
 };
 
 const EMPTY: CheckoutValues = {
@@ -25,13 +29,15 @@ const EMPTY: CheckoutValues = {
   companyBin: '',
   paymentMethod: 'kaspi',
   consent: false,
+  consentOffer: false,
+  consentPd: false,
 };
 
 /**
  * Форма покупки: кто покупает, контакты, реквизиты компании, способ оплаты, согласие.
  * После ошибки форма перемонтируется (key = номер попытки) и берёт введённые значения из ответа.
  */
-export function CheckoutForm({ courseSlug, priceKzt, user }: Props) {
+export function CheckoutForm({ courseSlug, priceKzt, user, legal, consentLabels }: Props) {
   const [state, formAction, pending] = useActionState<CheckoutFormState, FormData>(createOrderAction, undefined);
   const initial: CheckoutValues = state?.values ?? { ...EMPTY, name: user.name, email: user.email };
   return (
@@ -44,6 +50,8 @@ export function CheckoutForm({ courseSlug, priceKzt, user }: Props) {
       courseSlug={courseSlug}
       priceKzt={priceKzt}
       user={user}
+      legal={legal}
+      consentLabels={consentLabels}
     />
   );
 }
@@ -55,8 +63,20 @@ type FieldsProps = Props & {
   initial: CheckoutValues;
 };
 
-function CheckoutFields({ formAction, pending, state, initial, courseSlug, priceKzt, user }: FieldsProps) {
+function CheckoutFields({
+  formAction,
+  pending,
+  state,
+  initial,
+  courseSlug,
+  priceKzt,
+  user,
+  legal,
+  consentLabels,
+}: FieldsProps) {
   const t = useTranslations('checkout.form');
+  const tErr = useTranslations('checkout.errors');
+  const tLegal = useTranslations('legal.consent');
   const locale = useLocale();
   const formRef = useRef<HTMLFormElement>(null);
   const [buyerType, setBuyerType] = useState<BuyerType>(initial.buyerType);
@@ -79,13 +99,21 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
     if (next === 'company') setMethod('invoice');
   };
 
-  const generalError = state && state.error !== 'validation' ? t(`alerts.${state.error}`) : null;
+  const generalError =
+    state && state.error !== 'validation'
+      ? state.error === 'legal_changed'
+        ? tLegal('changed')
+        : state.error === 'email_unverified'
+          ? tErr('email_unverified')
+          : t(`alerts.${state.error}`)
+      : null;
   const generalField = errors.courseSlug ? err('courseSlug') : null;
 
   return (
     <form ref={formRef} action={formAction} className="co-form" noValidate>
       <input type="hidden" name="locale" value={locale} />
       <input type="hidden" name="courseSlug" value={courseSlug} />
+      {legal.enabled && <input type="hidden" name="legalToken" value={state?.legalToken ?? legal.token} />}
 
       {state?.error === 'validation' && <Alert tone="error">{generalField ?? t('alerts.validation')}</Alert>}
       {generalError && <Alert tone="error">{generalError}</Alert>}
@@ -202,7 +230,19 @@ function CheckoutFields({ formAction, pending, state, initial, courseSlug, price
       </div>
 
       <div className="co-submit">
-        <Checkbox name="consent" label={t('consent')} defaultChecked={initial.consent} error={err('consent')} />
+        {legal.enabled && consentLabels ? (
+          <>
+            <Checkbox
+              name="consentOffer"
+              label={consentLabels.offer}
+              defaultChecked={initial.consentOffer}
+              error={err('consentOffer')}
+            />
+            <Checkbox name="consentPd" label={consentLabels.pd} defaultChecked={initial.consentPd} error={err('consentPd')} />
+          </>
+        ) : (
+          <Checkbox name="consent" label={t('consent')} defaultChecked={initial.consent} error={err('consent')} />
+        )}
         <SubmitButton size="lg" block pending={pending} pendingText={t('pending')}>
           {t('submit', { price: formatPrice(priceKzt) })}
         </SubmitButton>

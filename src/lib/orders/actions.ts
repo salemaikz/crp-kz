@@ -6,6 +6,16 @@ import { notFound } from 'next/navigation';
 import { z } from 'zod';
 import { getCurrentUser } from '../auth';
 import { deriveClientIp } from '../auth/clientIp';
+import { preparedMatchToken } from '../auth/consentToken';
+import {
+  CHECKOUT_CONSENTS,
+  consentTokenFresh,
+  isLegalEnabled,
+  legalAllowDrafts,
+  prepareConsents,
+  versionsToken,
+  type PreparedConsent,
+} from '../legal';
 import { redirect } from '../i18n/navigation';
 import { cancelOrder, markPaid, refundOrder } from './admin';
 import { createOrder } from './create';
@@ -19,9 +29,11 @@ export type CheckoutFormState =
   | {
       /** Номер попытки: форма перемонтируется и берёт значения из values. */
       attempt: number;
-      error: 'validation' | 'rate_limited' | 'not_for_sale' | 'unknown';
+      error: 'validation' | 'rate_limited' | 'not_for_sale' | 'email_unverified' | 'legal_changed' | 'unknown';
       errors?: CheckoutErrors;
       values: CheckoutValues;
+      /** legal_changed: актуальный токен версий для повторной отправки (форма со старым токеном зациклилась бы). */
+      legalToken?: string;
     }
   | undefined;
 
@@ -47,16 +59,37 @@ export async function createOrderAction(prev: CheckoutFormState, formData: FormD
   }
   raw.email = user.email;
 
-  const parsed = parseCheckout(raw);
+  const legal = isLegalEnabled();
+  const parsed = parseCheckout(raw, { legal });
   if (!parsed.ok) return { attempt, error: 'validation', errors: parsed.errors, values: parsed.values };
+
+  // условия обновились, пока форма была открыта: галочки сбрасываются, токен выдаётся заново
+  const legalToken = formData.get('legalToken');
+  const changed = (): CheckoutFormState => ({
+    attempt,
+    error: 'legal_changed',
+    values: { ...parsed.values, consent: false, consentOffer: false, consentPd: false },
+    legalToken: versionsToken(CHECKOUT_CONSENTS, { allowDrafts: legalAllowDrafts() }),
+  });
+  if (!consentTokenFresh(legalToken, CHECKOUT_CONSENTS)) return changed();
 
   if (!orderAllowed(user.id, deriveClientIp(await headers()))) {
     return { attempt, error: 'rate_limited', values: parsed.values };
   }
 
+  // тексты читаются до транзакции заказа; версии должны совпасть с теми, что видел покупатель
+  let consents: PreparedConsent[];
+  try {
+    consents = await prepareConsents(CHECKOUT_CONSENTS, locale);
+  } catch (e) {
+    console.error('[orders] consents failed:', e instanceof Error ? e.message : e);
+    return { attempt, error: 'unknown', values: parsed.values };
+  }
+  if (!preparedMatchToken(consents, legalToken)) return changed();
+
   let target: { pathname: string; query?: Record<string, string> } | null = null;
   try {
-    const created = await createOrder(parsed.data, { userId: user.id });
+    const created = await createOrder(parsed.data, { userId: user.id, consents });
     const query: Record<string, string> = { key: created.accessKey };
     // открыт уже существующий заказ: страница скажет об этом, а если он оформлен иначе —
     // предложит отменить его и оформить заново
@@ -69,6 +102,8 @@ export async function createOrderAction(prev: CheckoutFormState, formData: FormD
       target = { pathname: '/login', query: { next: `/${locale}/courses/${parsed.data.courseSlug}/buy` } };
     } else if (e instanceof OrderError && e.code === 'not_for_sale') {
       return { attempt, error: 'not_for_sale', values: parsed.values };
+    } else if (e instanceof OrderError && e.code === 'email_unverified') {
+      return { attempt, error: 'email_unverified', values: parsed.values };
     } else {
       console.error('[orders] create failed:', e instanceof Error ? e.message : e);
       return { attempt, error: 'unknown', values: parsed.values };

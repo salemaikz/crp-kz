@@ -3,12 +3,16 @@ import { getCurrentUser } from '@/lib/auth';
 import { isDemo } from '@/lib/env';
 import { isFeatureActive } from '@/lib/features';
 import { Alert, Container } from '@/components/ui';
+import { HideOnPaths } from './HideOnPaths';
 import { ResendVerification } from './ResendVerification';
 
 type Props = {
   /** banner — полоса под шапкой; checkout — вместо формы покупки (D-032, ждёт владельца). */
   variant?: 'banner' | 'checkout';
-  /** Куда вернуть после подтверждения (безопасный путь): уходит в письмо. */
+  /**
+   * Куда вернуть после подтверждения (безопасный путь): уходит в письмо. Без него (плашка в layout)
+   * кнопка берёт адрес страницы, на которой нажата.
+   */
   next?: string;
 };
 
@@ -35,9 +39,12 @@ export async function VerifyEmailNotice({ variant = 'banner', next }: Props) {
     </Alert>
   );
   return variant === 'banner' ? (
-    <Container>
-      <div style={{ paddingBlock: 12 }}>{body}</div>
-    </Container>
+    // на покупке (свой вариант checkout) и на /account/verify плашка скрыта
+    <HideOnPaths>
+      <Container>
+        <div style={{ paddingBlock: 12 }}>{body}</div>
+      </Container>
+    </HideOnPaths>
   ) : (
     body
   );

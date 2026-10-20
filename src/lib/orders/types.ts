@@ -9,10 +9,6 @@ export type BuyerType = (typeof BUYER_TYPES)[number];
 export const PAYMENT_METHODS = ['kaspi', 'invoice'] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-/** Версия текстов оферты и согласия на обработку ПДн, которую принимает покупатель. */
-export const CONSENT_VERSION = '2026-10-19';
-export const CONSENT_KINDS = ['offer', 'pd_processing'] as const;
-
 /** Продавец в инструкциях и счёте. БИН — публичные сведения ЦРП. */
 export const SELLER = {
   name: 'ТОО «Центр развития предпринимателей»',
@@ -65,7 +61,13 @@ export type BuyableCourse = {
   lessonsCount: number;
 };
 
-export type OrderErrorCode = 'login_required' | 'not_for_sale' | 'has_access' | 'number_exhausted';
+export type OrderErrorCode =
+  | 'login_required'
+  | 'not_for_sale'
+  | 'has_access'
+  | 'number_exhausted'
+  /** Email аккаунта не подтверждён (D-032, предложено, ждёт владельца): работает только при EMAIL_VERIFY. */
+  | 'email_unverified';
 
 /** Ожидаемая ошибка бизнес-логики заказа (не баг): показываем пользователю понятный текст. */
 export class OrderError extends Error {

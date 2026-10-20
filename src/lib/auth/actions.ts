@@ -7,23 +7,33 @@ import { z } from 'zod';
 import { getDb, newId, now } from '../db';
 import { writeAudit } from '../audit';
 import { isDemo } from '../env';
+import { isFeatureActive } from '../features';
+import {
+  consentTokenFresh,
+  insertConsents,
+  legalAllowDrafts,
+  prepareConsents,
+  REGISTER_CONSENTS,
+  versionsToken,
+} from '../legal';
 import { isDemoAccountEmail } from './demo';
 import { normalizeEmail } from './index';
 import { hashPassword, passwordProblem, verifyPassword } from './password';
 import { deriveClientIp, UNKNOWN_IP } from './clientIp';
+import { preparedMatchToken } from './consentToken';
 import { AUTH_LIMITS, rateLimit, resetRateLimit } from './rateLimit';
+import { sendVerification } from './recovery';
 import { safeNext } from './safeNext';
-import { endSession, startSession } from './session';
+import { endSession, isSeedUser, startSession } from './session';
 
 export type AuthFormState =
   | {
-      error?: 'invalid' | 'rate_limited' | 'exists' | 'weak_password' | 'validation' | 'consent';
+      error?: 'invalid' | 'rate_limited' | 'exists' | 'weak_password' | 'validation' | 'consent' | 'legal_changed';
       values?: { email?: string; name?: string };
+      /** legal_changed: актуальный токен версий для повторной отправки. */
+      legalToken?: string;
     }
   | undefined;
-
-/** Версия текста согласия на обработку ПДн. */
-const PD_CONSENT_VERSION = '2026-10-19';
 
 const emailSchema = z.string().max(254).email();
 const nameSchema = z.string().trim().min(1).max(100);
@@ -106,6 +116,17 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
   const pwProblem = passwordProblem(password);
   if (pwProblem) return { error: pwProblem, values };
   if (field(formData, 'consent') !== 'on') return { error: 'consent', values };
+  // условия обновились, пока форма была открыта: пользователь не создаётся, токен выдаётся заново
+  const legalToken = field(formData, 'legalToken');
+  const changed = (): AuthFormState => ({
+    error: 'legal_changed',
+    values,
+    legalToken: versionsToken(REGISTER_CONSENTS, { allowDrafts: legalAllowDrafts() }),
+  });
+  if (!consentTokenFresh(legalToken, REGISTER_CONSENTS)) return changed();
+  // тексты читаются до транзакции; версии должны совпасть с теми, что видел пользователь
+  const consents = await prepareConsents(REGISTER_CONSENTS, locale);
+  if (!preparedMatchToken(consents, legalToken)) return changed();
 
   const passwordHash = await hashPassword(password);
   const db = await getDb();
@@ -118,9 +139,12 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
       ON CONFLICT (email) DO NOTHING
       RETURNING id`;
     if (!rows.length) return false;
-    await sql`
-      INSERT INTO consents (id, user_id, order_id, kind, version, created_at)
-      VALUES (${newId()}, ${userId}, NULL, 'pd_processing', ${PD_CONSENT_VERSION}, ${t})`;
+    await insertConsents(sql, { userId, orderId: null, context: 'register', at: t, consents });
+    // письмо подтверждения в той же транзакции; queued: false (лимит) регистрацию не откатывает:
+    // пользователь запросит письмо снова кнопкой в плашке
+    if (isFeatureActive('EMAIL_VERIFY')) {
+      await sendVerification(sql, { userId, email, name: name.data, locale, next: safeNext(field(formData, 'next')) });
+    }
     await writeAudit(sql, { actorId: userId, action: 'user.register', entity: 'user', entityId: userId, createdAt: t });
     return true;
   });
@@ -144,7 +168,8 @@ export async function demoLoginAction(formData: FormData): Promise<void> {
 
   const db = await getDb();
   const [user] = await db.sql<{ id: string; role: string }>`SELECT id, role FROM users WHERE email = ${email}`;
-  if (!user) redirect(`/${locale}/login`);
+  // вход без пароля — только в аккаунт сида (по id), а не в любой, занявший демо-адрес регистрацией
+  if (!user || !isSeedUser({ id: user.id, email })) redirect(`/${locale}/login`);
 
   await startSession(user.id);
   // без next — сразу в «свой» раздел роли, чтобы демо было наглядным

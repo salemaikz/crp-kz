@@ -1,14 +1,23 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { registerAction, type AuthFormState } from '@/lib/auth/actions';
 import { Link } from '@/lib/i18n/navigation';
 import { Alert, Checkbox, Field, Input, PasswordInput, SubmitButton } from '@/components/ui';
 
+type Props = {
+  next?: string;
+  /** LEGAL: токен показанных версий документов уходит скрытым полем. */
+  legal: { enabled: boolean; token: string };
+  /** Подпись галочки: со ссылками на документы (LEGAL) или прежний текст. */
+  consentLabel: ReactNode;
+};
+
 /** Форма регистрации: имя, email, пароль и обязательное согласие на обработку ПДн. */
-export function RegisterForm({ next }: { next?: string }) {
+export function RegisterForm({ next, legal, consentLabel }: Props) {
   const t = useTranslations('auth');
+  const tLegal = useTranslations('legal.consent');
   const locale = useLocale();
   const [state, formAction, pending] = useActionState<AuthFormState, FormData>(registerAction, undefined);
   const error = state?.error;
@@ -20,7 +29,7 @@ export function RegisterForm({ next }: { next?: string }) {
     <form action={formAction} className="auth-form">
       {formError && (
         <Alert tone="error">
-          {t(`errors.${formError}`)}
+          {formError === 'legal_changed' ? tLegal('changed') : t(`errors.${formError}`)}
           {formError === 'exists' && (
             <>
               {' '}
@@ -31,6 +40,7 @@ export function RegisterForm({ next }: { next?: string }) {
       )}
       <input type="hidden" name="locale" value={locale} />
       {next && <input type="hidden" name="next" value={next} />}
+      {legal.enabled && <input type="hidden" name="legalToken" value={state?.legalToken ?? legal.token} />}
       <Field label={t('fields.name')} required hint={t('fields.nameHint')}>
         <Input
           name="name"
@@ -63,7 +73,7 @@ export function RegisterForm({ next }: { next?: string }) {
       <Checkbox
         name="consent"
         required
-        label={t('register.consent')}
+        label={consentLabel}
         error={fieldError === 'consent' ? t('errors.consent') : undefined}
       />
       <SubmitButton size="lg" block pending={pending} pendingText={t('register.pending')} className="auth-form__submit">

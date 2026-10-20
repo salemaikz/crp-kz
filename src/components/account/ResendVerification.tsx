@@ -5,7 +5,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import { resendVerificationAction, type RecoveryState } from '@/lib/auth/recoveryActions';
 import { SubmitButton } from '@/components/ui';
 
-/** Кнопка «Отправить письмо» в плашке подтверждения email. next возвращает по ссылке из письма. */
+/**
+ * Кнопка «Отправить письмо» в плашке подтверждения email. next возвращает по ссылке из письма;
+ * не задан — берётся страница, где нажата кнопка (читается в момент нажатия, сервер проверяет safeNext).
+ */
 export function ResendVerification({ next }: { next?: string }) {
   const t = useTranslations('auth');
   const locale = useLocale();
@@ -13,7 +16,13 @@ export function ResendVerification({ next }: { next?: string }) {
   const error = state?.status === 'error' ? state.error : undefined;
 
   return (
-    <form action={formAction} style={{ marginTop: 8 }}>
+    <form
+      action={(fd) => {
+        if (!next) fd.set('next', `${window.location.pathname}${window.location.search}`);
+        formAction(fd);
+      }}
+      style={{ marginTop: 8 }}
+    >
       <input type="hidden" name="locale" value={locale} />
       {next && <input type="hidden" name="next" value={next} />}
       <SubmitButton variant="ghost" size="sm" pending={pending} pendingText={t('verifyNotice.pending')}>

@@ -5,9 +5,11 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { getCurrentUser } from '@/lib/auth';
 import { isDemo } from '@/lib/env';
 import { safeNext } from '@/lib/auth/safeNext';
+import { isLegalEnabled, legalAllowDrafts, REGISTER_CONSENTS, versionsToken } from '@/lib/legal';
 import { Link } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { AuthShell } from '@/components/layout/AuthShell';
+import { ConsentLabel } from '@/components/legal/ConsentLabel';
 import { Alert } from '@/components/ui';
 import { RegisterForm } from './RegisterForm';
 
@@ -32,6 +34,9 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   const next = safeNext(sp.next) ?? undefined;
   if (await getCurrentUser()) redirect(next ?? `/${locale}/learn`);
   const t = await getTranslations('auth');
+  // при активном LEGAL подпись — со ссылками на документы, а форма отправляет токен показанных версий
+  const legalOn = isLegalEnabled();
+  const legal = { enabled: legalOn, token: legalOn ? versionsToken(REGISTER_CONSENTS, { allowDrafts: legalAllowDrafts() }) : '' };
 
   return (
     <AuthShell title={t('register.title')} lead={t('register.lead')}>
@@ -41,7 +46,11 @@ export default async function RegisterPage({ params, searchParams }: Props) {
           {t('register.demoWarning')}
         </Alert>
       )}
-      <RegisterForm next={next} />
+      <RegisterForm
+        next={next}
+        legal={legal}
+        consentLabel={legalOn ? <ConsentLabel id="register" locale={locale} /> : t('register.consent')}
+      />
       <p className="auth__switch">
         {t('register.haveAccount')}{' '}
         <Link href={next ? { pathname: '/login', query: { next } } : '/login'} className="text-link">

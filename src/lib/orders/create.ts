@@ -3,15 +3,27 @@
 import { canAccessCourse } from '../access';
 import { getDb, newId, now } from '../db';
 import { writeAudit } from '../audit';
+import { isFeatureActive } from '../features';
+import { CHECKOUT_CONSENTS, insertConsents, type PreparedConsent } from '../legal';
 import { orderAccessKey } from './access-key';
 import { formatOrderNumber, randomOrderDigits } from './number';
 import { findOpenOrder, getCourseForSale } from './queries';
-import { CONSENT_KINDS, CONSENT_VERSION, OrderError } from './types';
+import { OrderError } from './types';
 import type { CheckoutInput } from './validation';
 
 export type CreateOrderOptions = {
   /** Вошедший пользователь — только из сессии. Заказ привязывается к нему и ни к кому другому. */
   userId: string;
+  /**
+   * Подготовленные вне транзакции согласия (prepareConsents(CHECKOUT_CONSENTS, locale)): offer и
+   * pd_processing. Пишутся только для нового заказа этого пользователя.
+   */
+  consents: PreparedConsent[];
+  /**
+   * Требовать подтверждённый email (D-032, предложено, ждёт владельца). По умолчанию — активен ли
+   * EMAIL_VERIFY: забытая опция не открывает обход.
+   */
+  requireVerifiedEmail?: boolean;
   /** Источник 4 цифр номера — для тестов коллизий. */
   digits?: () => number;
   maxAttempts?: number;
@@ -42,6 +54,12 @@ export function orderDiffersFrom(
   return input.buyerType === 'company' && (open.companyBin ?? null) !== (input.companyBin ?? null);
 }
 
+/** Ровно offer и pd_processing: иначе заказ создался бы с неполными согласиями. */
+function assertCheckoutConsents(consents: readonly PreparedConsent[]): void {
+  const kinds = consents.map((c) => c.kind).sort().join(',');
+  if (kinds !== [...CHECKOUT_CONSENTS].sort().join(',')) throw new Error('ORDER_CONSENTS_INVALID');
+}
+
 /** Вставить заказ с уникальным номером: при совпадении — новые цифры (ON CONFLICT без ошибки в транзакции). */
 async function insertWithNumber(
   t: number,
@@ -63,10 +81,13 @@ async function insertWithNumber(
  * - Уже есть неоплаченный заказ на этот курс → возвращаем его (existing: true), второй не создаём;
  *   differs — он оформлен иначе (владелец может отменить его сам: cancelOwnOrder).
  * - buyer_email — email аккаунта (не из формы); сумма и срок доступа — из предложения курса.
- * Согласия offer и pd_processing — к заказу.
+ * - EMAIL_VERIFY активен и email аккаунта не подтверждён → email_unverified до любых записей.
+ * Согласия offer и pd_processing — к заказу (только к новому: у existing новых согласий нет).
  */
 export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions): Promise<CreatedOrder> {
   if (typeof opts.userId !== 'string' || opts.userId === '') throw new OrderError('login_required');
+  assertCheckoutConsents(opts.consents);
+  const requireVerified = opts.requireVerifiedEmail ?? isFeatureActive('EMAIL_VERIFY');
   const db = await getDb();
   const digits = opts.digits ?? randomOrderDigits;
   const maxAttempts = opts.maxAttempts ?? 25;
@@ -74,9 +95,11 @@ export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions
   const created = await db.tx(async (sql) => {
     // строка пользователя блокируется: параллельные заказы одного пользователя идут по очереди,
     // и проверка «есть открытый заказ» не пропускает дубль
-    const [user] = await sql<{ id: string; email: string }>`
-      SELECT id, email FROM users WHERE id = ${opts.userId} FOR UPDATE`;
+    const [user] = await sql<{ id: string; email: string; emailVerifiedAt: number | null }>`
+      SELECT id, email, email_verified_at FROM users WHERE id = ${opts.userId} FOR UPDATE`;
     if (!user) throw new OrderError('login_required');
+    // чужой email мог быть занят заранее (#25): заказ — только с подтверждённого, и до любых записей
+    if (requireVerified && user.emailVerifiedAt === null) throw new OrderError('email_unverified');
 
     const sale = await getCourseForSale(input.courseSlug, sql);
     if (sale.kind !== 'ok') throw new OrderError('not_for_sale');
@@ -114,11 +137,7 @@ export async function createOrder(input: CheckoutInput, opts: CreateOrderOptions
       return rows.length > 0;
     });
 
-    for (const kind of CONSENT_KINDS) {
-      await sql`
-        INSERT INTO consents (id, user_id, order_id, kind, version, created_at)
-        VALUES (${newId()}, ${user.id}, ${id}, ${kind}, ${CONSENT_VERSION}, ${t})`;
-    }
+    await insertConsents(sql, { userId: user.id, orderId: id, context: 'checkout', at: t, consents: opts.consents });
     // в журнал — без персональных данных покупателя
     await writeAudit(sql, {
       actorId: user.id,

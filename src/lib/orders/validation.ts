@@ -50,6 +50,8 @@ export const CHECKOUT_FIELDS = [
   'companyBin',
   'paymentMethod',
   'consent',
+  'consentOffer',
+  'consentPd',
 ] as const;
 export type CheckoutField = (typeof CHECKOUT_FIELDS)[number];
 
@@ -65,7 +67,11 @@ export type CheckoutValues = {
   companyName: string;
   companyBin: string;
   paymentMethod: PaymentMethod;
+  /** Одна галочка (LEGAL выключен). */
   consent: boolean;
+  /** Две галочки (LEGAL включён, D-035): оферта и обработка ПДн. */
+  consentOffer: boolean;
+  consentPd: boolean;
 };
 
 /** Проверенные данные заказа. Сумма и курс берутся из БД, не из формы. */
@@ -86,7 +92,7 @@ export type CheckoutParseResult =
 
 const invalid = () => ({ message: 'invalid' });
 
-const baseSchema = z.object({
+const baseShape = {
   courseSlug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/, 'invalid'),
   buyerType: z.enum(BUYER_TYPES, { errorMap: invalid }),
   name: z.string().trim().min(1, 'required').min(2, 'too_short').max(100, 'too_long'),
@@ -104,8 +110,13 @@ const baseSchema = z.object({
       return phone;
     }),
   paymentMethod: z.enum(PAYMENT_METHODS, { errorMap: invalid }),
-  consent: z.literal('on', { errorMap: () => ({ message: 'required' }) }),
-});
+};
+
+const required = () => z.literal('on', { errorMap: () => ({ message: 'required' }) });
+/** До D-035: одна галочка. */
+const legacySchema = z.object({ ...baseShape, consent: required() });
+/** LEGAL включён: оферта и ПДн принимаются отдельно. */
+const legalSchema = z.object({ ...baseShape, consentOffer: required(), consentPd: required() });
 
 const companyNameSchema = z.string().trim().min(1, 'required').min(2, 'too_short').max(200, 'too_long');
 
@@ -124,28 +135,33 @@ function echo(raw: Record<string, unknown>): CheckoutValues {
     companyBin: str(raw.companyBin, 20),
     paymentMethod: raw.paymentMethod === 'invoice' ? 'invoice' : 'kaspi',
     consent: raw.consent === 'on',
+    consentOffer: raw.consentOffer === 'on',
+    consentPd: raw.consentPd === 'on',
   };
 }
 
 /**
  * Разбор формы покупки. Юрлицо: название, БИН (12 цифр + контрольная) и только оплата по счёту.
  * Физлицо: Kaspi или счёт; поля компании игнорируются.
+ * legal (LEGAL активен) — две галочки consentOffer и consentPd вместо одной consent.
  */
-export function parseCheckout(raw: Record<string, unknown>): CheckoutParseResult {
+export function parseCheckout(raw: Record<string, unknown>, opts: { legal: boolean }): CheckoutParseResult {
   const values = echo(raw);
   const errors: CheckoutErrors = {};
   const put = (field: CheckoutField, code: string) => {
     if (!errors[field]) errors[field] = code;
   };
 
-  const base = baseSchema.safeParse({
+  const base = (opts.legal ? legalSchema : legacySchema).safeParse({
     courseSlug: str(raw.courseSlug, 100),
     buyerType: str(raw.buyerType, 20),
     name: str(raw.name, 300),
     email: str(raw.email, 300),
     phone: str(raw.phone, 64),
     paymentMethod: str(raw.paymentMethod, 20),
-    consent: str(raw.consent, 10),
+    ...(opts.legal
+      ? { consentOffer: str(raw.consentOffer, 10), consentPd: str(raw.consentPd, 10) }
+      : { consent: str(raw.consent, 10) }),
   });
   if (!base.success) {
     for (const issue of base.error.issues) {

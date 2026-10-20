@@ -4,10 +4,14 @@ import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { requireUser } from '@/lib/auth';
 import { t as tl } from '@/lib/content/l10n';
+import { isFeatureActive } from '@/lib/features';
+import { CHECKOUT_CONSENTS, isLegalEnabled, legalAllowDrafts, versionsToken } from '@/lib/legal';
 import { Link, redirect } from '@/lib/i18n/navigation';
 import { routing } from '@/lib/i18n/routing';
 import { buyState, findOpenOrder, getCourseForSale } from '@/lib/orders/queries';
+import { VerifyEmailNotice } from '@/components/account/VerifyEmailNotice';
 import { CheckoutForm, OrderSummaryCard } from '@/components/checkout';
+import { ConsentLabel } from '@/components/legal/ConsentLabel';
 import { Alert, Breadcrumbs, Card, Container, PageHeader, Section } from '@/components/ui';
 import '@/components/checkout/checkout.css';
 
@@ -47,6 +51,11 @@ export default async function BuyPage({ params }: Props) {
   const t = await getTranslations('checkout.buy');
   const a11y = await getTranslations('common.a11y');
   const title = tl(course.title, locale);
+  // D-032 (предложено, ждёт владельца): заказ только с подтверждённого email — форма закрыта панелью
+  const needVerify = isFeatureActive('EMAIL_VERIFY') && !user.emailVerified;
+  // D-035 (предложено, ждёт владельца): при активном LEGAL — две галочки со ссылками и токен версий
+  const legalOn = isLegalEnabled();
+  const legal = { enabled: legalOn, token: legalOn ? versionsToken(CHECKOUT_CONSENTS, { allowDrafts: legalAllowDrafts() }) : '' };
 
   return (
     <>
@@ -78,11 +87,25 @@ export default async function BuyPage({ params }: Props) {
               </Alert>
             )}
             <Card large padding="lg">
-              <CheckoutForm
-                courseSlug={course.slug}
-                priceKzt={course.priceKzt}
-                user={{ name: user.name, email: user.email }}
-              />
+              {needVerify ? (
+                // после подтверждения ссылка из письма возвращает на эту же страницу
+                <VerifyEmailNotice variant="checkout" next={`/${locale}/courses/${course.slug}/buy`} />
+              ) : (
+                <CheckoutForm
+                  courseSlug={course.slug}
+                  priceKzt={course.priceKzt}
+                  user={{ name: user.name, email: user.email }}
+                  legal={legal}
+                  consentLabels={
+                    legalOn
+                      ? {
+                          offer: <ConsentLabel id="checkoutOffer" locale={locale} />,
+                          pd: <ConsentLabel id="checkoutPd" locale={locale} />,
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </Card>
           </div>
           <div className="co-buy__aside">
