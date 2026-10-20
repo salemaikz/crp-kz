@@ -484,3 +484,100 @@ test('run-script.sh: пока предыдущий экземпляр работ
     holder.kill();
   }
 });
+
+// --- deploy.sh: группа каталога релиза.
+
+test('deploy.sh: группа релиза совпадает с группой приложения - выкладка проходит', opts, () => {
+  const ctx = makeCtx();
+  const group = spawnSync('id', ['-gn'], { encoding: 'utf8' }).stdout.trim();
+  const r = deploy(ctx, 'v0.1.0', { CRP_APP_GROUP: group });
+  assert.equal(r.status, 0, out(r));
+  assert.equal(releases(ctx).length, 1);
+});
+
+test('deploy.sh: чужая группа релиза - код 2, каталог релиза удалён', opts, () => {
+  const ctx = makeCtx();
+  const r = deploy(ctx, 'v0.1.0', { CRP_APP_GROUP: 'crp-no-such-group' });
+  assert.equal(r.status, 2, out(r));
+  assert.match(out(r), /группа каталога релиза/);
+  assert.deepEqual(releases(ctx), []);
+});
+
+// --- healthcheck.sh: curl и pm2 подменены в каталоге теста; запросы curl пишутся в файл.
+
+function makeHealthCtx(opts2: { remote?: boolean; offsite?: boolean; filesOffsite?: boolean; since?: number; tg?: boolean } = {}) {
+  const ctx = makeCtx();
+  const ops = join(ctx.dir, 'ops');
+  const shims = join(ctx.dir, 'hshims');
+  mkdirSync(ops, { recursive: true });
+  mkdirSync(shims, { recursive: true });
+  const calls = join(ctx.dir, 'curl-calls.txt');
+  writeFileSync(calls, '');
+  writeFileSync(
+    join(shims, 'curl'),
+    `#!/usr/bin/env bash
+for a in "$@"; do [[ "$a" == http* ]] && url="$a"; done
+if [[ "$url" == http://127.0.0.1:* ]]; then echo '{"status":"ok"}'; exit 0; fi
+{ echo "ARGV: $*"; echo "STDIN: $(cat)"; } >>"${calls}"
+`,
+  );
+  writeFileSync(join(shims, 'pm2'), `#!/usr/bin/env bash\necho '[{"name":"crp","pm2_env":{"status":"online","restart_time":0}}]'\n`);
+  chmodSync(join(shims, 'curl'), 0o755);
+  chmodSync(join(shims, 'pm2'), 0o755);
+  const now = Date.now();
+  const st = (offsite: boolean) => JSON.stringify({ ok: true, at: now, file: 'x', sizeBytes: 1, verified: false, offsite });
+  writeFileSync(join(ops, 'backup-status.json'), st(opts2.offsite ?? true));
+  const storage = join(ctx.dir, 'storage');
+  mkdirSync(storage, { recursive: true });
+  writeFileSync(join(storage, 'f'), 'x');
+  writeFileSync(join(ops, 'files-status.json'), st(opts2.filesOffsite ?? true));
+  if (opts2.since) {
+    writeFileSync(join(ops, 'monitor-state.json'), JSON.stringify({ at: now, checks: {}, offsiteSince: opts2.since }));
+  }
+  writeFileSync(join(ctx.dir, 'backup.env'), opts2.remote ? 'BACKUP_REMOTE=store@example.invalid:/b\n' : '');
+  writeFileSync(join(ctx.dir, 'app.env'), `STORAGE_DIR=${storage}\n`);
+  writeFileSync(join(ctx.dir, 'monitor.env'), opts2.tg ? 'ALERT_TELEGRAM_BOT_TOKEN=SECRETTOKEN123\nALERT_TELEGRAM_CHAT_ID=42\n' : '');
+  const run = () =>
+    spawnSync('bash', [join(BIN, 'healthcheck.sh')], {
+      env: {
+        ...env(ctx),
+        PATH: `${shims}:${process.env.PATH ?? ''}`,
+        CRP_OPS_DIR: ops,
+        CRP_BACKUP_ENV: join(ctx.dir, 'backup.env'),
+        CRP_APP_ENV: join(ctx.dir, 'app.env'),
+        CRP_MONITOR_ENV: join(ctx.dir, 'monitor.env'),
+        CRP_HEALTH_PM2: 'pm2',
+      } as NodeJS.ProcessEnv,
+      encoding: 'utf8',
+    });
+  const state = () => JSON.parse(readFileSync(join(ops, 'monitor-state.json'), 'utf8'));
+  return { run, state, calls: () => readFileSync(calls, 'utf8') };
+}
+
+test('healthcheck.sh: offsite=false при заданном BACKUP_REMOTE - warn, без алерта в первые сутки', opts, () => {
+  const h = makeHealthCtx({ remote: true, offsite: false, tg: true });
+  const r = h.run();
+  assert.equal(r.status, 0, out(r));
+  assert.equal(h.state().checks.backup_offsite, 'warn');
+  assert.equal(h.calls(), '');
+});
+
+test('healthcheck.sh: offsite=false дольше 48 часов - fail и алерт, токен не в argv curl', opts, () => {
+  const h = makeHealthCtx({ remote: true, offsite: false, tg: true, since: Math.floor(Date.now() / 1000) - 49 * 3600 });
+  const r = h.run();
+  assert.equal(r.status, 0, out(r));
+  assert.equal(h.state().checks.backup_offsite, 'fail');
+  const calls = h.calls();
+  assert.match(calls, /backup_offsite/);
+  assert.doesNotMatch((calls.split('STDIN:')[0] ?? ''), /SECRETTOKEN123/, 'токен не должен быть в аргументах');
+  assert.match(calls, /STDIN: url = ".*SECRETTOKEN123/);
+});
+
+test('healthcheck.sh: offsite=false в files-status.json тоже учитывается; без BACKUP_REMOTE проверки нет', opts, () => {
+  const a = makeHealthCtx({ remote: true, filesOffsite: false });
+  assert.equal(a.run().status, 0);
+  assert.equal(a.state().checks.backup_offsite, 'warn');
+  const b = makeHealthCtx({ remote: false, offsite: false });
+  assert.equal(b.run().status, 0);
+  assert.equal(b.state().checks.backup_offsite, undefined);
+});

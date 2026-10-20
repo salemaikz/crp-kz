@@ -82,13 +82,30 @@ fresh_status() {
 }
 check_backup() {
   if fresh_status backup-status.json; then result[backup]=ok; else result[backup]=fail; fi
-  # Вторая копия задана, но последний бэкап её не отправил: предупреждение, а не отказ (локальная копия есть).
-  if [[ -n "$BACKUP_REMOTE" ]] && [[ "$(jq -r '.offsite' "$OPS_DIR/backup-status.json" 2>/dev/null)" == false ]]; then
-    if [[ "${result[backup]}" == ok ]]; then result[backup]=warn; fi
-  fi
   if [[ -n "$STORAGE" && -d "$STORAGE" && -n "$(find "$STORAGE" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
     if fresh_status files-status.json; then result[backup_files]=ok; else result[backup_files]=fail; fi
   fi
+  check_offsite
+}
+
+# --- Вторая копия: задана, но последний бэкап БД или файлов её не отправил (offsite=false).
+# Первые 48 часов подряд предупреждение, потом отказ с алертом: молчаливый сбой хранилища
+# (смена ключа хоста, сеть) иначе остался бы виден только в monitor-state.json.
+check_offsite() {
+  [[ -n "$BACKUP_REMOTE" ]] || return 0
+  local f bad=0 since
+  for f in backup-status.json files-status.json; do
+    [[ -r "$OPS_DIR/$f" ]] || continue
+    if [[ "$(jq -r '.offsite' "$OPS_DIR/$f" 2>/dev/null)" == false ]]; then bad=1; fi
+  done
+  if ((bad == 0)); then
+    result[backup_offsite]=ok
+    return 0
+  fi
+  since="$(jq -r '.offsiteSince // empty' "$STATE_FILE" 2>/dev/null || true)"
+  [[ "$since" =~ ^[0-9]+$ ]] || since="$now_s"
+  extra[offsiteSince]="$since"
+  if ((now_s - since >= 48 * 3600)); then result[backup_offsite]=fail; else result[backup_offsite]=warn; fi
 }
 
 # --- Свободное место: предупреждение меньше 20 %, отказ меньше 10 %.
@@ -159,4 +176,5 @@ done
 checks_json="$(for k in "${!result[@]}"; do printf '%s\n%s\n' "$k" "${result[$k]}"; done | jq -Rn '[inputs] as $a | reduce range(0; $a|length; 2) as $i ({}; .[$a[$i]] = $a[$i+1])')"
 jq -n --argjson checks "$checks_json" --argjson at "${now_s}000" \
   --argjson rb "${extra[restartBase]:-0}" --argjson rba "${extra[restartBaseAt]:-$now_s}" \
-  '{at: $at, checks: $checks, restartBase: $rb, restartBaseAt: $rba}' >"$STATE_FILE.tmp" && mv -f "$STATE_FILE.tmp" "$STATE_FILE"
+  --arg os "${extra[offsiteSince]:-}" \
+  '{at: $at, checks: $checks, restartBase: $rb, restartBaseAt: $rba} + (if $os == "" then {} else {offsiteSince: ($os | tonumber)} end)' >"$STATE_FILE.tmp" && mv -f "$STATE_FILE.tmp" "$STATE_FILE"
