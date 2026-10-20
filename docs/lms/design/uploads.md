@@ -586,7 +586,7 @@ await syncLessonFiles(sql, lessonId, fileIds);
 | `src/app/[locale]/admin/courses/[id]/files/page.tsx` | новая страница; при выключенном флаге — `notFound()` |
 | `src/components/learn/ImageBlock.tsx`, `FileBlock.tsx` | показ слушателю; в демо у не-админа `FileBlock` показывает подпись `block.demoHidden` вместо документа (D-038) |
 | `src/components/learn/Blocks.tsx` | ветки `image`/`file`, при выключенном флаге — `null` |
-| `src/components/learn/Markdown.tsx` | проп `filesEnabled`: при `false` `img` с `/api/files/` не выводится |
+| `src/components/learn/Markdown.tsx` | проп `filesEnabled`: при `false` `img` с `/api/files/` не выводится; в демо у не-админа ссылка на документ урока выводится подписью `block.demoHidden` без `href` (D-038; сервер передаёт набор id документов урока) |
 | `messages/{ru,kz}/files.json` | тексты (раздел 4) |
 | `messages/{ru,kz}/admin.json` | `lessonEditor.blocks.types.{image,file}`, `lessonEditor.issue.{fileNotFound,fileWrongKind}`, `errors.{FEATURE_DISABLED,FILE_IN_USE,FILE_NOT_FOUND}` |
 
