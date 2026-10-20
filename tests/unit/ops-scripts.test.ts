@@ -414,6 +414,66 @@ test('backup.sh: вторая копия — только свои подкат�
   assert.match(bad.stdout, /НЕ отправлена/);
 });
 
+test('backup.sh --files: свои адрес и ключ, без них - запасные общие', opts, () => {
+  const rsyncLog = (b: ReturnType<typeof makeBackupCtx>) => join(b.ctx.dir, 'rsync.log');
+  const withFile = (b: ReturnType<typeof makeBackupCtx>) => writeFileSync(join(b.storage, 'f.txt'), 'x');
+  const set = (b: ReturnType<typeof makeBackupCtx>, extra: string) => writeFileSync(b.envFile, `${readFileSync(b.envFile, 'utf8')}${extra}`);
+
+  // свои значения: файлы идут своим ключом и в свой адрес
+  const own = makeBackupCtx();
+  withFile(own);
+  set(own, `BACKUP_REMOTE=${join(own.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=/k/db\nBACKUP_FILES_REMOTE=${join(own.ctx.dir, 'files-remote')}\nBACKUP_FILES_REMOTE_SSH_KEY=/k/files\n`);
+  const r1 = own.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(own) });
+  assert.equal(r1.status, 0, out(r1));
+  const l1 = readFileSync(rsyncLog(own), 'utf8');
+  assert.match(l1, /-i \/k\/files /);
+  assert.doesNotMatch(l1, /\/k\/db/);
+  assert.match(l1, /dst=.*files-remote\/$/m);
+  assert.equal(own.status('files-status.json').offsite, true);
+  assert.ok(existsSync(join(own.ctx.dir, 'files-remote', 'files')));
+  assert.equal(existsSync(join(own.ctx.dir, 'db-remote')), false, 'адрес БД файлы не получают');
+
+  // только общие: запасные значения
+  const shared = makeBackupCtx();
+  withFile(shared);
+  set(shared, `BACKUP_REMOTE=${join(shared.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=/k/db\n`);
+  const r2 = shared.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(shared) });
+  assert.equal(r2.status, 0, out(r2));
+  const l2 = readFileSync(rsyncLog(shared), 'utf8');
+  assert.match(l2, /-i \/k\/db /);
+  assert.match(l2, /dst=.*db-remote\/$/m);
+
+  // бэкап БД своего файлового ключа не использует
+  const db = makeBackupCtx();
+  set(db, `BACKUP_REMOTE=${join(db.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=/k/db\nBACKUP_FILES_REMOTE_SSH_KEY=/k/files\n`);
+  const r3 = db.run([], { SHIM_RSYNC_LOG: rsyncLog(db) });
+  assert.equal(r3.status, 0, out(r3));
+  assert.doesNotMatch(readFileSync(rsyncLog(db), 'utf8'), /\/k\/files/);
+});
+
+test('backup.sh --files: ни одного адреса - второй копии нет, offsite=false', opts, () => {
+  const b = makeBackupCtx();
+  writeFileSync(join(b.storage, 'f.txt'), 'x');
+  const r = b.run(['--files']);
+  assert.equal(r.status, 0, out(r));
+  assert.equal(b.status('files-status.json').offsite, false);
+});
+
+test('backup.sh: статус пишется через mktemp, заранее подложенная ссылка .tmp не трогает цель, права 0644', opts, () => {
+  const b = makeBackupCtx();
+  const target = join(b.ctx.dir, 'victim.conf');
+  writeFileSync(target, 'не менять\n');
+  chmodSync(target, 0o600);
+  symlinkSync(target, join(b.ops, 'backup-status.json.tmp'));
+  const r = b.run();
+  assert.equal(r.status, 0, out(r));
+  assert.equal(readFileSync(target, 'utf8'), 'не менять\n', 'цель ссылки не перезаписана');
+  assert.equal(statSync(target).mode & 0o777, 0o600, 'права цели не менялись');
+  assert.equal(statSync(join(b.ops, 'backup-status.json')).mode & 0o777, 0o644);
+  assert.equal(b.status().ok, true);
+  assert.deepEqual(readdirSync(b.ops).filter((f) => f.startsWith('.status.')), [], 'временных файлов не осталось');
+});
+
 test('backup.sh --label: статус ночного бэкапа не перезаписывается', opts, () => {
   const b = makeBackupCtx();
   assert.equal(b.run().status, 0);
@@ -505,7 +565,7 @@ test('deploy.sh: чужая группа релиза - код 2, каталог
 
 // --- healthcheck.sh: curl и pm2 подменены в каталоге теста; запросы curl пишутся в файл.
 
-function makeHealthCtx(opts2: { remote?: boolean; offsite?: boolean; filesOffsite?: boolean; since?: number; tg?: boolean } = {}) {
+function makeHealthCtx(opts2: { remote?: boolean; offsite?: boolean; filesOffsite?: boolean; filesAt?: number; emptyStorage?: boolean; since?: number; tg?: boolean } = {}) {
   const ctx = makeCtx();
   const ops = join(ctx.dir, 'ops');
   const shims = join(ctx.dir, 'hshims');
@@ -525,12 +585,12 @@ if [[ "$url" == http://127.0.0.1:* ]]; then echo '{"status":"ok"}'; exit 0; fi
   chmodSync(join(shims, 'curl'), 0o755);
   chmodSync(join(shims, 'pm2'), 0o755);
   const now = Date.now();
-  const st = (offsite: boolean) => JSON.stringify({ ok: true, at: now, file: 'x', sizeBytes: 1, verified: false, offsite });
+  const st = (offsite: boolean, at = now) => JSON.stringify({ ok: true, at, file: 'x', sizeBytes: 1, verified: false, offsite });
   writeFileSync(join(ops, 'backup-status.json'), st(opts2.offsite ?? true));
   const storage = join(ctx.dir, 'storage');
   mkdirSync(storage, { recursive: true });
-  writeFileSync(join(storage, 'f'), 'x');
-  writeFileSync(join(ops, 'files-status.json'), st(opts2.filesOffsite ?? true));
+  if (!opts2.emptyStorage) writeFileSync(join(storage, 'f'), 'x');
+  writeFileSync(join(ops, 'files-status.json'), st(opts2.filesOffsite ?? true, opts2.filesAt ?? now));
   if (opts2.since) {
     writeFileSync(join(ops, 'monitor-state.json'), JSON.stringify({ at: now, checks: {}, offsiteSince: opts2.since }));
   }
@@ -551,7 +611,7 @@ if [[ "$url" == http://127.0.0.1:* ]]; then echo '{"status":"ok"}'; exit 0; fi
       encoding: 'utf8',
     });
   const state = () => JSON.parse(readFileSync(join(ops, 'monitor-state.json'), 'utf8'));
-  return { run, state, calls: () => readFileSync(calls, 'utf8') };
+  return { run, state, dir: ctx.dir, ops, calls: () => readFileSync(calls, 'utf8') };
 }
 
 test('healthcheck.sh: offsite=false при заданном BACKUP_REMOTE - warn, без алерта в первые сутки', opts, () => {
@@ -580,4 +640,63 @@ test('healthcheck.sh: offsite=false в files-status.json тоже учитыва
   const b = makeHealthCtx({ remote: false, offsite: false });
   assert.equal(b.run().status, 0);
   assert.equal(b.state().checks.backup_offsite, undefined);
+});
+
+test('healthcheck.sh: пустое хранилище и старый files-status.json с offsite=false - backup_offsite не warn', opts, () => {
+  const old = Date.now() - 100 * 3600 * 1000;
+  const h = makeHealthCtx({ remote: true, emptyStorage: true, filesOffsite: false, filesAt: old });
+  assert.equal(h.run().status, 0);
+  assert.equal(h.state().checks.backup_offsite, 'ok');
+  assert.equal(h.state().checks.backup_files, undefined, 'при пустом хранилище проверки файлов нет');
+  // тот же статус, но свежий, при пустом хранилище тоже не учитывается
+  const fresh = makeHealthCtx({ remote: true, emptyStorage: true, filesOffsite: false });
+  assert.equal(fresh.run().status, 0);
+  assert.equal(fresh.state().checks.backup_offsite, 'ok');
+});
+
+test('healthcheck.sh: files-status.json старше 26 часов не включает backup_offsite (его уже ловит backup_files)', opts, () => {
+  const h = makeHealthCtx({ remote: true, filesOffsite: false, filesAt: Date.now() - 27 * 3600 * 1000 });
+  assert.equal(h.run().status, 0);
+  assert.equal(h.state().checks.backup_offsite, 'ok');
+  assert.equal(h.state().checks.backup_files, 'fail');
+});
+
+test('healthcheck.sh: адрес копии файлов задан только в BACKUP_FILES_REMOTE - offsite=false файлов учитывается', opts, () => {
+  const h = makeHealthCtx({ remote: false, filesOffsite: false });
+  writeFileSync(join(h.dir, 'backup.env'), 'BACKUP_FILES_REMOTE=store@example.invalid:/f\n');
+  assert.equal(h.run().status, 0);
+  assert.equal(h.state().checks.backup_offsite, 'warn');
+});
+
+test('healthcheck.sh: monitor-state.json пишется без предсказуемого .tmp, права 0644, ссылка не трогает цель', opts, () => {
+  const h = makeHealthCtx({ remote: true });
+  const target = join(h.dir, 'victim.conf');
+  writeFileSync(target, 'не менять\n');
+  symlinkSync(target, join(h.ops, 'monitor-state.json.tmp'));
+  assert.equal(h.run().status, 0);
+  assert.equal(readFileSync(target, 'utf8'), 'не менять\n');
+  assert.equal(statSync(join(h.ops, 'monitor-state.json')).mode & 0o777, 0o644);
+  assert.deepEqual(readdirSync(h.ops).filter((f) => f.startsWith('.state.')), []);
+});
+
+// --- restore.sh: порт проверки «приложение остановлено» берётся из instance.json.
+
+test('restore.sh --force-prod: порт проверки из shared/instance.json, а не 3000', opts, () => {
+  const ctx = makeCtx();
+  writeFileSync(join(ctx.root, 'shared', 'instance.json'), JSON.stringify({ name: 'crp', port: 3456 }));
+  const shims = join(ctx.dir, 'rshims');
+  mkdirSync(shims, { recursive: true });
+  const calls = join(ctx.dir, 'curl-urls.txt');
+  writeFileSync(join(shims, 'curl'), `#!/usr/bin/env bash\nfor a in "$@"; do [[ "$a" == http* ]] && echo "$a" >>"${calls}"; done\nexit 0\n`);
+  chmodSync(join(shims, 'curl'), 0o755);
+  const dump = join(ctx.dir, 'x.dump');
+  writeFileSync(dump, 'x');
+  writeFileSync(join(ctx.dir, 'backup.env'), 'BACKUP_DB=crp\n');
+  const r = spawnSync('bash', [join(BIN, 'restore.sh'), '--file', dump, '--target', 'crp', '--force-prod'], {
+    env: { ...env(ctx), PATH: `${shims}:${process.env.PATH ?? ''}`, CRP_BACKUP_ENV: join(ctx.dir, 'backup.env') } as NodeJS.ProcessEnv,
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 2, out(r));
+  assert.match(r.stderr, /порту 3456/);
+  assert.match(readFileSync(calls, 'utf8'), /127\.0\.0\.1:3456\/api\/health/);
 });

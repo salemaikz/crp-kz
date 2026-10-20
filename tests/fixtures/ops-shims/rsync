@@ -2,6 +2,7 @@
 # Заглушка rsync для tests/unit/ops-scripts.test.ts. Два вида вызова:
 #   rsync -a [--chmod=D..,F..] <откуда>/ <куда>/   копирует содержимое;
 #   rsync -aHR ... <подкаталог>... <куда>/          относительные пути (-R), как при отправке бэкапа.
+# SHIM_RSYNC_LOG=<файл>: дописать строку «ssh=<значение -e> dst=<назначение>» (проверка ключа и адреса).
 # SHIM_RSYNC_DENY=<имя>: подкаталог с таким именем «нечитаем», код 23 (как у rsync на чужом каталоге 0700).
 set -euo pipefail
 echo "rsync" >>"$SHIM_LOG"
@@ -9,8 +10,9 @@ relative=0
 chmod_opt=""
 pos=()
 skip=0
+ssh_cmd=""
 for a in "$@"; do
-  if ((skip)); then skip=0; continue; fi
+  if ((skip)); then ssh_cmd="$a"; skip=0; continue; fi
   case "$a" in
     -e) skip=1 ;;
     --chmod=*) chmod_opt="${a#--chmod=}" ;;
@@ -22,6 +24,7 @@ for a in "$@"; do
 done
 dst="${pos[-1]}"
 unset 'pos[-1]'
+if [[ -n "${SHIM_RSYNC_LOG:-}" ]]; then echo "ssh=$ssh_cmd dst=$dst" >>"$SHIM_RSYNC_LOG"; fi
 if ((relative)); then
   rc=0
   for s in "${pos[@]}"; do

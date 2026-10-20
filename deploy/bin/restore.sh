@@ -39,7 +39,13 @@ cfg() { echo "${ENVF[$1]:-$2}"; }
 PROD_DB="$(cfg BACKUP_DB crp)"
 OWNER_ROLE="$(cfg BACKUP_OWNER_ROLE crp_owner)"
 APP_ROLE="$(cfg BACKUP_APP_ROLE crp_app)"
+# Порт приложения — из shared/instance.json, если файл читается (порт может быть нестандартным);
+# иначе CRP_APP_PORT или 3000. Проверка «приложение остановлено» иначе пропустила бы работающее.
 APP_PORT="${CRP_APP_PORT:-3000}"
+if [[ -r "${CRP_ROOT}/shared/instance.json" ]]; then
+  inst_port="$(jq -r '.port // empty' "${CRP_ROOT}/shared/instance.json" 2>/dev/null || true)"
+  if [[ "$inst_port" =~ ^[0-9]{2,5}$ ]]; then APP_PORT="$inst_port"; fi
+fi
 GRANTS_SQL="${CRP_GRANTS_SQL:-$SELF_DIR/grants.sql}"
 NAME_RE='^[a-z_][a-z0-9_]{0,62}$'
 TS="$(date -u +%Y%m%d%H%M%S)"

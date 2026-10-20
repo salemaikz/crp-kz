@@ -133,7 +133,8 @@ test('крон: UTC без часового пояса, всё через /usr/l
     assert.ok(m, `разбор строки: ${j}`);
     assert.ok(['crp', 'postgres'].includes(m[2] ?? ''), `пользователь ${m[2]}`);
     assert.ok((m[3] ?? '').startsWith('/usr/local/lib/crp/'), `путь ${m[3]}`);
-    assert.match(j, />> \/var\/log\/crp\/\S+\.log 2>&1$/);
+    // журнал бэкапа БД лежит вне каталога crp (D-041): его пишет postgres
+    assert.match(j, m[2] === 'postgres' ? />> \/var\/log\/crp-backup\/backup\.log 2>&1$/ : />> \/var\/log\/crp\/\S+\.log 2>&1$/);
   }
   const find = (name: string) => jobs.find((j) => j.includes(`run-script.sh ${name}`));
   assert.match(find('mail-worker') ?? '', /^\* \* \* \* \* /, 'очередь писем раз в минуту');
@@ -191,6 +192,8 @@ test('app.env.example ⊆ .env.example, исключения только ops-on
 test('backup.env.example: решения владельца (D-029) - пустые параметры, а не выдуманные значения', () => {
   const text = read('env', 'backup.env.example');
   assert.match(text, /^BACKUP_REMOTE=$/m);
+  assert.match(text, /^BACKUP_FILES_REMOTE=$/m);
+  assert.match(text, /^BACKUP_FILES_REMOTE_SSH_KEY=$/m);
   assert.match(text, /D-029 ПРЕДЛОЖЕНО/);
   assert.match(read('env', 'backup-recipients.example'), /age1<открытый-ключ-хранителя-1>/);
   assert.match(read('env', 'monitor.env.example'), /^ALERT_TELEGRAM_BOT_TOKEN=$/m);
@@ -238,11 +241,16 @@ test('Postgres: значения параметров не попадают в �
   assert.match(conf, /^log_parameter_max_length_on_error = 0$/m);
 });
 
-test('install-ops.sh: releases с setgid, журнал бэкапа в каталоге postgres', () => {
+test('install-ops.sh: releases с setgid, журнал бэкапа вне каталога crp, права каталогов (D-041)', () => {
   const t = read('bin', 'install-ops.sh');
   assert.match(t, /-m 2750 -o crpdeploy -g crp "\$ROOT\/releases"/);
-  assert.match(read('logrotate', 'crp'), /\/var\/log\/crp\/backup\/backup\.log \{/);
-  assert.match(read('cron', 'crp.cron'), /\/var\/log\/crp\/backup\/backup\.log/);
+  assert.match(read('logrotate', 'crp'), /\/var\/log\/crp-backup\/backup\.log \{/);
+  assert.match(read('cron', 'crp.cron'), /\/var\/log\/crp-backup\/backup\.log/);
+  assert.doesNotMatch(read('cron', 'crp.cron') + read('logrotate', 'crp'), /\/var\/log\/crp\/backup\//);
+  assert.match(t, /install -d -m 0750 -o crp -g adm \/var\/log\/crp$/m);
+  assert.match(t, /install -d -m 0750 -o postgres -g adm \/var\/log\/crp-backup$/m);
+  assert.match(t, /install -d -m 1775 -o postgres -g crp \/var\/lib\/crp-ops$/m);
+  assert.match(read('logrotate', 'crp'), /crp-backup\/backup\.log \{[^}]*su postgres adm/);
 });
 
 test('nginx: журнал ошибок не пишет строки запросов с query', () => {

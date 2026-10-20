@@ -55,17 +55,26 @@ run install -d -m 0750 -o crpdeploy -g crp "$ROOT/shared/state"
 # /etc/crp: x для всех, чтобы postgres прочитал backup.env и список ключей (сами файлы с секретами закрыты).
 run install -d -m 0751 -o root -g crp /etc/crp
 run install -d -m 0755 -o root -g root /usr/local/lib/crp
-run install -d -m 0755 -o crp -g adm /var/log/crp
-# Журнал бэкапа БД в своём каталоге postgres: logrotate (su postgres) создаёт там .1 и .gz.
-run install -d -m 0755 -o postgres -g adm /var/log/crp/backup
-run install -d -m 0775 -o postgres -g crp /var/lib/crp-ops
+# Журналы PM2 и крона приложения: читать их должны только crp и группа adm.
+run install -d -m 0750 -o crp -g adm /var/log/crp
+# Журнал бэкапа БД вне каталога crp (D-041): иначе crp переименовал бы подкаталог и подложил ссылку
+# backup.log на файл postgres, а крон от postgres дописал бы туда строки. logrotate (su postgres) создаёт
+# в нём .1 и .gz.
+run install -d -m 0750 -o postgres -g adm /var/log/crp-backup
+# Sticky-бит: crp создаёт свои файлы статусов, но не удаляет и не переименовывает файлы postgres.
+run install -d -m 1775 -o postgres -g crp /var/lib/crp-ops
 run install -d -m 0700 -o crp -g crp /var/lib/crp /var/lib/crp/files
 run install -d -m 0711 -o root -g root /var/backups/crp
 run install -d -m 0700 -o postgres -g postgres /var/backups/crp/daily /var/backups/crp/weekly /var/backups/crp/monthly /var/backups/crp/manual
 run install -d -m 0700 -o crp -g crp /var/backups/crp/files
 run install -d -m 0755 /var/www/certbot
 # Журнал бэкапа БД пишет postgres, остальные журналы — crp.
-if [[ ! -e /var/log/crp/backup/backup.log ]]; then run install -m 0640 -o postgres -g adm /dev/null /var/log/crp/backup/backup.log; fi
+if [[ ! -e /var/log/crp-backup/backup.log ]]; then run install -m 0640 -o postgres -g adm /dev/null /var/log/crp-backup/backup.log; fi
+# Обновление с прежней раскладки: старый журнал лежал в каталоге crp. Переносить его не нужно (он ротируется
+# 14 дней), а каталог остался бы местом, где crp может подложить ссылку: удаляем после переноса крона.
+if [[ -d /var/log/crp/backup && ! -L /var/log/crp/backup ]]; then
+  say "старый /var/log/crp/backup больше не используется: удалите его после проверки нового журнала (RUNBOOK, раздел 7)"
+fi
 
 # --- instance.json: имя, порты, каталог настроек, ветка выкладки. Существующий не перезаписываем.
 if [[ ! -f "$ROOT/shared/instance.json" ]]; then

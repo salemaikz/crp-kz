@@ -15,8 +15,8 @@
   su crp adm
 }
 
-# Пишет пользователь postgres: бэкап БД.
-/var/log/crp/backup/backup.log {
+# Пишет пользователь postgres: бэкап БД (каталог postgres:adm 0750 вне /var/log/crp, D-041).
+/var/log/crp-backup/backup.log {
   daily
   rotate 14
   compress

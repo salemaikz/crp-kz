@@ -7,9 +7,10 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
 
+# Журнал бэкапа БД лежит вне каталога crp (D-041): его пишет postgres.
 # Бэкап БД в 02:30 по Астане; в ночь на воскресенье по Астане (суббота, 21:30 UTC) с проверкой восстановления.
-30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp/backup/backup.log 2>&1
-30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp/backup/backup.log 2>&1
+30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp-backup/backup.log 2>&1
+30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp-backup/backup.log 2>&1
 # Бэкап загруженных файлов в 03:00 по Астане (при пустом STORAGE_DIR ничего не делает).
 0 22 * * *     crp /usr/local/lib/crp/backup.sh --files               >> /var/log/crp/backup-files.log 2>&1
 

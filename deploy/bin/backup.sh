@@ -46,6 +46,10 @@ KEEP_WEEKLY="$(cfg BACKUP_KEEP_WEEKLY 8)"
 KEEP_MONTHLY="$(cfg BACKUP_KEEP_MONTHLY 6)"
 REMOTE="$(cfg BACKUP_REMOTE '')"
 REMOTE_KEY="$(cfg BACKUP_REMOTE_SSH_KEY '')"
+# Копия файлов уходит от crp: свой адрес и свой ключ, чтобы взлом приложения не давал записи в хранилище
+# дампов БД. Пустые значения — запасные общие BACKUP_REMOTE и BACKUP_REMOTE_SSH_KEY.
+FILES_REMOTE="$(cfg BACKUP_FILES_REMOTE '')"
+FILES_REMOTE_KEY="$(cfg BACKUP_FILES_REMOTE_SSH_KEY '')"
 STORAGE="$(cfg STORAGE_DIR '')"
 OPS_DIR="${CRP_OPS_DIR:-/var/lib/crp-ops}"
 NAME_RE='^[a-z_][a-z0-9_]{0,62}$'
@@ -67,13 +71,20 @@ CHECK_DB=""
 
 # Статус для healthcheck.sh: ok, время, файл, размер, проверено ли восстановление, есть ли вторая копия.
 write_status() {
-  local ok="$1" size=0
+  local ok="$1" size=0 tmp
   if [[ -n "$OUT_FILE" && -f "$OUT_FILE" ]]; then size="$(stat -c %s "$OUT_FILE")"; fi
   mkdir -p "$OPS_DIR" 2>/dev/null || return 0
-  jq -n --argjson ok "$ok" --argjson at "$(date -u +%s)000" --arg file "$(basename "${OUT_FILE:-}")" \
+  # Каталог с sticky-битом (1775): чужой файл в нём не удалить и не переименовать. Временный файл с
+  # непредсказуемым именем (mktemp, O_EXCL) нельзя заранее подменить ссылкой; права ставим до mv,
+  # чтобы chmod не шёл по имени, которое успели подменить.
+  tmp="$(mktemp "$OPS_DIR/.status.XXXXXX" 2>/dev/null)" || return 0
+  if jq -n --argjson ok "$ok" --argjson at "$(date -u +%s)000" --arg file "$(basename "${OUT_FILE:-}")" \
     --argjson size "$size" --argjson verified "$VERIFIED" --argjson offsite "$OFFSITE" \
     '{ok: $ok, at: $at, file: $file, sizeBytes: $size, verified: $verified, offsite: $offsite}' \
-    >"$STATUS_FILE.tmp" 2>/dev/null && mv -f "$STATUS_FILE.tmp" "$STATUS_FILE" 2>/dev/null && chmod 644 "$STATUS_FILE" 2>/dev/null || true
+    >"$tmp" 2>/dev/null && chmod 644 "$tmp" 2>/dev/null && mv -f "$tmp" "$STATUS_FILE" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null || true
 }
 cleanup() {
   if [[ -n "$CHECK_DB" ]]; then dropdb --if-exists "$CHECK_DB" >/dev/null 2>&1 || true; fi
@@ -113,16 +124,26 @@ rotate() {
   done < <(find "$dir" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' | sort -r)
 }
 
-# Вторая копия в РК: только если владелец указал BACKUP_REMOTE.
+# Вторая копия в РК: только если владелец указал BACKUP_REMOTE (для файлов — BACKUP_FILES_REMOTE).
 push_offsite() {
-  [[ -n "$REMOTE" ]] || { say "BACKUP_REMOTE не задан: второй копии нет (решение владельца, D-029)"; return 0; }
+  local remote="$REMOTE" key="$REMOTE_KEY"
+  if ((FILES)); then
+    remote="${FILES_REMOTE:-$REMOTE}"
+    key="${FILES_REMOTE_KEY:-$REMOTE_KEY}"
+  fi
+  if [[ -z "$remote" ]]; then
+    if ((FILES)); then say "BACKUP_FILES_REMOTE и BACKUP_REMOTE не заданы: второй копии файлов нет (решение владельца, D-029)"; else
+      say "BACKUP_REMOTE не задан: второй копии нет (решение владельца, D-029)"
+    fi
+    return 0
+  fi
   local ssh="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes"
-  [[ -z "$REMOTE_KEY" ]] || ssh="$ssh -i $REMOTE_KEY"
+  [[ -z "$key" ]] || ssh="$ssh -i $key"
   # Отправляем только свои подкаталоги: каталоги соседнего пользователя закрыты (0700), и rsync на них
   # давал бы код 23 при каждом запуске. -R сохраняет имена подкаталогов, -H жёсткие ссылки weekly/monthly.
   local -a parts=(daily weekly monthly manual)
   if ((FILES)); then parts=(files); fi
-  if (cd "$DIR" && rsync -aHR --ignore-existing --exclude='.tmp.*' -e "$ssh" "${parts[@]}" "$REMOTE/"); then OFFSITE=true; say "вторая копия отправлена"; else
+  if (cd "$DIR" && rsync -aHR --ignore-existing --exclude='.tmp.*' -e "$ssh" "${parts[@]}" "$remote/"); then OFFSITE=true; say "вторая копия отправлена"; else
     say "вторая копия НЕ отправлена"
     return 1
   fi
