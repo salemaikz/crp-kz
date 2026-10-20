@@ -324,7 +324,7 @@ kz — с пометкой «требует проверки носителем�
 | `org.create` | org / id | NULL (CLI) | 5A | Создана организация | Ұйым құрылды |
 | `org.member_add` | org / id, meta `{userId, role}` | NULL (CLI) | 5A | В организацию добавлен сотрудник | Ұйымға қызметкер қосылды |
 | `mail.fail` | mail / mailId, meta `{template}` | NULL | 4A | Письмо не отправлено после 5 попыток | Хат 5 әрекеттен кейін жіберілмеді |
-| `reminders.run` | reminders / `'reminders'`, meta `{dueSoon, overdue, digests}` | админ или NULL | 4A | Сформированы напоминания о сроках | Мерзімдер туралы еске салғыштар құрылды |
+| `reminders.run` | reminders / `'reminders'`, meta `{dueSoon, overdue, digests}`; крон — только если поставлено хотя бы одно письмо, ручной запуск — всегда | админ или NULL | 4A | Сформированы напоминания о сроках | Мерзімдер туралы еске салғыштар құрылды |
 | `file.upload` | file / id, meta `{courseId, lessonId, purpose, ext, sizeBytes}` (без имени файла: оно может быть ПДн, а журнал не чистится) | админ | 3B | Загружен файл в курс «{course}» | «{course}» курсына файл жүктелді |
 | `file.delete` | file / id | админ | 3B | Удалён файл из курса «{course}» | «{course}» курсынан файл өшірілді |
 | `file.purge` | file / id, meta `{reason:'orphan'}` | NULL | 3B | Удалён неиспользуемый файл | Қолданылмайтын файл өшірілді |

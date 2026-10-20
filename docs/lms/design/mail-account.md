@@ -487,7 +487,7 @@ export async function queueAssignmentNotices(sql: Sql, input: {
 
 | Письмо | Кому | Условие | Ключ идемпотентности |
 |---|---|---|---|
-| `assignment_new` | сотрудник | `assignCourse` выдал или обновил назначение (не `skipped`); флаг `REMINDERS` | `assigned:{enrollmentId}:{dueAt|none}` — повторное назначение с тем же сроком письма не даёт, с новым — даёт |
+| `assignment_new` | сотрудник | `assignCourse` выдал или обновил назначение (не `skipped`); флаг `REMINDERS` | `assigned:{enrollmentId}:{dueAt|none}` — повторное назначение с тем же сроком письма не даёт, с новым — даёт, но не больше 3 писем `assignment_new` в сутки на одно назначение (сделано в 4A: частая смена срока не превращается в рассылку) |
 | `due_soon` | сотрудник | назначение, не завершено, доступ действует, сотрудник ещё в организации, до срока 0–3 дня по Астане | `due_soon:{enrollmentId}:{dueAt}` |
 | `overdue` | сотрудник | то же, срок прошёл не более 30 дней назад | `overdue:{enrollmentId}:{dueAt}` |
 | `manager_digest` | каждый `manager` организации | в организации есть строки `overdue` или `today/soon` | `digest:{orgId}:{managerUserId}:{isoWeek}` — раз в неделю, первым запуском недели (понедельник 9:00) |
@@ -500,6 +500,10 @@ export async function queueAssignmentNotices(sql: Sql, input: {
 - Вставка — `enqueueMail(..., { dedupeKey })` с `ON CONFLICT DO NOTHING`. Параллельные запуски
   (крон и кнопка) не дублируют письма. Транзакция — на одну организацию.
 - В конце — audit `reminders.run` `{ dueSoon, overdue, digests }`, `actor_id` = админ или NULL (крон).
+  Сделано в 4A: ручной запуск админом пишется всегда, прогон крона — только если поставлено хотя
+  бы одно письмо (иначе ежечасный крон засорял бы ленту нулями).
+- Когда появится внешний транспорт: таймауты соединения и ответа почтового сервера должны быть
+  заметно меньше аренды `LEASE_MS` (например, 60 с), иначе зависшая отправка даст дубль письма.
 - `src/lib/team/assign.ts` (зона team): после цикла `enroll`, если `mailFeature('REMINDERS')` —
   `await queueAssignmentNotices(sql, { orgId, courseId, userIds: assigned, dueAt, nowMs })`
   внутри той же транзакции.
