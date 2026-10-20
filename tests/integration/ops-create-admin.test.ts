@@ -92,7 +92,7 @@ test('--promote: слушатель становится админом, пар�
     assert.deepEqual(u, { role: 'admin', passwordHash: 'hash-as-is', name: 'Слушатель' });
     const rows = await audit(db);
     assert.deepEqual(rows.map((x) => x.action), ['user.role_change']);
-    assert.deepEqual(rows[0]?.meta, { to: 'admin', via: 'cli' });
+    assert.deepEqual(rows[0]?.meta, { to: 'admin', via: 'cli', sessionsRevoked: 0 });
     // повторное повышение ничего не пишет
     const again = await createAdmin(db, base({ email: 'learner@example.org', password: undefined, promote: true }));
     assert.ok(!again.promoted);
@@ -257,6 +257,167 @@ test('нет email или имени, неверная локаль, лишни�
   assert.deepEqual(parseCreateAdminArgs([...base, '--owner-org-name', '--password=x', '--owner-org-slug', 'crp']), { ok: false, reason: 'password_in_argv' });
 });
 
+const FUTURE = Date.now() + 86_400_000;
+type TDb = Awaited<ReturnType<typeof createTestDb>>;
+
+async function addUser(db: TDb, id: string, email: string, role: string, verified: boolean) {
+  await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, email_verified_at, created_at)
+    VALUES (${id}, ${email}, 'old-hash', 'Сотрудник Иванов', ${role}, 'ru', ${verified ? 1 : null}, 1)`;
+}
+async function addSession(db: TDb, id: string, userId: string) {
+  await db.sql`INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (${id}, ${userId}, ${FUTURE}, 1)`;
+}
+async function sessionIds(db: TDb, userId: string): Promise<string[]> {
+  const rows = await db.sql<{ id: string }>`SELECT id FROM sessions WHERE user_id = ${userId} ORDER BY id`;
+  return rows.map((r) => r.id);
+}
+
+test('--promote подтверждённого: сессии повышаемого закрыты, чужая цела, meta с sessionsRevoked', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'u1', 'learner@example.org', 'learner', true);
+    await addUser(db, 'u9', 'other@example.org', 'learner', true);
+    await addSession(db, 's1', 'u1');
+    await addSession(db, 's2', 'u1');
+    await addSession(db, 's3', 'u9');
+    const r = await createAdmin(db, base({ email: 'learner@example.org', password: undefined, promote: true }));
+    assert.ok(r.promoted);
+    assert.equal(r.sessionsRevoked, 2);
+    assert.equal(r.identityConfirmed, false);
+    const [u] = await db.sql<{ role: string; passwordHash: string }>`SELECT role, password_hash FROM users WHERE id = 'u1'`;
+    assert.deepEqual(u, { role: 'admin', passwordHash: 'old-hash' });
+    assert.deepEqual(await sessionIds(db, 'u1'), []);
+    assert.deepEqual(await sessionIds(db, 'u9'), ['s3']);
+    const rows = await audit(db);
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0]?.meta, { to: 'admin', via: 'cli', sessionsRevoked: 2 });
+  } finally {
+    await db.close();
+  }
+});
+
+test('--promote уже админа: сессия цела, журнала нет', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'a1', 'adm@example.org', 'admin', true);
+    await addSession(db, 's1', 'a1');
+    const r = await createAdmin(db, base({ email: 'adm@example.org', password: undefined, promote: true }));
+    assert.ok(!r.promoted);
+    assert.equal(r.sessionsRevoked, 0);
+    assert.deepEqual(await sessionIds(db, 'a1'), ['s1']);
+    assert.equal((await audit(db)).length, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('--promote неподтверждённого без флага: unverified, ничего не изменилось', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'u2', 'stranger@example.org', 'learner', false);
+    await addSession(db, 's1', 'u2');
+    await expectCode(createAdmin(db, base({ email: 'stranger@example.org', password: undefined, promote: true })), 'unverified');
+    const [u] = await db.sql<{ role: string }>`SELECT role FROM users WHERE id = 'u2'`;
+    assert.equal(u?.role, 'learner');
+    assert.deepEqual(await sessionIds(db, 'u2'), ['s1']);
+    assert.equal((await audit(db)).length, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('--promote --identity-confirmed: новый пароль, адрес подтверждён, сессии, токены и письма погашены', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'u3', 'staff@example.org', 'learner', false);
+    await addSession(db, 's1', 'u3');
+    await db.sql`INSERT INTO auth_tokens (id, user_id, kind, token_hash, email, expires_at, used_at, created_at)
+      VALUES ('t1', 'u3', 'password_reset', ${'a'.repeat(64)}, 'staff@example.org', ${FUTURE}, NULL, 1),
+             ('t2', 'u3', 'email_verify', ${'b'.repeat(64)}, 'staff@example.org', ${FUTURE}, NULL, 1)`;
+    await db.sql`INSERT INTO mail_outbox (id, category, template, locale, user_id, to_email, secret, secret_expires_at, status, created_at, updated_at)
+      VALUES ('m1', 'auth', 'password_reset', 'ru', 'u3', 'staff@example.org', 'raw1', ${FUTURE}, 'held', 1, 1),
+             ('m2', 'auth', 'email_verify', 'ru', 'u3', 'staff@example.org', 'raw2', ${FUTURE}, 'queued', 1, 1)`;
+    const NEW = 'brand-new-password-1';
+    const r = await createAdmin(db, base({ email: 'staff@example.org', password: NEW, promote: true, identityConfirmed: true }));
+    assert.ok(r.promoted && r.identityConfirmed);
+    assert.equal(r.sessionsRevoked, 1);
+    const [u] = await db.sql<{ role: string; passwordHash: string; emailVerifiedAt: number | null }>`
+      SELECT role, password_hash, email_verified_at FROM users WHERE id = 'u3'`;
+    assert.equal(u?.role, 'admin');
+    assert.ok(u?.emailVerifiedAt);
+    assert.ok(await verifyPassword(NEW, u?.passwordHash));
+    assert.ok(!(await verifyPassword('old-hash', u?.passwordHash)));
+    assert.deepEqual(await sessionIds(db, 'u3'), []);
+    const tokens = await db.sql<{ usedAt: number | null }>`SELECT used_at FROM auth_tokens WHERE user_id = 'u3'`;
+    assert.equal(tokens.length, 2);
+    assert.ok(tokens.every((x) => x.usedAt !== null));
+    const mails = await db.sql<{ status: string; secret: string | null }>`SELECT status, secret FROM mail_outbox ORDER BY id`;
+    assert.deepEqual(mails, [{ status: 'cancelled', secret: null }, { status: 'cancelled', secret: null }]);
+    const rows = await audit(db);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.action, 'user.role_change');
+    assert.deepEqual(rows[0]?.meta, {
+      to: 'admin',
+      via: 'cli',
+      sessionsRevoked: 1,
+      identity: 'offline',
+      passwordReset: true,
+      emailVerified: true,
+    });
+    const text = JSON.stringify(rows);
+    assert.ok(!/example\.org/i.test(text));
+    assert.ok(!text.includes('Иванов'));
+  } finally {
+    await db.close();
+  }
+});
+
+test('--identity-confirmed: без пароля — validation, короткий — weak_password, состояние не меняется', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'u4', 'staff@example.org', 'learner', false);
+    await addSession(db, 's1', 'u4');
+    const run = (password?: string) =>
+      createAdmin(db, base({ email: 'staff@example.org', password, promote: true, identityConfirmed: true }));
+    await expectCode(run(undefined), 'validation');
+    await expectCode(run('12345678901'), 'weak_password');
+    const [u] = await db.sql<{ role: string; passwordHash: string }>`SELECT role, password_hash FROM users WHERE id = 'u4'`;
+    assert.deepEqual(u, { role: 'learner', passwordHash: 'old-hash' });
+    assert.deepEqual(await sessionIds(db, 'u4'), ['s1']);
+    assert.equal((await audit(db)).length, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('--identity-confirmed на уже админе: хэш прежний, сессии целы', async () => {
+  const db = await createTestDb();
+  try {
+    await addUser(db, 'a2', 'adm@example.org', 'admin', true);
+    await addSession(db, 's1', 'a2');
+    const r = await createAdmin(db, base({ email: 'adm@example.org', password: 'brand-new-password-1', promote: true, identityConfirmed: true }));
+    assert.ok(!r.promoted && !r.identityConfirmed);
+    const [u] = await db.sql<{ passwordHash: string }>`SELECT password_hash FROM users WHERE id = 'a2'`;
+    assert.equal(u?.passwordHash, 'old-hash');
+    assert.deepEqual(await sessionIds(db, 'a2'), ['s1']);
+    assert.equal((await audit(db)).length, 0);
+  } finally {
+    await db.close();
+  }
+});
+
+test('разбор: --identity-confirmed без --promote и со значением — usage; вместе с --promote — true', () => {
+  const b = ['--email', 'a@b.kz', '--name', 'Имя'];
+  assert.deepEqual(parseCreateAdminArgs([...b, '--identity-confirmed']), { ok: false, reason: 'usage' });
+  assert.deepEqual(parseCreateAdminArgs([...b, '--promote', '--identity-confirmed=1']), { ok: false, reason: 'usage' });
+  const r = parseCreateAdminArgs([...b, '--promote', '--identity-confirmed']);
+  assert.ok(r.ok);
+  assert.equal(r.args.identityConfirmed, true);
+  const plain = parseCreateAdminArgs([...b, '--promote']);
+  assert.ok(plain.ok);
+  assert.equal(plain.args.identityConfirmed, false);
+});
+
 test('readLine: одна строка, перевод строки не входит', async () => {
   assert.equal(await readLine(Readable.from(['pass-word-12345\nвторая\n'])), 'pass-word-12345');
   assert.equal(await readLine(Readable.from(['abc', 'def\r\n'])), 'abcdef');
@@ -282,6 +443,50 @@ function runCli(args: string[], extra: Record<string, string>, input?: string) {
     timeout: 120_000,
   });
 }
+
+/** Каталог PGlite с мигрированной схемой и неподтверждённым слушателем. */
+async function unverifiedLearnerDir(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'crp-cli-promote-'));
+  const setup = await createPgliteDb(dir);
+  try {
+    const { migrate } = await import('../../src/lib/db/migrate');
+    await migrate(setup);
+    await setup.sql`INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
+      VALUES ('u1', 'staff.cli@example.org', 'old-hash', 'Имя', 'learner', 'ru', 1)`;
+  } finally {
+    await setup.close();
+  }
+  return dir;
+}
+
+test('CLI: --promote --identity-confirmed для неподтверждённого — код 0, email и пароль не печатаются', async () => {
+  const dir = await unverifiedLearnerDir();
+  try {
+    const args = ['--email', 'staff.cli@example.org', '--name', 'Имя', '--promote', '--identity-confirmed', '--password-stdin', '--allow-demo'];
+    const ok = runCli(args, { PGLITE_DIR: dir }, 'brand-new-password-1\n');
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.match(ok.stdout, /Роль admin выдана/);
+    const out = ok.stdout + ok.stderr;
+    assert.ok(!out.includes('staff.cli@example.org') && !out.includes('brand-new-password-1'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI: --promote неподтверждённого при выключенных письмах — код 3, совет про --identity-confirmed без письма', async () => {
+  const dir = await unverifiedLearnerDir();
+  try {
+    const r = runCli(
+      ['--email', 'staff.cli@example.org', '--name', 'Имя', '--promote', '--allow-demo'],
+      { PGLITE_DIR: dir, FEATURE_EMAIL_VERIFY: '0', FEATURE_PASSWORD_RESET: '0' },
+    );
+    assert.equal(r.status, 3, r.stderr);
+    assert.match(r.stderr, /--identity-confirmed/);
+    assert.ok(!/письмом или восстановлением/.test(r.stderr));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('CLI: пароль в argv — код 2 и отказ, пароль не печатается', () => {
   const r = runCli(['--email', 'a@example.org', '--name', 'Имя', '--password', 'very-secret-pass-1'], {});

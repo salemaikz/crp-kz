@@ -1,10 +1,13 @@
 // npm run admin:create -- --email <e> --name <имя> [...] — первый администратор (docs/lms/design/ops.md §3.16).
 // Пароль вводится в приглашении без эха или одной строкой из stdin (--password-stdin); в argv его нет.
-// Коды выхода: 0 — готово, 2 — неверные данные или демо без --allow-demo, 3 — уже есть / не найден, 1 — прочее.
+// --promote повышает существующий аккаунт и закрывает его сессии; --promote --identity-confirmed (D-039) для
+// неподтверждённого адреса: новый пароль, адрес отмечается подтверждённым, сессии и ссылки гасятся.
+// Коды выхода: 0 — готово, 2 — неверные данные, ошибка использования или демо без --allow-demo,
+// 3 — уже есть / не найден / адрес не подтверждён, 1 — прочее.
 import { getDb, openScriptDb } from '../src/lib/db';
 import { isDemo } from '../src/lib/env';
 import { createAdmin, CreateAdminError, type CreateAdminErrorCode } from '../src/lib/ops/createAdmin';
-import { CREATE_ADMIN_USAGE, parseCreateAdminArgs } from '../src/lib/ops/createAdminArgs';
+import { CREATE_ADMIN_USAGE, parseCreateAdminArgs, unverifiedMessage } from '../src/lib/ops/createAdminArgs';
 import { promptHidden, readLine } from '../src/lib/ops/passwordInput';
 
 const MESSAGES: Record<CreateAdminErrorCode, string> = {
@@ -12,8 +15,7 @@ const MESSAGES: Record<CreateAdminErrorCode, string> = {
   weak_password: 'Пароль слабый: нужно не меньше 12 символов (и не больше 72 байт).',
   exists: 'Пользователь с таким email уже есть. Если это ваш подтверждённый аккаунт, добавьте --promote; незнакомый аккаунт сначала удалите.',
   not_found: 'Пользователь с таким email не найден: --promote повышает только существующих.',
-  unverified:
-    'Email пользователя не подтверждён: аккаунт могли завести не вы. Удалите его и создайте администратора заново либо подтвердите адрес.',
+  unverified: '', // текст зависит от окружения: unverifiedMessage()
   bad_slug: 'Неверный или занятый slug организации: 2–40 символов a-z, 0-9 и дефис.',
 };
 const EXIT: Record<CreateAdminErrorCode, number> = {
@@ -53,7 +55,7 @@ async function main(): Promise<number> {
   }
 
   let password: string | undefined;
-  if (!args.promote) {
+  if (!args.promote || args.identityConfirmed) {
     const p = await readPassword(args.passwordStdin);
     if (p === null) return 2;
     password = p;
@@ -68,15 +70,20 @@ async function main(): Promise<number> {
       locale: args.locale,
       password,
       promote: args.promote,
+      identityConfirmed: args.identityConfirmed,
       ownerOrg: args.ownerOrg,
     });
     // email не печатаем повторно: в журнале терминала и логе ему не место
-    console.log(`${r.created ? 'Администратор создан' : r.promoted ? 'Роль admin выдана' : 'Пользователь уже администратор'}: ${r.userId}`);
+    if (r.created) console.log(`Администратор создан: ${r.userId}`);
+    else if (r.promoted) {
+      console.log(`Роль admin выдана: ${r.userId}. Закрыто сессий: ${r.sessionsRevoked}.`);
+      if (r.identityConfirmed) console.log('Пароль заменён, адрес отмечен подтверждённым.');
+    } else console.log(`Пользователь уже администратор, ничего не менялось: ${r.userId}`);
     if (r.orgId) console.log(`Организация-владелец: ${r.orgId}${r.orgCreated ? ' (создана)' : ''}`);
     return 0;
   } catch (e) {
     if (e instanceof CreateAdminError) {
-      console.error(MESSAGES[e.code]);
+      console.error(e.code === 'unverified' ? unverifiedMessage() : MESSAGES[e.code]);
       return EXIT[e.code];
     }
     throw e;

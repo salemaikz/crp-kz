@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { newId, now, type Db } from '../db';
 import { writeAudit } from '../audit';
 import { hashPassword, passwordProblem } from '../auth/password';
+import { cancelSecrets } from '../mail/outbox';
 
 /** Для администратора пароль строже, чем для слушателя (8 символов). */
 export const ADMIN_PASSWORD_MIN_LENGTH = 12;
@@ -12,9 +13,11 @@ export type CreateAdminInput = {
   email: string;
   name: string;
   locale: 'ru' | 'kz';
-  /** Без пароля допустим только promote. */
+  /** Без пароля допустим только promote без identityConfirmed (там пароль игнорируется). */
   password?: string;
   promote: boolean;
+  /** Только с promote (D-039): сотрудник подтвердил личность очно, пароль заменяется на новый. */
+  identityConfirmed?: boolean;
   ownerOrg?: { name: string; slug: string };
 };
 
@@ -24,6 +27,10 @@ export type CreateAdminResult = {
   promoted: boolean;
   orgId: string | null;
   orgCreated: boolean;
+  /** Сколько сессий повышаемого аккаунта закрыто. */
+  sessionsRevoked: number;
+  /** true только если пароль реально заменён. */
+  identityConfirmed: boolean;
 };
 
 export type CreateAdminErrorCode = 'validation' | 'weak_password' | 'exists' | 'not_found' | 'bad_slug' | 'unverified';
@@ -59,8 +66,16 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
     ownerOrg = { name: orgName, slug: input.ownerOrg.slug };
   }
 
+  const confirm = input.promote && input.identityConfirmed === true;
   let passwordHash: string | null = null;
-  if (input.password !== undefined && !input.promote) {
+  if (confirm) {
+    // новый пароль админа: обязателен и не короче 12 символов; хэш считаем до транзакции
+    if (input.password === undefined) throw new CreateAdminError('validation');
+    const problem = passwordProblem(input.password);
+    if (problem) throw new CreateAdminError(problem);
+    if (input.password.length < ADMIN_PASSWORD_MIN_LENGTH) throw new CreateAdminError('weak_password');
+    passwordHash = await hashPassword(input.password);
+  } else if (input.password !== undefined && !input.promote) {
     const problem = passwordProblem(input.password);
     if (problem) throw new CreateAdminError(problem);
     if (input.password.length < ADMIN_PASSWORD_MIN_LENGTH) throw new CreateAdminError('weak_password');
@@ -74,6 +89,8 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
     let userId: string;
     let created = false;
     let promoted = false;
+    let sessionsRevoked = 0;
+    let passwordReplaced = false;
 
     // --promote не создаёт пользователей: только повышает существующих
     const [ins] = passwordHash && !input.promote
@@ -91,19 +108,39 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
       const [existing] = await sql<{ id: string; role: string; emailVerifiedAt: number | null }>`SELECT id, role, email_verified_at AS "emailVerifiedAt" FROM users WHERE email = ${email} FOR UPDATE`;
       if (!existing) throw new CreateAdminError(input.promote ? 'not_found' : 'validation');
       if (!input.promote) throw new CreateAdminError('exists');
-      // Регистрация открыта: аккаунт с неподтверждённым адресом мог завести кто угодно, повышать его вслепую нельзя
-      if (existing.role !== 'admin' && existing.emailVerifiedAt == null) throw new CreateAdminError('unverified');
       userId = existing.id;
-      // Пароль, имя и сессии существующего пользователя не трогаем: меняется только роль
+      // D-039. Уже админ — ничего не меняем: ни роль, ни пароль, ни сессии, журнала нет.
       if (existing.role !== 'admin') {
-        await sql`UPDATE users SET role = 'admin' WHERE id = ${userId}`;
+        // Регистрация открыта: аккаунт с неподтверждённым адресом мог завести кто угодно.
+        // Повышать его можно только с очным подтверждением личности.
+        if (existing.emailVerifiedAt == null && !confirm) throw new CreateAdminError('unverified');
+        if (confirm) {
+          await sql`UPDATE users SET role = 'admin', password_hash = ${passwordHash}, email_verified_at = COALESCE(email_verified_at, ${t}) WHERE id = ${userId}`;
+        } else {
+          await sql`UPDATE users SET role = 'admin' WHERE id = ${userId}`;
+        }
         promoted = true;
+        // Роль читается из users на каждом запросе: старая сессия сразу стала бы админской, закрываем все
+        const revoked = await sql<{ id: string }>`DELETE FROM sessions WHERE user_id = ${userId} RETURNING id`;
+        sessionsRevoked = revoked.length;
+        if (confirm) {
+          passwordReplaced = true;
+          // ссылки, выданные до замены пароля, больше не действуют; письма с секретами снимаем
+          await sql`UPDATE auth_tokens SET used_at = ${t} WHERE user_id = ${userId} AND used_at IS NULL`;
+          await cancelSecrets(sql, { userId, template: 'password_reset', nowMs: t });
+          await cancelSecrets(sql, { userId, template: 'email_verify', nowMs: t });
+        }
         await writeAudit(sql, {
           actorId: null,
           action: 'user.role_change',
           entity: 'user',
           entityId: userId,
-          meta: { to: 'admin', via: 'cli' },
+          meta: {
+            to: 'admin',
+            via: 'cli',
+            sessionsRevoked,
+            ...(confirm ? { identity: 'offline', passwordReset: true, emailVerified: existing.emailVerifiedAt == null } : {}),
+          },
         });
       }
     }
@@ -142,6 +179,6 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
       }
     }
 
-    return { userId, created, promoted, orgId, orgCreated };
+    return { userId, created, promoted, orgId, orgCreated, sessionsRevoked, identityConfirmed: passwordReplaced };
   });
 }
