@@ -1,30 +1,27 @@
 'use client';
 
 import { useActionState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { resendVerificationAction, type RecoveryState } from '@/lib/auth/recoveryActions';
 import { SubmitButton } from '@/components/ui';
 
 /**
  * Кнопка «Отправить письмо» в плашке подтверждения email. next возвращает по ссылке из письма;
- * не задан — берётся страница, где нажата кнопка (читается в момент нажатия, сервер проверяет safeNext).
+ * не задан — берётся путь текущей страницы БЕЗ query (в нём может быть ключ доступа к заказу,
+ * а письмо уходит на ещё не подтверждённый адрес). Форма отправляется и до гидрации.
  */
 export function ResendVerification({ next }: { next?: string }) {
   const t = useTranslations('auth');
   const locale = useLocale();
+  const pathname = usePathname();
   const [state, formAction, pending] = useActionState<RecoveryState, FormData>(resendVerificationAction, undefined);
   const error = state?.status === 'error' ? state.error : undefined;
 
   return (
-    <form
-      action={(fd) => {
-        if (!next) fd.set('next', `${window.location.pathname}${window.location.search}`);
-        formAction(fd);
-      }}
-      style={{ marginTop: 8 }}
-    >
+    <form action={formAction} style={{ marginTop: 8 }}>
       <input type="hidden" name="locale" value={locale} />
-      {next && <input type="hidden" name="next" value={next} />}
+      <input type="hidden" name="next" value={next ?? pathname} />
       <SubmitButton variant="ghost" size="sm" pending={pending} pendingText={t('verifyNotice.pending')}>
         {t('verifyNotice.resend')}
       </SubmitButton>

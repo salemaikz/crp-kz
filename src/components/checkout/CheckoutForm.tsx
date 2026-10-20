@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { createOrderAction, type CheckoutFormState } from '@/lib/orders/actions';
 import type { BuyerType, PaymentMethod } from '@/lib/orders/types';
@@ -40,6 +41,14 @@ const EMPTY: CheckoutValues = {
 export function CheckoutForm({ courseSlug, priceKzt, user, legal, consentLabels }: Props) {
   const [state, formAction, pending] = useActionState<CheckoutFormState, FormData>(createOrderAction, undefined);
   const initial: CheckoutValues = state?.values ?? { ...EMPTY, name: user.name, email: user.email };
+  const router = useRouter();
+  // последний выданный токен версий: ошибка другого типа не должна откатывать его к пропу
+  const [token, setToken] = useState(legal.token);
+  if (state?.legalToken && state.legalToken !== token) setToken(state.legalToken);
+  // режим формы расходится с серверным (LEGAL включился или выключился): перечитываем страницу
+  useEffect(() => {
+    if (state?.error === 'legal_changed') router.refresh();
+  }, [state, router]);
   return (
     <CheckoutFields
       key={state?.attempt ?? 0}
@@ -50,7 +59,7 @@ export function CheckoutForm({ courseSlug, priceKzt, user, legal, consentLabels 
       courseSlug={courseSlug}
       priceKzt={priceKzt}
       user={user}
-      legal={legal}
+      legal={{ enabled: legal.enabled, token }}
       consentLabels={consentLabels}
     />
   );
@@ -113,7 +122,7 @@ function CheckoutFields({
     <form ref={formRef} action={formAction} className="co-form" noValidate>
       <input type="hidden" name="locale" value={locale} />
       <input type="hidden" name="courseSlug" value={courseSlug} />
-      {legal.enabled && <input type="hidden" name="legalToken" value={state?.legalToken ?? legal.token} />}
+      {legal.enabled && <input type="hidden" name="legalToken" value={legal.token} />}
 
       {state?.error === 'validation' && <Alert tone="error">{generalField ?? t('alerts.validation')}</Alert>}
       {generalError && <Alert tone="error">{generalError}</Alert>}

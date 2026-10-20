@@ -28,6 +28,13 @@ mock.module('next/navigation', {
     redirect: (u: string) => {
       throw new Redirect(u);
     },
+    permanentRedirect: (u: string) => {
+      throw new Redirect(u);
+    },
+    // next-intl/navigation (через orders/actions) импортирует клиентские хуки; в тестах не вызываются
+    usePathname: () => '/',
+    useRouter: () => ({}),
+    useParams: () => ({}),
     notFound: () => {
       throw new Error('NOT_FOUND');
     },
@@ -239,6 +246,56 @@ test('register: FEATURE_LEGAL=0 — как до плана: токена нет,
       rows.map((c) => [c.kind, c.version, c.locale, c.textSha256]),
       [['pd_processing', '2026-10-19', null, null]],
     );
+  });
+});
+
+test('createOrderAction: токен версий, режим формы и неподтверждённый email', async () => {
+  const O = await import('../../../src/lib/orders/actions');
+  const { CHECKOUT_CONSENTS } = await import('../../../src/lib/legal/types');
+  const checkoutToken = versionsToken(CHECKOUT_CONSENTS, { allowDrafts: true });
+  // сессия неподтверждённого аккаунта из предыдущих сценариев регистрации
+  assert.ok(await getCurrentUser(), 'есть вошедший пользователь');
+  const base = {
+    courseSlug: 'sales-doubling',
+    buyerType: 'person',
+    name: 'Покупатель',
+    phone: '+7 701 100 09 29',
+    paymentMethod: 'kaspi',
+    consentOffer: 'on',
+    consentPd: 'on',
+    locale: 'ru',
+  };
+  const tables = async () => {
+    const [o] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM orders`;
+    const [c] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM consents WHERE context <> 'register'`;
+    return [Number(o?.n), Number(c?.n)];
+  };
+  const before = await tables();
+
+  // без токена, со старым и чужим: legal_changed, галочки сброшены, выдан актуальный токен
+  for (const bad of ['', 'pd_consent@1999-01-01', `${checkoutToken};privacy@2026-10-20`]) {
+    const r = await O.createOrderAction(undefined, fd({ ...base, legalToken: bad }));
+    assert.equal(r?.error, 'legal_changed', bad);
+    assert.equal(r?.legalToken, checkoutToken);
+    assert.equal(r?.values.consentOffer, false);
+    assert.equal(r?.values.consentPd, false);
+  }
+  // форма без поля токена (отрисована до включения LEGAL): тоже legal_changed, а не validation
+  const noField = await O.createOrderAction(undefined, fd({ ...base, consentOffer: '', consentPd: '', consent: 'on' }));
+  assert.equal(noField?.error, 'legal_changed');
+  assert.equal(noField?.legalToken, checkoutToken);
+  assert.deepEqual(await tables(), before, 'заказов и согласий нет');
+
+  // верный токен, но email не подтверждён
+  const unverified = await O.createOrderAction(undefined, fd({ ...base, legalToken: checkoutToken }));
+  assert.equal(unverified?.error, 'email_unverified');
+  assert.deepEqual(await tables(), before, 'заказов и согласий нет');
+
+  // LEGAL выключен, а форма с токеном: перечитать страницу, без токена в ответе
+  await withEnv({ FEATURE_LEGAL: '0' }, async () => {
+    const r = await O.createOrderAction(undefined, fd({ ...base, legalToken: checkoutToken }));
+    assert.equal(r?.error, 'legal_changed');
+    assert.equal(r?.legalToken, undefined);
   });
 });
 

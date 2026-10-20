@@ -60,17 +60,21 @@ export async function createOrderAction(prev: CheckoutFormState, formData: FormD
   raw.email = user.email;
 
   const legal = isLegalEnabled();
-  const parsed = parseCheckout(raw, { legal });
-  if (!parsed.ok) return { attempt, error: 'validation', errors: parsed.errors, values: parsed.values };
-
-  // условия обновились, пока форма была открыта: галочки сбрасываются, токен выдаётся заново
   const legalToken = formData.get('legalToken');
+  // форма отрисована в другом режиме, чем сейчас на сервере (LEGAL включился по дате или выключился):
+  // поля согласий не совпадут, поэтому разбор по режиму формы, а клиент перечитает страницу
+  const formLegal = legalToken !== null;
+  const parsed = parseCheckout(raw, { legal: formLegal });
+  // условия обновились, пока форма была открыта: галочки сбрасываются, токен выдаётся заново
   const changed = (): CheckoutFormState => ({
     attempt,
     error: 'legal_changed',
     values: { ...parsed.values, consent: false, consentOffer: false, consentPd: false },
-    legalToken: versionsToken(CHECKOUT_CONSENTS, { allowDrafts: legalAllowDrafts() }),
+    legalToken: legal ? versionsToken(CHECKOUT_CONSENTS, { allowDrafts: legalAllowDrafts() }) : undefined,
   });
+  if (formLegal !== legal) return changed();
+  if (!parsed.ok) return { attempt, error: 'validation', errors: parsed.errors, values: parsed.values };
+
   if (!consentTokenFresh(legalToken, CHECKOUT_CONSENTS)) return changed();
 
   if (!orderAllowed(user.id, deriveClientIp(await headers()))) {

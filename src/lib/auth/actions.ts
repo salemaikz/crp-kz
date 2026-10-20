@@ -11,6 +11,7 @@ import { isFeatureActive } from '../features';
 import {
   consentTokenFresh,
   insertConsents,
+  type PreparedConsent,
   legalAllowDrafts,
   prepareConsents,
   REGISTER_CONSENTS,
@@ -125,7 +126,14 @@ export async function registerAction(_prev: AuthFormState, formData: FormData): 
   });
   if (!consentTokenFresh(legalToken, REGISTER_CONSENTS)) return changed();
   // тексты читаются до транзакции; версии должны совпасть с теми, что видел пользователь
-  const consents = await prepareConsents(REGISTER_CONSENTS, locale);
+  let consents: PreparedConsent[];
+  try {
+    consents = await prepareConsents(REGISTER_CONSENTS, locale);
+  } catch (e) {
+    // без ПДн: только причина; пользователь не создан
+    console.error('[auth] consents failed:', e instanceof Error ? e.message : e);
+    return { error: 'validation', values };
+  }
   if (!preparedMatchToken(consents, legalToken)) return changed();
 
   const passwordHash = await hashPassword(password);

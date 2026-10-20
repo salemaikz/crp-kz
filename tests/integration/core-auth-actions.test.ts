@@ -22,5 +22,5 @@ test('server actions авторизации: ошибки, лимиты, cookie,
     { env, encoding: 'utf8', timeout: 120_000 },
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-  assert.match(res.stdout, /# pass 12/);
+  assert.match(res.stdout, /# pass 13/);
 });
