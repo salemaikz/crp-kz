@@ -36,6 +36,7 @@
 | tsx | 4.23.15 |
 | @react-pdf/renderer | 4.9.0 |
 | fontkit | 2.0.4 (прямой пин, та же версия, что у @react-pdf/font; замер текста в PDF) |
+| pdfkit | 0.20.1 (прямой пин, та же версия, что у @react-pdf/renderer; стандартные шрифты pdfkit — в трассировке `next.config.ts`, сверяет тест `infra-pdfkit-hoisted`) |
 
 Шрифты PDF — статические срезы в `assets/fonts/pdf/` (D-036), источник закреплён на коммите google/fonts.
 
@@ -200,10 +201,12 @@ audit_log(id, actor_id NULL, action TEXT, entity TEXT, entity_id TEXT, meta json
 | `callout` | `tone`: `info`, `warn` или `success`, `text` |
 | `divider` | — |
 | `quiz` | `passScore` 1–100, `questions[]` |
-| `image` | `fileId`, `alt`, `caption?`, `width`, `height` (сохранение отклоняется `FEATURE_DISABLED` до задачи 3B) |
-| `file` | `fileId`, `label?`, `name`, `ext`, `sizeBytes` (сохранение отклоняется `FEATURE_DISABLED` до задачи 3B) |
+| `image` | `fileId`, `alt`, `caption?`, `width`, `height` |
+| `file` | `fileId`, `label?`, `name`, `ext`, `sizeBytes` |
 
-Снимки полей (`name`, `ext`, `sizeBytes`, `width`, `height`) переписывает сервер.
+Ссылки на файлы проверяются при сохранении урока независимо от флага `UPLOADS`
+(`file_not_found`, `file_wrong_kind`). Снимки полей (`name`, `ext`, `sizeBytes`, `width`, `height`)
+переписывает сервер.
 
 Вопрос теста: `{id, text, options: string[2..8], correct: number[], multiple: boolean, explain?}`.
 Схемы блоков — `src/lib/content/blocks.ts`, на zod.
@@ -348,7 +351,6 @@ isManagerOf(userId, orgId): Promise<boolean>
 
 Все страницы — под `src/app/[locale]/`, локали `ru` (по умолчанию) и `kz`.
 Мутации — server actions с zod. Route handlers — только для файлов (CSV, PDF, загрузка и выдача) и `/api/health` (D-028).
-Пометка «(волна N)» — маршрута ещё нет в коде, он появится в этой волне доработки MVP.
 
 | Путь | Кто | Владелец кода |
 |---|---|---|
@@ -480,7 +482,8 @@ isManagerOf(userId, orgId): Promise<boolean>
 Vercel, проект привязан к репозиторию (импорт репозитория в Vercel, переменные
 не обязательны). На Vercel без `DATABASE_URL` демо включается само (`VERCEL=1`,
 D-016); на своём сервере без `DATABASE_URL` нужен явный `DEMO_MODE=1`, иначе
-приложение не стартует (исключение для Vercel — D-019). Без `DATABASE_URL` демо работает на PGlite: данные из сида,
+инициализация БД падает (fail closed, D-016): страницы с данными отдают ошибку, `/api/health` —
+503 (исключение для Vercel — D-019). Без `DATABASE_URL` демо работает на PGlite: данные из сида,
 изменения живут до перезапуска экземпляра. В шапке плашка «Демо-версия: данные
 сбрасываются», на регистрации — предупреждение не вводить реальные ПДн (данные
 вне РК). Для лимитов входа на Vercel — `TRUST_X_REAL_IP=1`.
