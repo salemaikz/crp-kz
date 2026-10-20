@@ -323,7 +323,7 @@ export function contentDisposition(kind: FileKind, name: string): string;
 - Путь не абсолютный → `relative_path`.
 - Вне демо корень внутри `process.cwd()` → `inside_app_dir`. Каталог релиза пересоздаётся
   при каждой выкладке (D-027), а `public/` раздаётся без проверки.
-- `serverless = process.env.VERCEL === '1' || process.env.NETLIFY === 'true'`.
+- `serverless = VERCEL === '1' || NETLIFY === 'true' || AWS_LAMBDA_FUNCTION_NAME` (NETLIFY есть только при сборке; в рантайме функции Netlify — переменная AWS Lambda).
 
 ### 3.3. `src/lib/files/` — домен файлов (зона files, исполнитель A)
 

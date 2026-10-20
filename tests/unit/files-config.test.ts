@@ -66,4 +66,7 @@ test('serverless распознаётся и в рантайме функции 
   assert.equal(maxBytesFor('document', lambda), UPLOAD_LIMITS.serverlessDemoBytes);
   // не демо на serverless — порог сервера
   assert.equal(minFreeBytes({ VERCEL: '1', DATABASE_URL: 'postgres://x', NODE_ENV: 'production' }), UPLOAD_LIMITS.minFreeDiskBytes);
+  const lambdaProd = { AWS_LAMBDA_FUNCTION_NAME: 'fn', DATABASE_URL: 'postgres://x', NODE_ENV: 'production' };
+  assert.equal(minFreeBytes(lambdaProd), UPLOAD_LIMITS.minFreeDiskBytes);
+  assert.equal(maxBytesFor('document', lambdaProd), UPLOAD_LIMITS.documentBytes);
 });
