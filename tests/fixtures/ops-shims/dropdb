@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo "dropdb:${*: -1}" >>"$SHIM_LOG"

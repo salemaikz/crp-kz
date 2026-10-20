@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Заглушка age: «шифрует» вход (файл или stdin) в файл из -o, дописывая метку. Ключи не читает.
+set -euo pipefail
+echo "age" >>"$SHIM_LOG"
+out=""
+in=""
+while (($#)); do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -R | -r | -i) shift 2 ;;
+    *) in="$1"; shift ;;
+  esac
+done
+{
+  printf 'AGE-ENCRYPTED:'
+  if [[ -n "$in" ]]; then cat "$in"; else cat; fi
+} >"$out"

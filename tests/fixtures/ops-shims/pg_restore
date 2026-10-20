@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Заглушка pg_restore: -l (чтение оглавления) и восстановление только фиксируют вызов.
+set -euo pipefail
+if [[ "${1:-}" == -l ]]; then
+  echo "pg_restore:list" >>"$SHIM_LOG"
+else
+  echo "pg_restore:restore" >>"$SHIM_LOG"
+fi

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Заглушка git для tests/unit/ops-scripts.test.ts: ничего не берёт из сети, sha выводится из тега.
+# События пишутся в $SHIM_LOG. Управление: SHIM_NOT_ANCESTOR=1 — тег не из основной ветки.
+set -euo pipefail
+if [[ "${1:-}" == -C ]]; then shift 2; fi
+case "${1:-}" in
+  fetch)
+    echo "git:fetch" >>"$SHIM_LOG"
+    ;;
+  rev-parse)
+    tag="${2%%^*}"
+    echo "git:rev-parse" >>"$SHIM_LOG"
+    printf '%s' "$tag" | sha1sum | cut -d' ' -f1
+    ;;
+  merge-base)
+    echo "git:merge-base" >>"$SHIM_LOG"
+    [[ "${SHIM_NOT_ANCESTOR:-}" != 1 ]] || exit 1
+    ;;
+  archive)
+    echo "git:archive" >>"$SHIM_LOG"
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/deploy" "$tmp/scripts"
+    echo '{"name":"crp-learn"}' >"$tmp/package.json"
+    echo "module.exports = {};" >"$tmp/deploy/ecosystem.config.cjs"
+    tar -cf - -C "$tmp" .
+    rm -rf "$tmp"
+    ;;
+  *)
+    echo "git: неожиданный вызов $*" >&2
+    exit 99
+    ;;
+esac

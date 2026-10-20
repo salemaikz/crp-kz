@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Заглушка pm2 для tests/unit/ops-scripts.test.ts: startOrReload «переводит» приложение на релиз,
+# на который сейчас указывает current. SHIM_PM2_FAIL=1 — перезагрузка падает.
+set -euo pipefail
+case "${1:-}" in
+  startOrReload)
+    echo "reload" >>"$SHIM_LOG"
+    [[ "${SHIM_PM2_FAIL:-}" != 1 ]] || exit 1
+    basename "$(readlink "$CRP_ROOT/current")" >"$SHIM_STATE/pm2-release"
+    ;;
+  save)
+    echo "save" >>"$SHIM_LOG"
+    ;;
+  *)
+    echo "pm2: неожиданный вызов $*" >&2
+    exit 99
+    ;;
+esac

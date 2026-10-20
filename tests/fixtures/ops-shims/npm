@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Заглушка npm для tests/unit/ops-scripts.test.ts: «ставит» заглушку next и «собирает» .next.
+# Управление: SHIM_BUILD_FAIL=1 — сборка падает. Окружение сборки пишется в $SHIM_STATE/build-env.txt.
+set -euo pipefail
+case "${1:-} ${2:-}" in
+  "ci "*)
+    echo "npm:ci" >>"$SHIM_LOG"
+    mkdir -p node_modules/.bin
+    cat >node_modules/.bin/next <<'STUB'
+#!/usr/bin/env bash
+# заглушка next start: запоминает релиз, из которого запущена, и ждёт сигнала
+echo "smoke:start" >>"$SHIM_LOG"
+echo "$$" >"$SHIM_STATE/smoke-pid"
+basename "$PWD" >"$SHIM_STATE/smoke-release"
+exec sleep 120
+STUB
+    chmod +x node_modules/.bin/next
+    ;;
+  "run build")
+    echo "build" >>"$SHIM_LOG"
+    {
+      echo "DATABASE_URL=${DATABASE_URL-<unset>}"
+      echo "NEXT_DEPLOYMENT_ID=${NEXT_DEPLOYMENT_ID-<unset>}"
+    } >>"$SHIM_STATE/build-env.txt"
+    [[ "${SHIM_BUILD_FAIL:-}" != 1 ]] || { echo "сборка упала (заглушка)" >&2; exit 1; }
+    mkdir -p .next/static/chunks
+    echo "${NEXT_DEPLOYMENT_ID:-dev}" >.next/BUILD_ID
+    echo "общий чанк" >.next/static/chunks/common-aaaa.js
+    echo "чанк релиза" >".next/static/chunks/app-${NEXT_DEPLOYMENT_ID:-dev}.js"
+    ;;
+  *)
+    echo "npm: неожиданный вызов $*" >&2
+    exit 99
+    ;;
+esac

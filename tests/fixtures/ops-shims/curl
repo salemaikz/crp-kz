@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Заглушка curl для tests/unit/ops-scripts.test.ts. Три адреса: api.github.com (статус CI),
+# 127.0.0.1:<порт>/api/health и 127.0.0.1:<порт>/ru.
+# Управление: SHIM_CI=fail — CI красный; SHIM_SMOKE_FAIL=1 — проверка на порту smoke не проходит;
+# SHIM_FAIL_RELEASE=<подстрока> — основной порт не отвечает ok для релиза с такой подстрокой в id.
+set -euo pipefail
+url=""
+want_code=0
+for a in "$@"; do
+  [[ "$a" == http* ]] && url="$a"
+  [[ "$a" == -w ]] && want_code=1
+done
+
+case "$url" in
+  https://api.github.com/*)
+    echo "ci" >>"$SHIM_LOG"
+    if [[ "${SHIM_CI:-ok}" == ok ]]; then result=success; else result=failure; fi
+    printf '{"check_runs":[{"name":"Проверки и e2e","conclusion":"%s"}]}\n' "$result"
+    ;;
+  http://127.0.0.1:*/api/health)
+    port="${url#http://127.0.0.1:}"
+    port="${port%%/*}"
+    rel=""
+    if [[ "$port" == "$SHIM_SMOKE_PORT" ]]; then
+      if [[ -s "$SHIM_STATE/smoke-pid" ]] && kill -0 "$(cat "$SHIM_STATE/smoke-pid")" 2>/dev/null &&
+        [[ "${SHIM_SMOKE_FAIL:-}" != 1 ]]; then
+        rel="$(cat "$SHIM_STATE/smoke-release")"
+      fi
+    elif [[ -s "$SHIM_STATE/pm2-release" ]]; then
+      rel="$(cat "$SHIM_STATE/pm2-release")"
+      if [[ -n "${SHIM_FAIL_RELEASE:-}" && "$rel" == *"$SHIM_FAIL_RELEASE"* ]]; then rel=""; fi
+    fi
+    if [[ -n "$rel" ]]; then
+      echo "health:$port:ok" >>"$SHIM_LOG"
+      printf '{"status":"ok","release":"%s","sha":null,"mode":"production","checks":{"db":"ok","migrations":"ok"},"pendingCount":0,"time":0}\n' "$rel"
+    else
+      echo "health:$port:fail" >>"$SHIM_LOG"
+      if ((want_code)); then echo 503; exit 0; fi
+      exit 22
+    fi
+    ;;
+  http://127.0.0.1:*/ru)
+    echo "smoke:ru" >>"$SHIM_LOG"
+    if ((want_code)); then echo 200; fi
+    ;;
+  *)
+    echo "curl: неожиданный адрес" >&2
+    exit 99
+    ;;
+esac

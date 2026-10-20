@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Заглушка pg_dump: пишет «дамп» в файл из -f. SHIM_PGDUMP_FAIL=1 - падает.
+set -euo pipefail
+echo "pg_dump" >>"$SHIM_LOG"
+[[ "${SHIM_PGDUMP_FAIL:-}" != 1 ]] || { echo "pg_dump: ошибка (заглушка)" >&2; exit 1; }
+out=""
+while (($#)); do
+  if [[ "$1" == -f ]]; then out="$2"; shift; fi
+  shift
+done
+printf 'DUMP-CONTENT' >"$out"

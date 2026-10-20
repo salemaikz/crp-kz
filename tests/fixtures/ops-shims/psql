@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Заглушка psql для проверки восстановления: отвечает по тексту запроса. Строк таблиц нет, только числа.
+# SHIM_RESTORE_TABLES_DIFFER=1 - у проверочной БД набор таблиц другой.
+set -euo pipefail
+db=""
+sql=""
+while (($#)); do
+  case "$1" in
+    -d) db="$2"; shift 2 ;;
+    -c) sql="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+echo "psql:$db" >>"$SHIM_LOG"
+case "$sql" in
+  *information_schema.tables*)
+    echo courses
+    echo users
+    if [[ "${SHIM_RESTORE_TABLES_DIFFER:-}" == 1 && "$db" == *_restorecheck ]]; then echo lost_table; fi
+    ;;
+  *schema_migrations*) echo 2026-10-20-init.sql ;;
+  *"count(*)"*) echo 3 ;;
+  *) ;;
+esac

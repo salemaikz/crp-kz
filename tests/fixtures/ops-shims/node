@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Заглушка node для tests/unit/ops-scripts.test.ts: узнаёт скрипт по имени .ts и пишет событие.
+# Управление: SHIM_PREFLIGHT_ERROR=1 — preflight с ERROR; SHIM_STATUS_RC — код db-migrate --status
+# (по умолчанию 0); SHIM_MIGRATE_FAIL=1 — миграция падает.
+set -euo pipefail
+script=""
+args=()
+for a in "$@"; do
+  if [[ "$a" == *.ts ]]; then script="$a"; fi
+  args+=("$a")
+done
+case "$script" in
+  scripts/ops-preflight.ts)
+    echo "preflight" >>"$SHIM_LOG"
+    if [[ "${SHIM_PREFLIGHT_ERROR:-}" == 1 ]]; then
+      echo "ERROR demo_mode_set"
+      exit 1
+    fi
+    echo "WARN feature_on:REMINDERS"
+    ;;
+  scripts/db-migrate.ts)
+    if [[ " ${args[*]} " == *" --status "* ]]; then
+      echo "status" >>"$SHIM_LOG"
+      rc="${SHIM_STATUS_RC:-0}"
+      if [[ "$rc" == 3 ]]; then printf 'Накатаны (5)\nНе накатаны (2):\n  2026-10-21-a.sql\n  2026-10-21-b.sql\n'; fi
+      exit "$rc"
+    fi
+    echo "migrate" >>"$SHIM_LOG"
+    [[ "${SHIM_MIGRATE_FAIL:-}" != 1 ]] || { echo "миграция упала (заглушка)" >&2; exit 1; }
+    echo "Применены миграции: 2026-10-21-a.sql, 2026-10-21-b.sql"
+    ;;
+  scripts/db-grants.ts)
+    echo "grants" >>"$SHIM_LOG"
+    ;;
+  *)
+    echo "node: неожиданный вызов $*" >&2
+    exit 99
+    ;;
+esac

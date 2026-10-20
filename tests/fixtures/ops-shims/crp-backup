@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Заглушка backup.sh для deploy.sh: только фиксирует вызов и метку.
+set -euo pipefail
+echo "backup:$*" >>"$SHIM_LOG"

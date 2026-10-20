@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Заглушка rsync для tests/unit/ops-scripts.test.ts: rsync -a <откуда>/ <куда>/ копирует содержимое.
+set -euo pipefail
+echo "rsync" >>"$SHIM_LOG"
+src="${*: -2:1}"
+dst="${*: -1}"
+mkdir -p "$dst"
+cp -a "${src%/}/." "$dst"

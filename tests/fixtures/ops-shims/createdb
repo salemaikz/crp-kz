@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo "createdb:${*: -1}" >>"$SHIM_LOG"
