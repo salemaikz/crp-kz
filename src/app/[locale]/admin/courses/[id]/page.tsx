@@ -4,11 +4,16 @@ import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/admin/ActionButton';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { CourseForm, type CourseFormValues } from '@/components/admin/CourseForm';
+import { CoverCard } from '@/components/admin/files/CoverCard';
 import { ProgramTree } from '@/components/admin/ProgramTree';
 import { Alert, Badge, Button, Card, Chip, Price } from '@/components/ui';
 import { getCourse, getCourseStructure, listOrganizations } from '@/lib/admin';
 import { deleteCourseAction, setCourseStatusAction, updateCourseAction } from '@/lib/admin/actions';
 import { t as l10n } from '@/lib/content/l10n';
+import { isDemo } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
+import { listCourseFiles } from '@/lib/files/admin';
+import { maxBytesFor, storageConfig } from '@/lib/storage/config';
 import { formatDate, formatDuration } from '@/lib/format';
 import { adminPage, one } from '../../_shared';
 
@@ -32,14 +37,19 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
   const course = await getCourse(user, id);
   if (!course) notFound();
 
-  const [t, tEnum, tc, tn, modules, orgs] = await Promise.all([
+  const [t, tEnum, tc, tn, tf, modules, orgs] = await Promise.all([
     getTranslations('admin.course'),
     getTranslations('admin.enums'),
     getTranslations('common.a11y'),
     getTranslations('admin.shell'),
+    getTranslations('files'),
     getCourseStructure(user, id),
     listOrganizations(user),
   ]);
+
+  // загрузка файлов: флаг, хранилище и лимиты считает сервер, клиентские компоненты env не читают
+  const uploadsEnabled = isFeatureActive('UPLOADS');
+  const coverFileId = uploadsEnabled && tab === 'settings' ? ((await listCourseFiles(user, id)).find((f) => f.isCover)?.id ?? null) : null;
 
   const title = l10n(course.title, locale);
   const published = course.status === 'published';
@@ -80,6 +90,11 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
               label={published ? t('actions.unpublish') : t('actions.publish')}
               testId="course-toggle-status"
             />
+            {uploadsEnabled && (
+              <Button href={`/admin/courses/${course.id}/files`} variant="ghost" size="sm" data-testid="course-files-link">
+                {tf('library.link')}
+              </Button>
+            )}
             {inCatalog && (
               <Button href={`/courses/${course.slug}`} variant="ghost" size="sm">
                 {t('actions.openCatalog')}
@@ -117,6 +132,16 @@ export default async function AdminCoursePage({ params, searchParams }: Props) {
         <ProgramTree courseId={course.id} modules={modules} locale={locale} />
       ) : (
         <>
+          {uploadsEnabled && (
+            <CoverCard
+              locale={locale}
+              courseId={course.id}
+              coverFileId={coverFileId}
+              limits={{ image: maxBytesFor('image'), document: maxBytesFor('document') }}
+              storageOk={storageConfig().ok}
+              demo={isDemo()}
+            />
+          )}
           <CourseForm
             key={course.status}
             mode="edit"

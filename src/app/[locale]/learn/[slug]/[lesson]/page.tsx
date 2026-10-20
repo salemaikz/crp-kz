@@ -12,6 +12,9 @@ import { OutlineNav } from '@/components/learn/OutlineNav';
 import { Alert, Badge, Breadcrumbs, Card, Container, Section } from '@/components/ui';
 import { getCurrentUser, requireUser } from '@/lib/auth';
 import { t as loc } from '@/lib/content/l10n';
+import { getDb } from '@/lib/db';
+import { isDemo } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
 import { formatDuration } from '@/lib/format';
 import { routing } from '@/lib/i18n/routing';
 import { getCertificate } from '@/lib/learn/certificates';
@@ -24,6 +27,15 @@ import type { QuizStatus } from '@/lib/learn/types';
 import '@/components/learn/learn.css';
 
 type Props = { params: Promise<{ locale: string; slug: string; lesson: string }> };
+
+/** Документы урока (PDF, DOCX, XLSX) из lesson_files: ссылки на них в тексте не выдаются слушателю в демо. */
+async function lessonDocumentIds(lessonId: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.sql<{ fileId: string }>`
+    SELECT lf.file_id FROM lesson_files lf JOIN files f ON f.id = lf.file_id
+    WHERE lf.lesson_id = ${lessonId} AND f.kind = 'document' AND f.status = 'active'`;
+  return rows.map((r) => r.fileId);
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: raw, slug, lesson } = await params;
@@ -80,6 +92,11 @@ export default async function LessonPage({ params }: Props) {
   const quizStatus: Record<string, QuizStatus | null> = {};
   for (const b of quizzes) quizStatus[b.id] = statuses.get(attemptKey(picked.locale, b.id)) ?? null;
   const initialPassed = quizzes.filter((b) => quizStatus[b.id]?.passed).map((b) => b.id);
+
+  // файлы урока: флаг и правило демо (D-038) считает сервер, клиентские компоненты env не читают
+  const filesEnabled = isFeatureActive('UPLOADS');
+  const hideDocuments = filesEnabled && isDemo() && user.role !== 'admin';
+  const documentIds = hideDocuments ? await lessonDocumentIds(node.id) : [];
 
   const { prev, next } = neighbours(progress, node.id);
   const isLast = next === null;
@@ -178,6 +195,9 @@ export default async function LessonPage({ params }: Props) {
                   lessonTitle={lessonTitle}
                   locale={locale}
                   quizStatus={quizStatus}
+                  filesEnabled={filesEnabled}
+                  hideDocuments={hideDocuments}
+                  documentIds={documentIds}
                 />
               )}
             </Card>

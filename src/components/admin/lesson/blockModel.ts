@@ -1,6 +1,7 @@
 // Модель редактора блоков: создание блоков, перестановка, разбор ссылки YouTube, нормализация перед сохранением.
 // Чистые функции без React — их легко проверять.
-import type { Block, QuizBlock, QuizQuestion } from '@/lib/content/types';
+import type { Block, FileBlock, ImageBlock, QuizBlock, QuizQuestion } from '@/lib/content/types';
+import type { StoredFile } from '@/lib/files/types';
 
 export type BlockType = Block['type'];
 /** Типы, которые создаются кнопкой «Добавить блок». Блоки image и file появляются из загруженного файла (D-034). */
@@ -21,6 +22,16 @@ export function uid(prefix = 'b'): string {
 
 export function newQuestion(): QuizQuestion {
   return { id: uid('q'), text: '', options: ['', ''], correct: [0], multiple: false };
+}
+
+/** Блок «Изображение» из ответа загрузки. alt пустой: автор обязан заполнить его до сохранения. */
+export function newImageBlock(f: StoredFile): ImageBlock {
+  return { id: uid('b'), type: 'image', fileId: f.id, alt: '', width: f.width ?? 1, height: f.height ?? 1 };
+}
+
+/** Блок «Файл» из ответа загрузки. Снимок name/ext/sizeBytes сервер всё равно перепишет из БД при сохранении. */
+export function newFileBlock(f: StoredFile): FileBlock {
+  return { id: uid('b'), type: 'file', fileId: f.id, name: f.name, ext: f.ext, sizeBytes: f.sizeBytes };
 }
 
 export function newBlock(type: AddableBlockType): Block {
@@ -95,6 +106,14 @@ export function normalizeBlocks(blocks: readonly Block[]): Block[] {
         if (b.provider === 'youtube' && b.youtubeId) out.youtubeId = b.youtubeId.trim();
         if (caption) out.caption = caption;
         return out;
+      }
+      case 'image': {
+        const caption = trimOrUndefined(b.caption);
+        return { id: b.id, type: 'image', fileId: b.fileId, alt: b.alt.trim(), width: b.width, height: b.height, ...(caption ? { caption } : {}) };
+      }
+      case 'file': {
+        const label = trimOrUndefined(b.label);
+        return { id: b.id, type: 'file', fileId: b.fileId, name: b.name, ext: b.ext, sizeBytes: b.sizeBytes, ...(label ? { label } : {}) };
       }
       case 'quiz': {
         const quiz: QuizBlock = {

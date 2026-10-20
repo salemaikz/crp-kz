@@ -1,0 +1,137 @@
+/* Загрузка файлов в админке: кнопка, обложка, карточки блоков, таблица файлов. Плоско, без теней. */
+.adm-upload {
+  display: inline-grid;
+  gap: 6px;
+  align-content: start;
+  max-width: 46ch;
+}
+.adm-upload__progress,
+.adm-upload__hint {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.adm-upload__error {
+  color: var(--error);
+  font-size: 14px;
+}
+.adm-upload__demo {
+  padding: 8px 12px;
+  border: 1px solid rgb(154 82 0 / 22%);
+  border-radius: 12px;
+  background: #fcf3e7;
+  color: var(--ink);
+  font-size: 13px;
+}
+.adm-addblock__demo {
+  flex-basis: 100%;
+}
+
+/* обложка курса */
+.adm-cover {
+  display: grid;
+  gap: 14px;
+}
+.adm-cover__preview {
+  width: min(100%, 420px);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--board);
+}
+.adm-cover__preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.adm-cover__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+}
+.adm-cover__saved {
+  color: var(--success);
+  font-size: 14px;
+}
+
+/* редакторы блоков «Изображение» и «Файл» */
+.adm-imageedit {
+  display: grid;
+  gap: 14px;
+}
+@media (min-width: 900px) {
+  .adm-imageedit {
+    grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.adm-imageedit__preview {
+  max-height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--board);
+}
+.adm-imageedit__preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  margin: 0 auto;
+}
+.adm-fileedit {
+  display: grid;
+  gap: 14px;
+}
+.adm-filecard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--board);
+}
+.adm-filecard > svg {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--ink-2);
+}
+.adm-filecard__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.adm-filecard__meta {
+  color: var(--ink-3);
+  font-size: 13.5px;
+}
+
+/* страница «Файлы курса» */
+.adm-files-usage {
+  color: var(--ink-2);
+}
+.adm-files-uses {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* картинка в предпросмотре урока */
+.adm-image-preview {
+  margin: 0;
+}
+.adm-image-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.adm-image-preview figcaption {
+  margin-top: 8px;
+  color: var(--ink-3);
+  font-size: 14px;
+}

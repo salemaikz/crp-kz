@@ -2,11 +2,17 @@
 // Список блоков одной локали: карточки блоков с перестановкой и удалением, панель «Добавить блок».
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import type { ContentIssue } from '@/lib/admin/errors';
 import type { Block } from '@/lib/content/types';
-import { BLOCK_TYPES, moved, newBlock, type AddableBlockType } from './blockModel';
+import { formatFileSize } from '@/lib/files/format';
+import type { StoredFile } from '@/lib/files/types';
+import { UploadButton } from '../files/UploadButton';
+import type { LessonUploads } from '../files/uploadModel';
+import { BLOCK_TYPES, moved, newBlock, newFileBlock, newImageBlock, type AddableBlockType } from './blockModel';
 import { CalloutEditor, DividerEditor, HeadingEditor, QuizEditor, TextEditor, VideoEditor } from './BlockEditors';
+import { FileEditor } from './FileEditor';
+import { ImageEditor } from './ImageEditor';
 import { describeIssue, issuesForBlock } from './issueText';
 
 type Props = {
@@ -14,14 +20,26 @@ type Props = {
   blocks: Block[];
   onChange: (next: Block[]) => void;
   issues: readonly ContentIssue[];
+  /** Загрузка файлов: нет — кнопок «Изображение» и «Файл» нет. */
+  uploads?: LessonUploads;
 };
 
-function BlockBody({ block, onChange, autoFocus }: { block: Block; onChange: (b: Block) => void; autoFocus: boolean }) {
+function BlockBody({
+  block,
+  onChange,
+  autoFocus,
+  uploads,
+}: {
+  block: Block;
+  onChange: (b: Block) => void;
+  autoFocus: boolean;
+  uploads?: LessonUploads;
+}) {
   switch (block.type) {
     case 'heading':
       return <HeadingEditor block={block} onChange={onChange} autoFocus={autoFocus} />;
     case 'text':
-      return <TextEditor block={block} onChange={onChange} autoFocus={autoFocus} />;
+      return <TextEditor block={block} onChange={onChange} autoFocus={autoFocus} uploads={uploads} />;
     case 'video':
       return <VideoEditor block={block} onChange={onChange} autoFocus={autoFocus} />;
     case 'callout':
@@ -31,13 +49,16 @@ function BlockBody({ block, onChange, autoFocus }: { block: Block; onChange: (b:
     case 'divider':
       return <DividerEditor />;
     case 'image':
+      return <ImageEditor block={block} onChange={onChange} preview={uploads?.enabled === true} autoFocus={autoFocus} />;
     case 'file':
-      return null; // редактор появится вместе с загрузкой файлов (D-034)
+      return <FileEditor block={block} onChange={onChange} autoFocus={autoFocus} />;
   }
 }
 
-export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
+export function BlockListEditor({ locale, blocks, onChange, issues, uploads }: Props) {
   const t = useTranslations('admin.lessonEditor');
+  const tf = useTranslations('files');
+  const appLocale = useLocale() === 'kz' ? 'kz' : 'ru';
   const ti = useTranslations('admin.lessonEditor.issue');
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -46,6 +67,15 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
     setFocusId(b.id);
     onChange([...blocks, b]);
   };
+  // блок из загруженного файла; файл попадает в урок только после «Сохранить»
+  const addUploaded = (make: (f: StoredFile) => Block) => (f: StoredFile) => {
+    const b = make(f);
+    setFocusId(b.id);
+    onChange([...blocks, b]);
+  };
+  const sizeOf = (bytes: number) =>
+    formatFileSize(bytes, appLocale, { b: tf('units.b'), kb: tf('units.kb'), mb: tf('units.mb'), gb: tf('units.gb') });
+  const fieldLabels = { alt: tf('image.alt'), label: tf('file.label') };
   const replace = (i: number, next: Block) => onChange(blocks.map((b, k) => (k === i ? next : b)));
 
   return (
@@ -117,12 +147,12 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
                   </div>
                 </div>
                 <div className="adm-block__body">
-                  <BlockBody block={b} onChange={(next) => replace(i, next)} autoFocus={focusId === b.id} />
+                  <BlockBody block={b} onChange={(next) => replace(i, next)} autoFocus={focusId === b.id} uploads={uploads} />
                 </div>
                 {own.length > 0 && (
                   <ul className="adm-block__errors" role="alert">
                     {own.map((issue, k) => (
-                      <li key={k}>{describeIssue(issue, ti)}</li>
+                      <li key={k}>{describeIssue(issue, ti, fieldLabels)}</li>
                     ))}
                   </ul>
                 )}
@@ -139,6 +169,42 @@ export function BlockListEditor({ locale, blocks, onChange, issues }: Props) {
             {t(`blocks.types.${type}`)}
           </button>
         ))}
+        {uploads?.enabled && uploads.storageOk && (
+          <>
+            <UploadButton
+              kind="image"
+              courseId={uploads.courseId}
+              lessonId={uploads.lessonId}
+              limits={uploads.limits}
+              label={t('blocks.types.image')}
+              onUploaded={addUploaded(newImageBlock)}
+              testId="add-block-image"
+            />
+            <UploadButton
+              kind="file"
+              courseId={uploads.courseId}
+              lessonId={uploads.lessonId}
+              limits={uploads.limits}
+              label={t('blocks.types.file')}
+              onUploaded={addUploaded(newFileBlock)}
+              testId="add-block-file"
+            />
+          </>
+        )}
+        {uploads?.enabled && uploads.storageOk && (
+          <div className="adm-upload__hint adm-addblock__demo">
+            <p>{tf('upload.hintImage', { size: sizeOf(uploads.limits.image) })}</p>
+            <p>{tf('upload.hintFile', { size: sizeOf(uploads.limits.document) })}</p>
+          </div>
+        )}
+        {uploads?.enabled && uploads.storageOk && uploads.demo && (
+          <p className="adm-upload__demo adm-addblock__demo" data-testid="upload-demo-warning">
+            {tf('upload.demoWarning')}
+          </p>
+        )}
+        {uploads?.enabled && !uploads.storageOk && (
+          <p className="adm-upload__error adm-addblock__demo">{tf('errors.storage_unavailable')}</p>
+        )}
       </div>
     </div>
   );

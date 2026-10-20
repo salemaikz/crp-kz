@@ -1,14 +1,23 @@
 'use client';
 // Простой предпросмотр блоков урока внутри админки. Свой, а не из зоны learn: показывает и ответы теста.
-import { CircleCheck, Info, Play, TriangleAlert } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { CircleCheck, FileSpreadsheet, FileText, Info, Play, TriangleAlert } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
+import { formatFileSize } from '@/lib/files/format';
+import { EXT_LABEL } from '../files/uploadModel';
+import '../files/files.css';
 import type { Block } from '@/lib/content/types';
+import { fileUrl } from '@/lib/files/url';
 import { Markdown } from './Markdown';
 
 const TONE_ICON = { info: Info, warn: TriangleAlert, success: CircleCheck } as const;
 
-export function BlockPreview({ blocks }: { blocks: readonly Block[] }) {
+/** filesEnabled: UPLOADS активен; без него картинки не выдаются (404), показываем только подпись. */
+export function BlockPreview({ blocks, filesEnabled = true }: { blocks: readonly Block[]; filesEnabled?: boolean }) {
   const t = useTranslations('admin.lessonEditor.preview');
+  const tf = useTranslations('files');
+  const locale = useLocale() === 'kz' ? 'kz' : 'ru';
+  const sizeOf = (bytes: number) =>
+    formatFileSize(bytes, locale, { b: tf('units.b'), kb: tf('units.kb'), mb: tf('units.mb'), gb: tf('units.gb') });
   if (blocks.length === 0) {
     return <p className="adm-preview__empty">{t('empty')}</p>;
   }
@@ -92,8 +101,27 @@ export function BlockPreview({ blocks }: { blocks: readonly Block[] }) {
               </section>
             );
           case 'image':
+            return (
+              <figure key={b.id} className="adm-image-preview">
+                {filesEnabled ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- превью из выдачи с проверкой доступа
+                  <img src={fileUrl(b.fileId)} width={b.width} height={b.height} alt={b.alt} data-testid="preview-image" />
+                ) : (
+                  <p>{b.alt}</p>
+                )}
+                {b.caption && <figcaption>{b.caption}</figcaption>}
+              </figure>
+            );
           case 'file':
-            return null; // показ появится вместе с загрузкой файлов (D-034)
+            return (
+              <div key={b.id} className="adm-filecard" data-testid="preview-file">
+                {b.ext === 'xlsx' ? <FileSpreadsheet aria-hidden="true" /> : <FileText aria-hidden="true" />}
+                <div>
+                  <p className="adm-filecard__name">{b.label?.trim() || b.name}</p>
+                  <p className="adm-filecard__meta">{tf('file.meta', { type: EXT_LABEL[b.ext], size: sizeOf(b.sizeBytes) })}</p>
+                </div>
+              </div>
+            );
         }
       })}
     </div>

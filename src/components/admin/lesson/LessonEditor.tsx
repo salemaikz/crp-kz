@@ -11,6 +11,7 @@ import type { ActionResult } from '@/lib/admin/result';
 import { validateLessonContent } from '@/lib/content/blocks';
 import type { Block } from '@/lib/content/types';
 import { ErrorAlert } from '../ErrorAlert';
+import type { LessonUploads } from '../files/uploadModel';
 import { BlockListEditor } from './BlockListEditor';
 import { BlockPreview } from './BlockPreview';
 import { KzQuizMismatch } from './KzQuizMismatch';
@@ -30,6 +31,8 @@ type Props = {
   initial: LessonEditorInitial;
   /** saveLessonAction с привязанными локалью, курсом и уроком. */
   save: (payload: unknown) => Promise<ActionResult<{ slug: string; savedAt: number }>>;
+  /** Загрузка файлов: флаг, хранилище, лимиты и демо считает страница. Нет — как при выключенном флаге. */
+  uploads?: LessonUploads;
 };
 
 type Locale = 'ru' | 'kz';
@@ -41,7 +44,7 @@ function buildContent(ru: Block[], kz: Block[]) {
   };
 }
 
-export function LessonEditor({ initial, save }: Props) {
+export function LessonEditor({ initial, save, uploads }: Props) {
   const t = useTranslations('admin.lessonEditor');
   const tf = useTranslations('admin.errors.field');
   const tEnum = useTranslations('admin.enums');
@@ -213,7 +216,7 @@ export function LessonEditor({ initial, save }: Props) {
           />
         )}
         {mode === 'edit' ? (
-          <BlockListEditor locale={loc} blocks={blocks} onChange={setBlocks} issues={issues} />
+          <BlockListEditor locale={loc} blocks={blocks} onChange={setBlocks} issues={issues} uploads={uploads} />
         ) : (
           <Card padding="lg" className="adm-preview-card">
             <p className="meta adm-preview-card__note">{t('preview.lead')}</p>
@@ -221,7 +224,7 @@ export function LessonEditor({ initial, save }: Props) {
             {loc === 'kz' && kz.length === 0 ? (
               <p className="adm-preview__empty">{t('preview.kzEmpty')}</p>
             ) : (
-              <BlockPreview blocks={blocks} />
+              <BlockPreview blocks={blocks} filesEnabled={uploads?.enabled === true} />
             )}
           </Card>
         )}

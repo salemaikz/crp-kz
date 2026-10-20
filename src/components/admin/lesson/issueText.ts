@@ -15,14 +15,14 @@ export function issuesForBlock(issues: readonly ContentIssue[], locale: string, 
   return issues.filter((i) => i.path[0] === locale && i.path[1] === 'blocks' && i.path[2] === index);
 }
 
-/** t — useTranslations('admin.lessonEditor.issue'). */
-export function describeIssue(issue: ContentIssue, t: T): string {
+/** t — useTranslations('admin.lessonEditor.issue'); extraFields — подписи полей блоков файлов (alt, label) из files.json. */
+export function describeIssue(issue: ContentIssue, t: T, extraFields: Record<string, string> = {}): string {
   const rest = pathInBlock(issue);
   const qi = rest[0] === 'questions' && typeof rest[1] === 'number' ? rest[1] : null;
   const oi = rest[2] === 'options' && typeof rest[3] === 'number' ? rest[3] : null;
   const prefix = qi !== null ? `${t('question', { n: qi + 1 })}: ` : '';
   const key = [...rest].reverse().find((p): p is string => typeof p === 'string') ?? '';
-  const field = FIELD_KEYS.has(key) ? t(`fields.${key}`) : t('fields.generic');
+  const field = extraFields[key] ?? (FIELD_KEYS.has(key) ? t(`fields.${key}`) : t('fields.generic'));
   const min = issue.minimum ?? 0;
   const max = issue.maximum ?? 0;
 
@@ -43,6 +43,12 @@ export function describeIssue(issue: ContentIssue, t: T): string {
       break;
     case 'single-choice question must have exactly one correct option':
       body = t('singleNeedsOne');
+      break;
+    case 'file_not_found':
+      body = t('fileNotFound');
+      break;
+    case 'file_wrong_kind':
+      body = t('fileWrongKind');
       break;
     case 'document too large':
       body = t('tooLarge');

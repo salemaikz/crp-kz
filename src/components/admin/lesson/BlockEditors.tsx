@@ -13,6 +13,9 @@ import type {
   VideoBlock,
 } from '@/lib/content/types';
 import { LIMITS } from '@/lib/content/blocks';
+import { fileUrl } from '@/lib/files/url';
+import { UploadButton } from '../files/UploadButton';
+import { insertAtCursor, type LessonUploads } from '../files/uploadModel';
 import { moved, newQuestion, parseYoutubeId } from './blockModel';
 import { Markdown } from './Markdown';
 
@@ -59,9 +62,30 @@ export function HeadingEditor({ block, onChange, autoFocus }: EditorProps<Headin
   );
 }
 
-export function TextEditor({ block, onChange, autoFocus }: EditorProps<TextBlock>) {
+export function TextEditor({
+  block,
+  onChange,
+  autoFocus,
+  uploads,
+}: EditorProps<TextBlock> & { uploads?: LessonUploads }) {
   const t = useTranslations('admin.lessonEditor.text');
+  const tf = useTranslations('files');
   const id = useId();
+  const canUpload = uploads?.enabled === true && uploads.storageOk;
+
+  // картинка попадает в позицию курсора; если поле ни разу не трогали, курсор в конце текста
+  const insertImage = (fileId: string) => {
+    // Textarea из ui не пробрасывает ref в типах, поэтому поле берём по id
+    const el = document.getElementById(`${id}-md`) as HTMLTextAreaElement | null;
+    const at = el ? { start: el.selectionStart, end: el.selectionEnd } : { start: block.markdown.length, end: block.markdown.length };
+    const { value, caret } = insertAtCursor(block.markdown, at.start, at.end, `![](${fileUrl(fileId)})`);
+    onChange({ ...block, markdown: value });
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+
   return (
     <div className="adm-split">
       <Row label={t('label')} hint={t('hint')} htmlFor={`${id}-md`}>
@@ -74,6 +98,20 @@ export function TextEditor({ block, onChange, autoFocus }: EditorProps<TextBlock
           autoFocus={autoFocus}
           onChange={(e) => onChange({ ...block, markdown: e.target.value })}
         />
+        {uploads?.enabled && !uploads.storageOk && <p className="adm-upload__error">{tf('errors.storage_unavailable')}</p>}
+        {canUpload && (
+          <UploadButton
+            kind="image"
+            courseId={uploads.courseId}
+            lessonId={uploads.lessonId}
+            limits={uploads.limits}
+            label={tf('markdown.insertImage')}
+            variant="ghost"
+            demoWarning={uploads.demo}
+            onUploaded={(f) => insertImage(f.id)}
+            testId="insert-image"
+          />
+        )}
       </Row>
       <div className="adm-split__preview">
         <span className="adm-row__label">{t('preview')}</span>

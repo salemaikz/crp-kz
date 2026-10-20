@@ -1,0 +1,48 @@
+/* Блоки «Изображение» и «Файл» в уроке: плоские, без теней и анимаций */
+.lrn-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 14px;
+}
+.lrn-file {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper);
+}
+.lrn-file__icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--ink-2);
+}
+.lrn-file__body {
+  min-width: 0;
+  flex: 1;
+}
+.lrn-file__title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lrn-file__meta,
+.lrn-file__note {
+  font-size: 14px;
+  color: var(--ink-3);
+}
+.lrn-file__action {
+  flex: none;
+}
+/* подпись вместо ссылки на документ в тексте урока */
+.lrn-file-note {
+  color: var(--ink-3);
+  font-size: 0.9em;
+}
+@media (max-width: 520px) {
+  .lrn-file {
+    flex-wrap: wrap;
+  }
+}

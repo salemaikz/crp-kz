@@ -7,6 +7,9 @@ import { Badge, Button } from '@/components/ui';
 import { getLessonForEdit } from '@/lib/admin';
 import { saveLessonAction } from '@/lib/admin/actions';
 import { t as l10n } from '@/lib/content/l10n';
+import { isDemo } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
+import { maxBytesFor, storageConfig } from '@/lib/storage/config';
 import { adminPage } from '../../../../_shared';
 
 type Props = { params: Promise<{ locale: string; id: string; lessonId: string }> };
@@ -69,6 +72,14 @@ export default async function AdminLessonPage({ params }: Props) {
           kz: lesson.content.kz?.blocks ?? [],
         }}
         save={saveLessonAction.bind(null, locale, lesson.courseId, lesson.id)}
+        uploads={{
+          enabled: isFeatureActive('UPLOADS'),
+          storageOk: storageConfig().ok,
+          courseId: lesson.courseId,
+          lessonId: lesson.id,
+          limits: { image: maxBytesFor('image'), document: maxBytesFor('document') },
+          demo: isDemo(),
+        }}
       />
     </>
   );
