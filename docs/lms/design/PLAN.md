@@ -162,7 +162,7 @@ export function mailFrom(env?: Env): string | null;
 export function mailReplyTo(env?: Env): string | null;
 export const MAIL_AUTH_RECIPIENT_HOURLY = 5;
 export function mailAuthHourlyCap(env?: Env): number;      // MAIL_AUTH_HOURLY_CAP, по умолчанию 300
-export function mailRetentionDays(env?: Env): number;      // MAIL_RETENTION_DAYS, по умолчанию 90
+export function mailRetentionDays(env?: Env): number;      // MAIL_RETENTION_DAYS, по умолчанию 90, не меньше 31
 
 // outbox.ts (1A)
 /** Вставка в транзакции вызывающего. Статус: транспорт outbox → 'held', иначе 'queued'.
@@ -601,7 +601,7 @@ NEXT_TELEMETRY_DISABLED=
     **После волны 2:** `requestPasswordReset` сейчас возвращает `void` и молчит (сид в демо, лимит,
     письмо не встало в очередь) — у админа это ложный успех и ложная запись журнала. 4A меняет его на
     результат `{ sent: true } | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' |
-    'unavailable' }` (`unavailable` — флаг выключен или письмо не встало в очередь; в список
+    'global_cap' | 'unavailable' }` — так сделано в 4A (`unavailable` — флаг выключен или письмо не встало в очередь; в список
     файлов 4A добавляется `src/lib/auth/recovery.ts`), публичное
     `requestPasswordResetAction` по-прежнему всегда отвечает «отправлено», а `sendResetLinkAction`
     пишет `user.password_reset_link` и отвечает `sendResetDone` только при `sent: true`, иначе —

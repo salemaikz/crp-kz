@@ -157,7 +157,7 @@ export function mailFeature(name: MailFeature): boolean;
 
 | Флаг выключен | Страницы | Кнопки и ссылки | Server actions / функции |
 |---|---|---|---|
-| `PASSWORD_RESET` | `/password/forgot`, `/password/reset` → `notFound()` | «Забыли пароль?» на входе и «Отправить ссылку для смены пароля» у админа не рисуются | `requestPasswordResetAction`, `resetPasswordAction`, `sendResetLinkAction` → `{ error: 'unavailable' }`, в БД ничего не пишется |
+| `PASSWORD_RESET` | `/password/forgot`, `/password/reset` → `notFound()` | «Забыли пароль?» на входе и «Отправить ссылку для смены пароля» у админа не рисуются | `requestPasswordResetAction`, `resetPasswordAction` → `{ error: 'unavailable' }`; `sendResetLinkAction` → `FEATURE_DISABLED`, как все действия админки; в БД ничего не пишется |
 | `EMAIL_VERIFY` | `/account/verify` → `notFound()` | плашки «Подтвердите email» нет; форма покупки — как сейчас | регистрация не создаёт токен и письмо; `resendVerificationAction`, `verifyEmailAction` → `unavailable`; `createOrder` не требует подтверждения |
 | `REMINDERS` | — | кнопки «Сформировать напоминания» нет | `planReminders` → `{ disabled: true }`, скрипт пишет «выключено» и выходит с кодом 0; `assignCourse` не ставит письмо «назначен курс»; `runRemindersAction` → `unavailable` |
 | все три | `/admin/mail`, `/admin/mail/[id]` → `notFound()` | пункт «Письма» в меню админки скрыт | — |
@@ -271,7 +271,7 @@ export async function resendVerificationAction(prev: RecoveryState, fd: FormData
 ```
 src/lib/mail/
   types.ts         MAIL_TEMPLATES, MailTemplate, MailCategory, MailStatus, MailParams, EnqueueInput, EnqueueResult, RenderedMail
-  config.ts        mailTransportName(), mailFrom(), mailFeature(), MAIL_RETENTION_DAYS, MAIL_AUTH_RECIPIENT_HOURLY, mailAuthHourlyCap()
+  config.ts        mailTransportName(), mailFrom(), mailReplyTo(), mailRetentionDays(), MIN_MAIL_RETENTION_DAYS, MAIL_AUTH_RECIPIENT_HOURLY, mailAuthHourlyCap()
   outbox.ts        enqueueMail(), cancelSecrets()
   links.ts         mailLink(row) — абсолютные ссылки только из siteUrl()
   render.ts        renderMail(row) → { subject, text, html }; escapeHtml; oneLine (убирает \r\n из темы и имён)
@@ -347,7 +347,7 @@ export async function resolveTransport(): Promise<MailTransport | null>;  // nul
 - транспорт «в консоль» (#4) — сырые токены попадут в логи. Его роль выполняет страница «Письма».
 
 **Конфиг (env, всё вне репозитория):** `MAIL_TRANSPORT` (`outbox`), `MAIL_FROM`, `MAIL_REPLY_TO`,
-`MAIL_AUTH_HOURLY_CAP` (300), `MAIL_RETENTION_DAYS` (90), позже `SMTP_HOST`, `SMTP_PORT`,
+`MAIL_AUTH_HOURLY_CAP` (300), `MAIL_RETENTION_DAYS` (90, не меньше 31), позже `SMTP_HOST`, `SMTP_PORT`,
 `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`. В `.env.example` — имена без значений.
 
 **Шаблоны и вид письма (BRAND, «Без ИИ-шума»):**
@@ -462,7 +462,8 @@ export async function getMailView(actor: Actor, id: string): Promise<MailView | 
   **Поправка после волны 2 (делает 4A):** `requestPasswordReset` молчит в нескольких случаях (сид в
   демо, лимит, письмо не встало в очередь) — для публичной формы это защита от перечисления, для
   админа это ложный успех. Поэтому он возвращает результат `{ sent: true } | { sent: false; reason:
-  'not_found' | 'demo_seed' | 'rate_limited' | 'unavailable' }`; публичное действие его по-прежнему
+  'not_found' | 'demo_seed' | 'rate_limited' | 'global_cap' | 'unavailable' }` (`global_cap` — общий
+  предохранитель писем; публичной форме не показывается); публичное действие его по-прежнему
   скрывает, а `sendResetLinkAction` пишет журнал и отвечает «поставлено в очередь» только при
   `sent: true`, иначе — понятный админу текст.
 
