@@ -33,6 +33,9 @@ export function parseCreateAdminArgs(argv: string[]): ArgsResult {
     } else if (VALUE_FLAGS.has(key)) {
       const v = eq > 0 ? a.slice(eq + 1) : argv[++i];
       if (v === undefined) return { ok: false, reason: 'usage' };
+      // значение, похожее на флаг, — пропущенный аргумент; пароль в значении тоже не принимаем
+      if (/^--pass/i.test(v) && v !== '--password-stdin') return { ok: false, reason: 'password_in_argv' };
+      if (v.startsWith('--')) return { ok: false, reason: 'usage' };
       values.set(key, v);
     } else {
       return { ok: false, reason: 'usage' };

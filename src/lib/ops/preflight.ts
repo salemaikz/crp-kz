@@ -84,9 +84,9 @@ export function checkProductionEnv(env: Env): PreflightIssue[] {
   if (val(env, 'TRUST_X_REAL_IP') === '1') err('trust_x_real_ip_set');
   if (val(env, 'DB_MIGRATE_ON_START') === '1') err('auto_migrate_on');
 
-  // Сид демо-данных в production не должен включаться, но это предупреждение: пустая БД без
-  // демо-пользователей безопасна, а наличие демо-пользователей ловит checkProductionDb
-  if (val(env, 'SEED_DEMO') === '1') warn('seed_demo_set');
+  // Сид демо-данных засеял бы в пустую боевую БД админа с публичным паролем уже при smoke-старте,
+  // а checkProductionDb сработает только на следующей выкладке: поэтому ошибка (ops §3.15)
+  if (val(env, 'SEED_DEMO') === '1') err('seed_demo_set');
   if (!val(env, 'NEXT_SERVER_ACTIONS_ENCRYPTION_KEY')) warn('server_actions_key_missing');
   if (val(env, 'NEXT_TELEMETRY_DISABLED') !== '1') warn('telemetry_on');
 

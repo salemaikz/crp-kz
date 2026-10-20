@@ -52,6 +52,7 @@ const ERRORS: [string, Record<string, string | undefined>][] = [
   ['proxy_hops_not_1', { TRUSTED_PROXY_HOPS: undefined }],
   ['trust_x_real_ip_set', { TRUST_X_REAL_IP: '1' }],
   ['auto_migrate_on', { DB_MIGRATE_ON_START: '1' }],
+  ['seed_demo_set', { SEED_DEMO: '1' }],
 ];
 
 for (const [code, over] of ERRORS) {
@@ -63,11 +64,6 @@ for (const [code, over] of ERRORS) {
     );
   });
 }
-
-test('SEED_DEMO=1 в production — WARN, а не ERROR', () => {
-  assert.deepEqual(codes({ SEED_DEMO: '1' }), ['seed_demo_set']);
-  assert.equal(hasErrors(checkProductionEnv({ ...CLEAN, SEED_DEMO: '1' })), false);
-});
 
 test('WARN: нет ключа server actions, телеметрия не выключена', () => {
   assert.deepEqual(codes({ NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: undefined }), ['server_actions_key_missing']);

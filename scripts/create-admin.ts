@@ -10,8 +10,10 @@ import { promptHidden, readLine } from '../src/lib/ops/passwordInput';
 const MESSAGES: Record<CreateAdminErrorCode, string> = {
   validation: 'Неверные данные: проверьте email, имя и название организации.',
   weak_password: 'Пароль слабый: нужно не меньше 12 символов (и не больше 72 байт).',
-  exists: 'Пользователь с таким email уже есть. Чтобы выдать ему роль admin, добавьте --promote.',
+  exists: 'Пользователь с таким email уже есть. Если это ваш подтверждённый аккаунт, добавьте --promote; незнакомый аккаунт сначала удалите.',
   not_found: 'Пользователь с таким email не найден: --promote повышает только существующих.',
+  unverified:
+    'Email пользователя не подтверждён: аккаунт могли завести не вы. Удалите его и создайте администратора заново либо подтвердите адрес.',
   bad_slug: 'Неверный или занятый slug организации: 2–40 символов a-z, 0-9 и дефис.',
 };
 const EXIT: Record<CreateAdminErrorCode, number> = {
@@ -20,6 +22,7 @@ const EXIT: Record<CreateAdminErrorCode, number> = {
   bad_slug: 2,
   exists: 3,
   not_found: 3,
+  unverified: 3,
 };
 
 async function readPassword(fromStdin: boolean): Promise<string | null> {

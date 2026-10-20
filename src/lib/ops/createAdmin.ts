@@ -26,7 +26,7 @@ export type CreateAdminResult = {
   orgCreated: boolean;
 };
 
-export type CreateAdminErrorCode = 'validation' | 'weak_password' | 'exists' | 'not_found' | 'bad_slug';
+export type CreateAdminErrorCode = 'validation' | 'weak_password' | 'exists' | 'not_found' | 'bad_slug' | 'unverified';
 
 export class CreateAdminError extends Error {
   constructor(readonly code: CreateAdminErrorCode) {
@@ -88,9 +88,11 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
       created = true;
       await writeAudit(sql, { actorId: null, action: 'user.create_admin', entity: 'user', entityId: userId, meta: { via: 'cli' } });
     } else {
-      const [existing] = await sql<{ id: string; role: string }>`SELECT id, role FROM users WHERE email = ${email} FOR UPDATE`;
+      const [existing] = await sql<{ id: string; role: string; emailVerifiedAt: number | null }>`SELECT id, role, email_verified_at AS "emailVerifiedAt" FROM users WHERE email = ${email} FOR UPDATE`;
       if (!existing) throw new CreateAdminError(input.promote ? 'not_found' : 'validation');
       if (!input.promote) throw new CreateAdminError('exists');
+      // Регистрация открыта: аккаунт с неподтверждённым адресом мог завести кто угодно, повышать его вслепую нельзя
+      if (existing.role !== 'admin' && existing.emailVerifiedAt == null) throw new CreateAdminError('unverified');
       userId = existing.id;
       // Пароль, имя и сессии существующего пользователя не трогаем: меняется только роль
       if (existing.role !== 'admin') {

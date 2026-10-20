@@ -84,8 +84,8 @@ test('повтор без --promote — exists, второго пользова�
 test('--promote: слушатель становится админом, пароль и имя не меняются, журнал — user.role_change', async () => {
   const db = await createTestDb();
   try {
-    await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
-      VALUES ('u1', 'learner@example.org', 'hash-as-is', 'Слушатель', 'learner', 'ru', 1)`;
+    await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, email_verified_at, created_at)
+      VALUES ('u1', 'learner@example.org', 'hash-as-is', 'Слушатель', 'learner', 'ru', 1, 1)`;
     const r = await createAdmin(db, base({ email: 'learner@example.org', password: undefined, promote: true }));
     assert.ok(r.promoted && !r.created && r.userId === 'u1');
     const [u] = await db.sql<{ role: string; passwordHash: string; name: string }>`SELECT role, password_hash, name FROM users WHERE id = 'u1'`;
@@ -97,6 +97,20 @@ test('--promote: слушатель становится админом, пар�
     const again = await createAdmin(db, base({ email: 'learner@example.org', password: undefined, promote: true }));
     assert.ok(!again.promoted);
     assert.equal((await audit(db)).length, 1);
+  } finally {
+    await db.close();
+  }
+});
+
+test('--promote: неподтверждённый email — unverified, роль не меняется', async () => {
+  const db = await createTestDb();
+  try {
+    await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
+      VALUES ('u2', 'stranger@example.org', 'h', 'Чужой', 'learner', 'ru', 1)`;
+    await expectCode(createAdmin(db, base({ email: 'stranger@example.org', password: undefined, promote: true })), 'unverified');
+    const [u] = await db.sql<{ role: string }>`SELECT role FROM users WHERE id = 'u2'`;
+    assert.equal(u?.role, 'learner');
+    assert.equal((await audit(db)).length, 0);
   } finally {
     await db.close();
   }
@@ -237,6 +251,10 @@ test('нет email или имени, неверная локаль, лишни�
   assert.deepEqual(parseCreateAdminArgs([...base, '--bogus']), { ok: false, reason: 'usage' });
   assert.deepEqual(parseCreateAdminArgs([...base, '--owner-org-name', 'Орг']), { ok: false, reason: 'usage' });
   assert.deepEqual(parseCreateAdminArgs([...base, '--email']), { ok: false, reason: 'usage' });
+  // значение, похожее на флаг, — пропущенный аргумент
+  assert.deepEqual(parseCreateAdminArgs([...base, '--owner-org-name', '--password-stdin', '--owner-org-slug', 'crp']), { ok: false, reason: 'usage' });
+  assert.deepEqual(parseCreateAdminArgs(['--email', 'a@b.kz', '--name', '--promote']), { ok: false, reason: 'usage' });
+  assert.deepEqual(parseCreateAdminArgs([...base, '--owner-org-name', '--password=x', '--owner-org-slug', 'crp']), { ok: false, reason: 'password_in_argv' });
 });
 
 test('readLine: одна строка, перевод строки не входит', async () => {
