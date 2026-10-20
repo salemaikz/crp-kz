@@ -97,42 +97,46 @@ async function pickFile(
   return body.ok && body.file ? body.file : null;
 }
 
-let ids = { courseId: '', lessonId: '', png: '', pdf: '' };
+// run — подпись прогона: файлы и блоки прошлых попыток (retry на том же сервере с PGlite в памяти)
+// остаются в уроке, поэтому всё, что создаёт первый сценарий, ищется по этой подписи.
+let ids = { courseId: '', lessonId: '', png: '', pdf: '', run: '' };
 
 test('админ: картинка, документ и ссылка в тексте добавляются в урок и видны в предпросмотре', async ({ page }) => {
   await login(page, 'admin');
   const { courseId, lessonId } = await openEditor(page);
-  ids = { ...ids, courseId, lessonId };
+  ids = { ...ids, courseId, lessonId, run: Date.now().toString(36) };
+  const { run } = ids;
+  const docLabel = `Памятка менеджера ${run}`;
 
   // в демо над кнопками загрузки — предупреждение о персональных данных
   await expect(page.getByTestId('upload-demo-warning').first()).toContainText('Не загружайте документы с персональными данными');
 
   // «Изображение»: блок появляется после загрузки, текст вместо изображения обязателен
-  const image = await pickFile(page, 'add-block-image', { name: 'схема.png', mimeType: 'image/png', buffer: png(64, 48) });
+  const image = await pickFile(page, 'add-block-image', { name: `схема-${run}.png`, mimeType: 'image/png', buffer: png(64, 48) });
   expect(image).not.toBeNull();
   ids.png = image?.id ?? '';
   const imageBlock = page.locator('[data-block-type="image"]').last();
   await expect(imageBlock).toBeVisible();
-  await imageBlock.getByTestId('image-alt').fill('Схема этапов');
-  await imageBlock.getByLabel('Подпись').fill('Рисунок 1');
+  await imageBlock.getByTestId('image-alt').fill(`Схема ${run}`);
+  await imageBlock.getByLabel('Подпись').fill(`Рисунок ${run}`);
 
   // «Файл»: карточка показывает тип и размер
-  const doc = await pickFile(page, 'add-block-file', { name: 'памятка.pdf', mimeType: 'application/pdf', buffer: pdf() });
+  const doc = await pickFile(page, 'add-block-file', { name: `памятка-${run}.pdf`, mimeType: 'application/pdf', buffer: pdf() });
   expect(doc).not.toBeNull();
   ids.pdf = doc?.id ?? '';
   const fileBlock = page.locator('[data-block-type="file"]').last();
   await expect(fileBlock.getByTestId('file-card')).toContainText(/PDF · /);
-  await fileBlock.getByLabel('Название для слушателя').fill('Памятка менеджера');
+  await fileBlock.getByLabel('Название для слушателя').fill(docLabel);
 
   // текстовый блок: ссылка на документ и «Вставить картинку» в позицию курсора
   await page.getByTestId('add-block-text').first().click();
   const textBlock = page.locator('[data-block-type="text"]').last();
   const area = textBlock.getByLabel('Текст (Markdown)');
-  await area.fill(`Скачайте [памятку](/api/files/${ids.pdf}) до начала.`);
+  await area.fill(`Скачайте [памятку ${run}](/api/files/${ids.pdf}) до начала.`);
   const inserted = await pickFile(page, 'insert-image', { name: 'вставка.png', mimeType: 'image/png', buffer: png(32, 32) }, textBlock);
   expect(inserted).not.toBeNull();
   await expect(area).toHaveValue(new RegExp(`!\\[\\]\\(/api/files/${inserted?.id}\\)`));
-  await expect(area).toHaveValue(/Скачайте \[памятку\]/);
+  await expect(area).toHaveValue(/Скачайте \[памятку /);
 
   await page.getByTestId('lesson-save').click();
   await expect(page.getByTestId('lesson-saved')).toBeVisible();
@@ -144,7 +148,7 @@ test('админ: картинка, документ и ссылка в текс
   await expect(img).toBeVisible();
   await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await expect(preview.getByTestId('preview-file')).toContainText(/PDF · /);
-  await expect(preview.getByTestId('preview-file')).toContainText('Памятка менеджера');
+  await expect(preview.getByTestId('preview-file')).toContainText(docLabel);
 
   // админ получает документ: вложением, с защитными заголовками
   const res = await page.request.get(`/api/files/${ids.pdf}`);
@@ -155,17 +159,18 @@ test('админ: картинка, документ и ссылка в текс
 });
 
 test('слушатель в демо: картинка видна, документ и ссылка на него — подписью без ссылки (D-038)', async ({ browser }) => {
+  const { run } = ids;
+  const docLabel = `Памятка менеджера ${run}`;
   const { context, page } = await asRole(browser, 'client');
   try {
     await page.goto(LESSON_URL);
     await expect(page.getByTestId('lesson-title')).toBeVisible();
 
     // блок «Изображение»: файл отдаётся как image/png с nosniff
-    const figure = page.getByTestId('image-block');
-    await expect(figure).toBeVisible();
+    const figure = page.getByTestId('image-block').filter({ has: page.locator(`img[alt="Схема ${run}"]`) });
+    await expect(figure).toHaveCount(1);
     const img = figure.locator('img');
-    await expect(img).toHaveAttribute('alt', 'Схема этапов');
-    await expect(figure).toContainText('Рисунок 1');
+    await expect(figure).toContainText(`Рисунок ${run}`);
     await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     const imgRes = await page.request.get(`/api/files/${ids.png}`);
     expect(imgRes.status()).toBe(200);
@@ -173,19 +178,20 @@ test('слушатель в демо: картинка видна, докуме�
     expect(imgRes.headers()['x-content-type-options']).toBe('nosniff');
 
     // блок «Файл»: подпись вместо «Скачать»
-    const card = page.getByTestId('file-block').filter({ hasText: 'Памятка менеджера' });
-    await expect(card).toBeVisible();
+    const card = page.getByTestId('file-block').filter({ hasText: docLabel });
+    await expect(card).toHaveCount(1);
     await expect(card.getByTestId('file-demo-hidden')).toHaveText(DEMO_LABEL);
     await expect(card.getByRole('link')).toHaveCount(0);
 
     // ссылка на документ в тексте: подпись без href
-    const hiddenLink = page.getByTestId('file-link-hidden');
+    const hiddenLink = page.getByTestId('file-link-hidden').filter({ hasText: run });
+    await expect(hiddenLink).toHaveCount(1);
     await expect(hiddenLink).toContainText('памятку');
     await expect(hiddenLink).toContainText(DEMO_LABEL);
     await expect(page.locator(`a[href*="/api/files/${ids.pdf}"]`)).toHaveCount(0);
 
     // картинка из текста урока показывается как обычно
-    await expect(page.locator('.lrn-prose img')).toHaveCount(1);
+    await expect(page.locator('.lrn-prose').filter({ hasText: run }).locator('img')).toHaveCount(1);
 
     // сам документ слушателю не выдаётся
     expect((await page.request.get(`/api/files/${ids.pdf}`)).status()).toBe(404);
@@ -249,7 +255,7 @@ test('админ: страница «Файлы курса» — занято м
   await expect(page.getByTestId('files-usage')).toContainText(/Занято .+ из .+/);
 
   // используемый документ ссылается на урок и не удаляется
-  const used = page.getByRole('row').filter({ hasText: 'памятка.pdf' });
+  const used = page.getByRole('row').filter({ hasText: `памятка-${ids.run}.pdf` });
   await expect(used).toContainText(LESSON_TITLE);
   await expect(used.getByTestId('file-delete')).toHaveCount(0);
 
@@ -266,6 +272,8 @@ test('админ: обложка курса видна гостю в катал�
   await login(page, 'admin');
   await page.goto(`/ru/admin/courses/${ids.courseId}?tab=settings`);
   const card = page.getByTestId('cover-card');
+  // обложка могла остаться от прошлой попытки: сначала убираем её
+  if (await card.getByTestId('cover-remove').isVisible()) await card.getByTestId('cover-remove').click();
   await expect(card.getByTestId('cover-empty')).toBeVisible();
   await expect(card.getByTestId('upload-demo-warning')).toBeVisible();
 
@@ -298,24 +306,77 @@ test('админ: обложка курса видна гостю в катал�
   await expect(card.getByTestId('cover-saved')).toHaveCount(0);
 });
 
-test('админ: две загрузки подряд дают оба блока', async ({ page }) => {
+/** Ответ загрузки, удержанный до сигнала: запрос уходит на сервер сразу, браузер получает ответ позже. */
+async function holdFirstUploadResponse(page: Page, release: Promise<void>): Promise<{ requests: () => number }> {
+  let count = 0;
+  await page.route('**/api/uploads**', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const mine = ++count;
+    const response = await route.fetch();
+    if (mine === 1) await release;
+    await route.fulfill({ response });
+  });
+  return { requests: () => count };
+}
+
+test('админ: две загрузки подряд перекрываются во времени и дают оба блока', async ({ page }) => {
   await login(page, 'admin');
   await openEditor(page);
   const before = await page.locator('.adm-block').count();
 
-  // обе загрузки стартуют до завершения первой; блоки добавляются к актуальному списку
-  let done = 0;
-  const bothDone = new Promise<void>((resolve) => {
-    page.on('response', (r) => {
-      if (r.url().includes('/api/uploads') && r.request().method() === 'POST' && ++done === 2) resolve();
-    });
+  // ответ первой загрузки держим, пока не завершится вторая: запросы гарантированно перекрываются
+  let secondSeen!: () => void;
+  const second = new Promise<void>((resolve) => (secondSeen = resolve));
+  let count = 0;
+  await page.route('**/api/uploads**', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const mine = ++count;
+    const response = await route.fetch();
+    if (mine === 1) await second;
+    await route.fulfill({ response });
+    // первый ответ отпускаем только после ответа второго: порядок завершения предсказуем
+    if (mine === 2) secondSeen();
   });
+
   await page.getByTestId('add-block-image-input').first().setInputFiles({ name: 'один.png', mimeType: 'image/png', buffer: png(64, 48) });
+  await expect.poll(() => count).toBe(1);
+  // пока первая не завершена, блоков не прибавилось
+  await expect(page.locator('.adm-block')).toHaveCount(before);
   await page.getByTestId('add-block-file-input').first().setInputFiles({ name: 'два.pdf', mimeType: 'application/pdf', buffer: pdf() });
-  await bothDone;
+
   await expect(page.locator('.adm-block')).toHaveCount(before + 2);
-  await expect(page.locator('[data-block-type="image"]')).not.toHaveCount(0);
-  await expect(page.locator('[data-block-type="file"]')).not.toHaveCount(0);
+  // вторая загрузка закончилась раньше: файл идёт перед картинкой, оба блока на месте
+  await expect(page.locator('.adm-block').nth(before)).toHaveAttribute('data-block-type', 'file');
+  await expect(page.locator('.adm-block').nth(before + 1)).toHaveAttribute('data-block-type', 'image');
+});
+
+test('админ: пока ответ загрузки задержан, правки заголовка и текста не теряются, картинка вставляется', async ({ page }) => {
+  await login(page, 'admin');
+  await openEditor(page);
+
+  await page.getByTestId('add-block-text').first().click();
+  const textBlock = page.locator('[data-block-type="text"]').last();
+  const area = textBlock.getByLabel('Текст (Markdown)');
+  await area.fill('Начало');
+
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => (open = resolve));
+  const held = await holdFirstUploadResponse(page, gate);
+  await textBlock.getByTestId('insert-image-input').setInputFiles({ name: 'поздняя.png', mimeType: 'image/png', buffer: png(32, 32) });
+  await expect.poll(() => held.requests()).toBe(1);
+
+  // правим, пока загрузка не завершена
+  const title = page.locator('input[name="titleRu"]');
+  const titleBefore = await title.inputValue();
+  await title.fill(`${titleBefore} (правка)`);
+  await area.click();
+  await area.press('End');
+  await area.pressSequentially(' и продолжение');
+  await expect(area).toHaveValue('Начало и продолжение');
+
+  open();
+  await expect(area).toHaveValue(/^Начало и продолжение.*!\[\]\(\/api\/files\/[0-9a-f-]{36}\)/s);
+  await expect(title).toHaveValue(`${titleBefore} (правка)`);
 });
 
 test('админ с доступом к курсу: документ в уроке со ссылкой «Скачать», без демо-подписи', async ({ page }) => {
@@ -330,7 +391,7 @@ test('админ с доступом к курсу: документ в урок
   await expect(grant.getByText('Доступ выдан')).toBeVisible();
 
   await page.goto(LESSON_URL);
-  const card = page.getByTestId('file-block').filter({ hasText: 'Памятка менеджера' });
+  const card = page.getByTestId('file-block').filter({ hasText: `Памятка менеджера ${ids.run}` });
   await expect(card.getByTestId('file-download')).toHaveAttribute('href', `/api/files/${ids.pdf}`);
   await expect(page.getByTestId('file-demo-hidden')).toHaveCount(0);
   await expect(page.locator(`.lrn-prose a[href="/api/files/${ids.pdf}"]`)).toHaveCount(1);
