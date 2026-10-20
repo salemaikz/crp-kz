@@ -238,6 +238,70 @@ test('assignCourse: самостоятельный доступ (self) прев�
   assert.equal(e?.dueAt, dueAt);
 });
 
+// ---------- письмо «назначен курс» ----------
+
+type MailRowT = { template: string; userId: string | null; dedupeKey: string | null; params: { dueAt: number | null; courseSlug: string } };
+async function noticeMails(): Promise<MailRowT[]> {
+  return db.sql<MailRowT>`
+    SELECT template, user_id, dedupe_key, params FROM mail_outbox WHERE template = 'assignment_new' ORDER BY created_at, id`;
+}
+
+test('assignCourse: письмо assignment_new назначенным; пропущенные без письма; повтор — без дубля; новый срок — новое письмо', async () => {
+  await db.sql`DELETE FROM mail_outbox`;
+  await course('noticeC');
+  // у a2 личная покупка: назначение её не перезапишет, письма ему не будет
+  await enroll({ userId: 'a2', courseId: 'noticeC', source: 'purchase' });
+  const due1 = Date.now() + 3 * DAY;
+  const res = await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1', 'a2'], dueAt: due1 });
+  assert.deepEqual(res.assigned, ['a1']);
+  assert.deepEqual(res.skipped, ['a2']);
+  let letters = await noticeMails();
+  assert.equal(letters.length, 1);
+  assert.equal(letters[0]?.userId, 'a1');
+  assert.equal(letters[0]?.params.dueAt, due1);
+  assert.equal(letters[0]?.params.courseSlug, 'noticeC');
+  const enrollmentId = (await getEnrollment('a1', 'noticeC'))?.id;
+  assert.equal(letters[0]?.dedupeKey, `assigned:${enrollmentId}:${due1}`);
+
+  // повтор с тем же сроком письма не даёт
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1'], dueAt: due1 });
+  assert.equal((await noticeMails()).length, 1);
+
+  // новый срок — новое письмо
+  const due2 = due1 + DAY;
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1'], dueAt: due2 });
+  letters = await noticeMails();
+  assert.equal(letters.length, 2);
+  assert.equal(letters[1]?.params.dueAt, due2);
+
+  // без срока — ключ none
+  await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1'] });
+  letters = await noticeMails();
+  assert.equal(letters.length, 3);
+  assert.equal(letters[2]?.dedupeKey, `assigned:${enrollmentId}:none`);
+  assert.equal(letters[2]?.params.dueAt, null);
+});
+
+test('assignCourse: отклонённое назначение писем не оставляет (транзакция целиком)', async () => {
+  await db.sql`DELETE FROM mail_outbox`;
+  await rejects(assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['a1', 'b1'] }), 'not_member');
+  assert.equal((await noticeMails()).length, 0);
+});
+
+test('assignCourse: при выключенном REMINDERS письмо не ставится, назначение выдаётся', async () => {
+  await db.sql`DELETE FROM mail_outbox`;
+  const saved = process.env.FEATURE_REMINDERS;
+  process.env.FEATURE_REMINDERS = '0';
+  try {
+    const res = await assignCourse({ actorId: 'mgrA', orgId: 'orgA', courseId: 'noticeC', userIds: ['both'] });
+    assert.deepEqual(res.assigned, ['both']);
+  } finally {
+    if (saved === undefined) delete process.env.FEATURE_REMINDERS;
+    else process.env.FEATURE_REMINDERS = saved;
+  }
+  assert.equal((await noticeMails()).length, 0);
+});
+
 // ---------- срок ----------
 
 test('parseDueDate: конец выбранного дня по Астане; пусто — без срока; прошлое и мусор — ошибки', () => {

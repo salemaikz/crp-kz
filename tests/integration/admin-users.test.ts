@@ -11,7 +11,10 @@ import {
   listUsers,
   revokeAccess,
 } from '../../src/lib/admin';
+import { seedId } from '../../src/lib/content/ids';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
+import { requestPasswordReset } from '../../src/lib/auth/recovery';
+import { getUserConsents, sendResetLink } from '../../src/lib/admin/userCard';
 
 let db: TestDb;
 const admin = { id: 'adm', role: 'admin' };
@@ -194,4 +197,111 @@ test('не администратор: все функции отклоняют�
   // самовыдача доступа и самоповышение невозможны
   assert.equal((await getEnrollment('u1', 'c1')), null);
   assert.equal((await db.sql<{ role: string }>`SELECT role FROM users WHERE id = 'u1'`)[0]?.role, 'learner');
+});
+
+// ---------- ссылка для смены пароля и блок «Согласия» (4A) ----------
+// первый админ к этому месту понижен тестом смены роли, действует второй
+const admin2 = { id: 'adm2', role: 'admin' };
+
+type AuditRow = { actorId: string | null; entityId: string; action: string; meta: Record<string, unknown> };
+async function resetAudit(action: string, entityId: string): Promise<AuditRow[]> {
+  return db.sql<AuditRow>`SELECT actor_id, entity_id, action, meta FROM audit_log WHERE action = ${action} AND entity_id = ${entityId}`;
+}
+async function resetMails(userId: string): Promise<number> {
+  const [r] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM mail_outbox WHERE user_id = ${userId} AND template = 'password_reset'`;
+  return r?.n ?? 0;
+}
+function withEnv<T>(vars: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  for (const [k, v] of Object.entries(vars)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  return fn().finally(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+}
+
+test('sendResetLink: письмо в очереди, журнал user.password_reset_link от имени админа, без email в журнале', async () => {
+  const res = await sendResetLink(admin2, 'u3');
+  assert.deepEqual(res, { sent: true });
+  assert.equal(await resetMails('u3'), 1);
+  const link = await resetAudit('user.password_reset_link', 'u3');
+  assert.equal(link.length, 1);
+  assert.equal(link[0]?.actorId, 'adm2');
+  assert.deepEqual(link[0]?.meta, {});
+  const req = await resetAudit('user.password_reset_request', 'u3');
+  assert.equal(req.length, 1);
+  assert.equal(req[0]?.actorId, 'adm2');
+  assert.ok(!JSON.stringify([link, req]).includes('@'), 'адрес в журнале не нужен');
+});
+
+test('sendResetLink: сид-аккаунт в демо — отказ demo_seed, записи журнала и письма нет', async () => {
+  const email = 'seedlink@crp.demo';
+  const id = seedId('user', email);
+  await db.sql`INSERT INTO users (id, email, name, locale, created_at) VALUES (${id}, ${email}, 'Сид', 'ru', 50)`;
+  await withEnv({ DEMO_MODE: '1', DATABASE_URL: undefined }, async () => {
+    assert.deepEqual(await sendResetLink(admin2, id), { sent: false, reason: 'demo_seed' });
+  });
+  assert.equal(await resetMails(id), 0);
+  assert.equal((await resetAudit('user.password_reset_link', id)).length, 0);
+  assert.equal((await resetAudit('user.password_reset_request', id)).length, 0);
+});
+
+test('sendResetLink: лимит писем на получателя — отказ rate_limited, шестой записи журнала нет', async () => {
+  for (let i = 0; i < 5; i++) assert.deepEqual(await sendResetLink(admin2, 'u2'), { sent: true });
+  assert.deepEqual(await sendResetLink(admin2, 'u2'), { sent: false, reason: 'rate_limited' });
+  assert.equal(await resetMails('u2'), 5);
+  assert.equal((await resetAudit('user.password_reset_link', 'u2')).length, 5);
+});
+
+test('sendResetLink: флаг выключен — FEATURE_DISABLED без записей; нет пользователя — NOT_FOUND; не админ — FORBIDDEN', async () => {
+  await withEnv({ FEATURE_PASSWORD_RESET: '0' }, async () => {
+    await rejects(sendResetLink(admin2, 'u1'), 'FEATURE_DISABLED');
+  });
+  assert.equal(await resetMails('u1'), 0);
+  assert.equal((await resetAudit('user.password_reset_link', 'u1')).length, 0);
+  await rejects(sendResetLink(admin2, 'нет-такого'), 'NOT_FOUND');
+  await rejects(sendResetLink(learner, 'u3'), 'FORBIDDEN');
+  await rejects(sendResetLink(null as never, 'u3'), 'FORBIDDEN');
+});
+
+test('getUserConsents: только администратору; легаси-строки (без хэша текста) отличимы; LEGAL выключен — пусто', async () => {
+  const sha = 'a'.repeat(64);
+  await db.sql`INSERT INTO legal_texts (sha256, kind, version, locale, title, body, draft, created_at)
+    VALUES (${sha}, 'pd_consent', '2026-10-20', 'ru', 'Согласие', 'Текст', true, 100)`;
+  await db.sql`INSERT INTO consents (id, user_id, order_id, kind, version, locale, context, text_sha256, created_at) VALUES
+    ('cs1', 'u2', NULL, 'pd_processing', '2026-10-19', NULL, NULL, NULL, 100),
+    ('cs2', 'u2', 'ord1', 'offer', '2026-10-20', 'ru', 'checkout', ${sha}, 200)`;
+
+  const rows = await getUserConsents(admin2, 'u2');
+  assert.deepEqual(
+    rows.map((r) => [r.kind, r.version, r.textSha256 === null, r.orderNumber]),
+    [
+      ['offer', '2026-10-20', false, 'CRP-1'],
+      ['pd_processing', '2026-10-19', true, null],
+    ],
+  );
+  assert.deepEqual(await getUserConsents(admin2, 'u1'), []);
+
+  await rejects(getUserConsents(learner, 'u2'), 'FORBIDDEN');
+  await rejects(getUserConsents({ id: 'adm2', role: 'learner' }, 'u2'), 'FORBIDDEN');
+  // в переданном объекте роль admin, но в БД у пользователя её нет
+  await rejects(getUserConsents({ id: 'u1', role: 'admin' }, 'u2'), 'FORBIDDEN');
+
+  await withEnv({ FEATURE_LEGAL: '0' }, async () => {
+    assert.deepEqual(await getUserConsents(admin2, 'u2'), []);
+  });
+});
+
+test('requestPasswordReset: результат для вызывающего — not_found, unavailable (флаг), sent', async () => {
+  assert.deepEqual(await requestPasswordReset({ email: 'nobody@x.kz', locale: 'ru' }), { sent: false, reason: 'not_found' });
+  await withEnv({ FEATURE_PASSWORD_RESET: '0' }, async () => {
+    assert.deepEqual(await requestPasswordReset({ email: 'marat@x.kz', locale: 'ru' }), { sent: false, reason: 'unavailable' });
+  });
+  assert.equal(await resetMails('u2'), 5, 'новых писем при отказах нет');
+  assert.deepEqual(await requestPasswordReset({ email: 'adm@x.kz', locale: 'ru' }), { sent: true });
 });
