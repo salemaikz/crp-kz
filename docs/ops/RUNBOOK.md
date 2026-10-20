@@ -100,14 +100,14 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    root клонирует сам, от root, прямо из репозитория, в каталог root с правами 0755:
    `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && git clone --depth 1 --branch <тег> <адрес репозитория> "$d/crp"`
    (`<каталог выгрузки>` ниже, в шагах 6-8, — это `$d/crp`; `crpdeploy` и postgres должны его читать,
-   `install-ops.sh` проверит это и предупредит, если каталог принадлежит не root). Сверьте, что
+   `install-ops.sh` откажет с кодом 2, если выгрузка или её родители принадлежат не root либо доступны на запись другим; обход - только явный `--allow-foreign-owner`. Эта проверка не защищает от подмены тега в зеркале `repo.git`: защита - только клонирование от root мимо зеркала, не `git archive` из зеркала через tar). Сверьте, что
    `git -C "$d/crp" rev-parse HEAD` совпадает с sha выпущенного тега. Если адрес закрытый, ключи доступа
    у root вносит оператор вне репозитория, сюда они не пишутся.
 6. `apt install postgresql-16`; положить `<каталог выгрузки>/deploy/postgres/postgresql.conf.d/crp.conf` в
    `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
 7. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
    затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
-8. Поставить комплект: `<каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>` (от root, из выгрузки
+8. Поставить комплект: `bash <каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>` (от root, из выгрузки
    шага 5). Обновление комплекта на новом теге: тот же `git clone --depth 1 --branch <новый тег>` в новый
    временный каталог от root и запуск `install-ops.sh` оттуда; зеркало `/srv/crp/repo.git` для этого
    не используется. Старые выгрузки удалите (`rm -r "$d"`). Без сертификата
@@ -120,7 +120,8 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 9. `shared/instance.json` создаётся install-ops.sh; для основной ветки, которой ещё нет в
    репозитории, задайте `deployBranch` от имени `crpdeploy`, а не от root (файл принадлежит `crpdeploy`,
    правка от root пошла бы по подложенной ссылке):
-   `sudo -u crpdeploy sh -c 'jq ".deployBranch = \"<ветка>\"" /srv/crp/shared/instance.json > /srv/crp/shared/instance.json.new && mv -T /srv/crp/shared/instance.json.new /srv/crp/shared/instance.json'`.
+   `sudo -u crpdeploy sh -c 'jq ".deployBranch = \"<ветка>\"" /srv/crp/shared/instance.json > /srv/crp/shared/instance.json.new && install -T -m 0644 -g crp /srv/crp/shared/instance.json.new /srv/crp/shared/instance.json && rm -f /srv/crp/shared/instance.json.new'`
+   (права 0644 и группа `crp`, как у install-ops.sh: `healthcheck.sh` работает от `crp` и читает этот файл).
 10. Файлы `/etc/crp/*.env` по шаблонам `deploy/env/*.example`, права из раздела 1.
     `SESSION_SECRET` и ключ server actions создаются командой `openssl rand`, значения в
     репозиторий, чат и issue не попадают.

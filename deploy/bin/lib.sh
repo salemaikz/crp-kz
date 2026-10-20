@@ -73,9 +73,14 @@ switch_current() {
 }
 
 # Записать id релиза в shared/state/previous (атомарно).
+# Сбой (диск полон, previous.tmp занят) не фатален: устаревший previous удаляем, чтобы он не указывал на
+# текущий релиз, и возвращаем 1; вызывающий пишет в журнал и продолжает (current уже переключён).
 write_previous() {
-  printf '%s\n' "$1" >"$STATE_DIR/previous.tmp"
-  mv -f "$STATE_DIR/previous.tmp" "$STATE_DIR/previous"
+  if printf '%s\n' "$1" >"$STATE_DIR/previous.tmp" 2>/dev/null && mv -f "$STATE_DIR/previous.tmp" "$STATE_DIR/previous" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$STATE_DIR/previous" 2>/dev/null || true
+  return 1
 }
 
 # pm2 startOrReload по конфигу из current, затем pm2 save. Дескриптор блокировки (9) демону не отдаём.

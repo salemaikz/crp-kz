@@ -306,8 +306,10 @@ test('install-ops.sh: комплект берётся мимо зеркала cr
   const head = t.split('set -euo pipefail')[0] ?? '';
   assert.match(head, /git clone --depth 1 --branch <тег>/);
   assert.doesNotMatch(head, /git archive/);
-  // предупреждение, если каталог выгрузки принадлежит не root
-  assert.match(t, /stat -c %u "\$DEPLOY_DIR"[^\n]*\n[^\n]*принадлежит не root/);
+  // боевой запуск отказывает (код 2), если выгрузка или родители не у root; обход только явным флагом
+  assert.match(t, /stat -c '%u %a'/);
+  assert.match(t, /--allow-foreign-owner/);
+  assert.match(t, /принадлежит не root/);
   const runbook = readFileSync(join(ROOT, 'docs', 'ops', 'RUNBOOK.md'), 'utf8');
   assert.match(runbook, /git clone --depth 1 --branch <тег>/);
   assert.doesNotMatch(runbook, /crpdeploy git -C \/srv\/crp\/repo\.git archive/);

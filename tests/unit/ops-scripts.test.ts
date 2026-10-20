@@ -916,6 +916,29 @@ test('deploy.sh: сбой switch_current не меняет previous', opts, () =
   assert.equal(currentId(ctx), curBefore);
 });
 
+test('deploy.sh: сбой записи previous после переключения не удаляет релиз и не даёт код 2', opts, () => {
+  const ctx = makeCtx();
+  assert.equal(deploy(ctx, 'v0.1.0').status, 0);
+  assert.equal(deploy(ctx, 'v0.2.0').status, 0);
+  mkdirSync(join(ctx.root, 'shared', 'state', 'previous.tmp'));
+  const r = deploy(ctx, 'v0.3.0');
+  assert.notEqual(r.status, 2, out(r));
+  assert.ok(existsSync(join(ctx.root, 'current', 'RELEASE.json')), 'current разрешается в существующий релиз');
+  assert.ok(releases(ctx).includes(currentId(ctx)));
+});
+
+test('rollback.sh: сбой записи previous после переключения не обрывает перезагрузку', opts, () => {
+  const ctx = makeCtx();
+  assert.equal(deploy(ctx, 'v0.1.0').status, 0);
+  assert.equal(deploy(ctx, 'v0.2.0').status, 0);
+  const reloads = count(ctx, 'reload');
+  mkdirSync(join(ctx.root, 'shared', 'state', 'previous.tmp'));
+  const r = rollback(ctx);
+  assert.equal(r.status, 0, out(r));
+  assert.ok(existsSync(join(ctx.root, 'current', 'RELEASE.json')));
+  assert.equal(count(ctx, 'reload'), reloads + 1, 'reload после отката вызван');
+});
+
 // --- install-ops.sh: диапазон порта.
 
 test('install-ops.sh --dry-run: порт вне 1-65535 или с ведущим нулём отклоняется (--port и instance.json)', opts, () => {

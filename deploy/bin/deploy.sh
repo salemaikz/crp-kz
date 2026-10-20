@@ -219,8 +219,13 @@ log "step=smoke"
 PREV="$(current_id)"
 # previous пишем только после успешного переключения: при сбое switch_current (код 2) он остаётся прежним.
 switch_current "$ID"
-if [[ -n "$PREV" ]]; then write_previous "$PREV"; else rm -f "$STATE_DIR/previous"; fi
+# Прод уже переключён: on_exit не должен удалять релиз, поэтому фаза меняется сразу.
 PHASE=post
+if [[ -n "$PREV" ]]; then
+  write_previous "$PREV" || log "ОШИБКА: previous не записан, откат без --to выберет ближайший старый релиз"
+else
+  rm -f "$STATE_DIR/previous" 2>/dev/null || true
+fi
 log "step=switch from=${PREV:-none} to=$ID"
 
 # 13–14. Перезагрузка PM2 и проверка. Провал — автоматический откат.

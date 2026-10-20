@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Установка (и обновление) комплекта эксплуатации на сервере: от root.
-#   install-ops.sh --domain <домен> [--root /srv/crp] [--port 3000] [--dry-run]
+#   install-ops.sh --domain <домен> [--root /srv/crp] [--port 3000] [--dry-run] [--allow-foreign-owner]
 # Копирует скрипты в /usr/local/lib/crp, ставит крон, logrotate, sudoers и сайт nginx из шаблона,
 # создаёт каталоги с правами. Идемпотентен: повторный запуск обновляет файлы и ничего не ломает.
 # Запускать только из выгрузки, сделанной самим root мимо зеркала /srv/crp/repo.git (его владелец crpdeploy):
@@ -17,13 +17,15 @@ DOMAIN=""
 ROOT="/srv/crp"
 PORT=""
 DRY=0
+ALLOW_FOREIGN=0
 while (($#)); do
   case "$1" in
     --domain) DOMAIN="${2:-}"; shift 2 ;;
     --root) ROOT="${2:-}"; shift 2 ;;
     --port) PORT="${2:-}"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    *) echo "Использование: install-ops.sh --domain <домен> [--root /srv/crp] [--port 3000] [--dry-run]" >&2; exit 2 ;;
+    --allow-foreign-owner) ALLOW_FOREIGN=1; shift ;;
+    *) echo "Использование: install-ops.sh --domain <домен> [--root /srv/crp] [--port 3000] [--dry-run] [--allow-foreign-owner]" >&2; exit 2 ;;
   esac
 done
 [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$DOMAIN" == *.* ]] || { echo "install-ops.sh: укажите --domain (строчные латинские буквы, цифры, точки)" >&2; exit 2; }
@@ -47,10 +49,40 @@ need_user crp
 need_user crpdeploy
 command -v jq >/dev/null || { echo "install-ops.sh: нужен jq" >&2; exit 2; }
 
-# Каталог выгрузки должен принадлежать root: иначе его содержимое мог подменить другой пользователь
-# (ops, риск 19). Только предупреждение: в пробном прогоне и тестах владелец иной.
-if [[ "$(stat -c %u "$DEPLOY_DIR" 2>/dev/null || echo 0)" != 0 || "$(stat -c %u "$SELF_DIR/install-ops.sh" 2>/dev/null || echo 0)" != 0 ]]; then
-  say "ВНИМАНИЕ: каталог выгрузки $DEPLOY_DIR принадлежит не root; выгрузите комплект от root мимо зеркала (RUNBOOK, раздел 2)"
+# Выгрузка и вся цепочка её родителей должны принадлежать root и не быть доступными на запись группе и
+# остальным (ops, риск 19): иначе crpdeploy переименует каталог и подложит свой sudoers. Каталог с sticky-битом
+# (/tmp) допустим как родитель. Ошибка stat не считается владением root. Защиты от подмены тега в зеркале
+# repo.git проверка НЕ даёт: её даёт только клонирование от root мимо зеркала. В пробном прогоне - предупреждение.
+bad_owner() {
+  local p="$1" strict="$2" info uid mode
+  info="$(stat -c '%u %a' -- "$p" 2>/dev/null)" || { echo "не удалось проверить $p"; return 0; }
+  uid="${info%% *}"; mode=$((8#${info##* }))
+  if [[ "$uid" != 0 ]]; then echo "$p принадлежит не root"; return 0; fi
+  if ((mode & 022)) && { ((strict)) || (((mode & 01000) == 0)); }; then echo "$p доступен на запись не только root"; return 0; fi
+  return 1
+}
+check_extract_owner() {
+  local p msg
+  for p in "$DEPLOY_DIR" "$DEPLOY_DIR/sudoers/crpdeploy" "$SELF_DIR/install-ops.sh"; do
+    if msg="$(bad_owner "$p" 1)"; then echo "$msg"; return 1; fi
+  done
+  p="$(dirname "$DEPLOY_DIR")"
+  while :; do
+    if msg="$(bad_owner "$p" 0)"; then echo "$msg"; return 1; fi
+    [[ "$p" == / ]] && break
+    p="$(dirname "$p")"
+  done
+  return 0
+}
+if ! owner_msg="$(check_extract_owner)"; then
+  if ((DRY)); then
+    say "ВНИМАНИЕ: $owner_msg; выгрузите комплект от root мимо зеркала (RUNBOOK, раздел 2)"
+  elif ((ALLOW_FOREIGN)); then
+    say "ВНИМАНИЕ: $owner_msg; проверка отключена флагом --allow-foreign-owner"
+  else
+    echo "install-ops.sh: $owner_msg; выгрузите комплект от root мимо зеркала (RUNBOOK, раздел 2) или явно укажите --allow-foreign-owner" >&2
+    exit 2
+  fi
 fi
 # crpdeploy ставит страницу обслуживания из выгрузки: если он её не читает (каталог 0700), падать нужно сейчас,
 # а не после того, как скрипты, крон и sudoers уже установлены, а сайт nginx нет.
@@ -180,7 +212,12 @@ else
   site=/etc/nginx/sites-available/crp.conf
   new_conf="$(mktemp /etc/nginx/crp.conf.XXXXXX)"
   old_conf=""
-  trap 'rm -f "$new_conf" "$old_conf"' EXIT
+  # Резервную копию прежнего конфига при досрочном выходе возвращаем, а не стираем.
+  restore_site() {
+    if [[ -n "$old_conf" && -f "$old_conf" ]]; then mv -f "$old_conf" "$site"; fi
+    rm -f "$new_conf"
+  }
+  trap restore_site EXIT
   render >"$new_conf"
   chmod 0644 "$new_conf"
   if [[ -f "$site" ]]; then old_conf="$(mktemp /etc/nginx/crp.conf.old.XXXXXX)"; cp -p "$site" "$old_conf"; fi
@@ -191,8 +228,8 @@ else
     echo "install-ops.sh: nginx -t не прошёл, прежний конфиг сайта возвращён (или сайт не включён)" >&2
     exit 2
   fi
-  rm -f "$old_conf"
   trap - EXIT
+  rm -f "$old_conf" "$new_conf"
   if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     say "сертификата ещё нет: установлен только порт 80. Получите его (RUNBOOK, раздел 2) и запустите install-ops.sh снова"
   fi
