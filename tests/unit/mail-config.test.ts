@@ -51,7 +51,9 @@ test('предохранитель и срок хранения: значени�
     assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: bad }), 90, bad);
   }
   assert.equal(mailRetentionDays({}), 90);
-  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '30' }), 30);
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '45' }), 45);
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '30' }), 31, 'короче окна напоминаний — поднимается до 31');
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '31' }), 31, 'ровно граница — как задано');
 });
 
 test('категории: первые три шаблона — auth, остальные — notice', () => {
@@ -71,4 +73,13 @@ test('подпись о сроке хранения берёт дни из ко�
     assert.doesNotMatch(admin.mail.mode.smtp, /\b90\b/, locale);
   }
   assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '45' }), 45);
+});
+
+test('mailRetentionDays: не меньше окна напоминаний — иначе очистка снимает защиту от повторов', async () => {
+  const { mailRetentionDays, MIN_MAIL_RETENTION_DAYS } = await import('../../src/lib/mail/config');
+  const { OVERDUE_WINDOW_MS } = await import('../../src/lib/reminders/select');
+  assert.ok(MIN_MAIL_RETENTION_DAYS * 86_400_000 > OVERDUE_WINDOW_MS, 'граница длиннее окна «срок прошёл»');
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '7' }), MIN_MAIL_RETENTION_DAYS);
+  assert.equal(mailRetentionDays({ MAIL_RETENTION_DAYS: '120' }), 120);
+  assert.equal(mailRetentionDays({}), 90);
 });

@@ -122,7 +122,8 @@ CREATE INDEX IF NOT EXISTS mail_outbox_user_idx ON mail_outbox (user_id);
   CHECK: если понадобится новый вид, миграция в DO-блоке делает `DROP CONSTRAINT IF EXISTS
   auth_tokens_kind_check` и добавляет расширенный.
 - `dedupe_key UNIQUE` допускает много NULL. Вставка — `ON CONFLICT (dedupe_key) DO NOTHING RETURNING id`.
-- Срок хранения писем — 90 дней (`MAIL_RETENTION_DAYS`), токенов — 7 дней после истечения.
+- Срок хранения писем — 90 дней (`MAIL_RETENTION_DAYS`, не меньше 31: защиту от повторных
+  напоминаний держит `dedupe_key` письма, окно «срок прошёл» — 30 дней), токенов — 7 дней после истечения.
   Чистит воркер (§3.5). Данные в письмах — ПДн (имя, email, курсы), храним минимум.
 - Окна напоминаний (§3.7) ограничены во времени. Поэтому удаление старых писем вместе с
   `dedupe_key` не приводит к повторной отправке.

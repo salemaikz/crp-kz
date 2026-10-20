@@ -309,11 +309,21 @@ test('purgeMail: старые письма и токены удаляются, �
 });
 
 test('purgeMail: срок хранения берётся из MAIL_RETENTION_DAYS', async () => {
-  process.env.MAIL_RETENTION_DAYS = '10';
-  const eleven = await letter({ createdAt: T0 - 11 * DAY, status: 'sent' });
-  const nine = await letter({ createdAt: T0 - 9 * DAY, status: 'sent' });
+  process.env.MAIL_RETENTION_DAYS = '40';
+  const older = await letter({ createdAt: T0 - 41 * DAY, status: 'sent' });
+  const younger = await letter({ createdAt: T0 - 39 * DAY, status: 'sent' });
   assert.equal((await purgeMail(T0)).letters, 1);
   const ids = (await db.sql<{ id: string }>`SELECT id FROM mail_outbox`).map((r) => r.id);
-  assert.deepEqual(ids, [nine]);
-  assert.ok(!ids.includes(eleven));
+  assert.deepEqual(ids, [younger]);
+  assert.ok(!ids.includes(older));
+});
+
+test('purgeMail: срок короче 31 дня поднимается до 31 — письма внутри окна напоминаний не удаляются', async () => {
+  process.env.MAIL_RETENTION_DAYS = '10';
+  const eleven = await letter({ createdAt: T0 - 11 * DAY, status: 'sent' });
+  const old = await letter({ createdAt: T0 - 32 * DAY, status: 'sent' });
+  assert.equal((await purgeMail(T0)).letters, 1);
+  const ids = (await db.sql<{ id: string }>`SELECT id FROM mail_outbox`).map((r) => r.id);
+  assert.deepEqual(ids, [eleven]);
+  assert.ok(!ids.includes(old));
 });

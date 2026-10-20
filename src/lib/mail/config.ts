@@ -4,6 +4,7 @@ import { isDemo, type Env } from '../env';
 export type MailTransportName = 'outbox' | 'smtp';
 
 let warnedTransport = false;
+let warnedRetention = false;
 
 /**
  * Демо — всегда 'outbox'. Иначе MAIL_TRANSPORT; сейчас принимается только 'outbox',
@@ -47,7 +48,19 @@ export function mailAuthHourlyCap(env: Env = process.env): number {
   return positiveInt(env, 'MAIL_AUTH_HOURLY_CAP', 300);
 }
 
-/** Сколько дней хранить письма. */
+/**
+ * Нижняя граница срока хранения писем. Защиту от повторных напоминаний держит dedupe_key письма:
+ * удали строку раньше конца окна «срок прошёл» (30 дней) — следующий прогон крона поставит письмо
+ * снова. Поэтому меньше 31 дня не храним, даже если так задано в окружении.
+ */
+export const MIN_MAIL_RETENTION_DAYS = 31;
+
+/** Сколько дней хранить письма (не меньше MIN_MAIL_RETENTION_DAYS; меньшее значение — предупреждение). */
 export function mailRetentionDays(env: Env = process.env): number {
-  return positiveInt(env, 'MAIL_RETENTION_DAYS', 90);
+  const days = positiveInt(env, 'MAIL_RETENTION_DAYS', 90);
+  if (days < MIN_MAIL_RETENTION_DAYS && !warnedRetention) {
+    warnedRetention = true;
+    console.warn(`MAIL_RETENTION_DAYS=${days}: меньше ${MIN_MAIL_RETENTION_DAYS} нельзя, храним ${MIN_MAIL_RETENTION_DAYS}`);
+  }
+  return Math.max(MIN_MAIL_RETENTION_DAYS, days);
 }
