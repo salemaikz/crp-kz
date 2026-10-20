@@ -217,8 +217,9 @@ log "step=smoke"
 
 # 12. Переключение.
 PREV="$(current_id)"
-if [[ -n "$PREV" ]]; then write_previous "$PREV"; else rm -f "$STATE_DIR/previous"; fi
+# previous пишем только после успешного переключения: при сбое switch_current (код 2) он остаётся прежним.
 switch_current "$ID"
+if [[ -n "$PREV" ]]; then write_previous "$PREV"; else rm -f "$STATE_DIR/previous"; fi
 PHASE=post
 log "step=switch from=${PREV:-none} to=$ID"
 

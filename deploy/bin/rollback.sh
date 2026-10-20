@@ -51,8 +51,10 @@ valid_release_id "$TARGET" || die 2 "недопустимый id релиза"
 [[ "$TARGET" != "$CURRENT" ]] || die 2 "релиз $TARGET уже текущий"
 
 # previous становится прежним current: повторный rollback возвращает обратно.
-if [[ -n "$CURRENT" ]]; then write_previous "$CURRENT"; fi
+# previous пишем только после успешного переключения: при сбое switch_current (код 2) он остаётся прежним,
+# и повторный rollback.sh без --to не ответит «уже текущий».
 switch_current "$TARGET"
+if [[ -n "$CURRENT" ]]; then write_previous "$CURRENT"; fi
 log "rollback from=${CURRENT:-none} to=$TARGET reason=$REASON"
 
 if reload_app && wait_health "$PORT" "$TARGET" "$HEALTH_TIMEOUT"; then

@@ -3,7 +3,10 @@
 #   install-ops.sh --domain <домен> [--root /srv/crp] [--port 3000] [--dry-run]
 # Копирует скрипты в /usr/local/lib/crp, ставит крон, logrotate, sudoers и сайт nginx из шаблона,
 # создаёт каталоги с правами. Идемпотентен: повторный запуск обновляет файлы и ничего не ломает.
-# Запускать из выгрузки тега (git archive <тег> deploy), а не из каталога, который меняет crpdeploy.
+# Запускать только из выгрузки, сделанной самим root мимо зеркала /srv/crp/repo.git (его владелец crpdeploy):
+#   git clone --depth 1 --branch <тег> <адрес репозитория> <каталог 0755>  (RUNBOOK, раздел 2).
+# Иначе скомпрометированный crpdeploy переставит тег в зеркале на свой коммит (например, с sudoers
+# `NOPASSWD: ALL`), visudo -c пройдёт, и он получит root (ops, риск 19).
 # Пользователи crp и crpdeploy и пакеты создаются до запуска (RUNBOOK, раздел 2).
 set -euo pipefail
 
@@ -25,7 +28,9 @@ while (($#)); do
 done
 [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$DOMAIN" == *.* ]] || { echo "install-ops.sh: укажите --domain (строчные латинские буквы, цифры, точки)" >&2; exit 2; }
 [[ "$ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "install-ops.sh: недопустимый --root" >&2; exit 2; }
-[[ -z "$PORT" || "$PORT" =~ ^[0-9]{2,5}$ ]] || { echo "install-ops.sh: недопустимый --port" >&2; exit 2; }
+# Порт: 1-65535 без ведущих нулей (^[0-9]{2,5}$ пропускало 70000 и 00080).
+valid_port() { [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && (("$1" <= 65535)); }
+[[ -z "$PORT" ]] || valid_port "$PORT" || { echo "install-ops.sh: недопустимый --port (1-65535)" >&2; exit 2; }
 if ((DRY == 0)) && [[ "$(id -u)" != 0 ]]; then echo "install-ops.sh: запускайте от root" >&2; exit 2; fi
 
 say() { echo "install-ops: $*"; }
@@ -41,6 +46,18 @@ need_user() {
 need_user crp
 need_user crpdeploy
 command -v jq >/dev/null || { echo "install-ops.sh: нужен jq" >&2; exit 2; }
+
+# Каталог выгрузки должен принадлежать root: иначе его содержимое мог подменить другой пользователь
+# (ops, риск 19). Только предупреждение: в пробном прогоне и тестах владелец иной.
+if [[ "$(stat -c %u "$DEPLOY_DIR" 2>/dev/null || echo 0)" != 0 || "$(stat -c %u "$SELF_DIR/install-ops.sh" 2>/dev/null || echo 0)" != 0 ]]; then
+  say "ВНИМАНИЕ: каталог выгрузки $DEPLOY_DIR принадлежит не root; выгрузите комплект от root мимо зеркала (RUNBOOK, раздел 2)"
+fi
+# crpdeploy ставит страницу обслуживания из выгрузки: если он её не читает (каталог 0700), падать нужно сейчас,
+# а не после того, как скрипты, крон и sudoers уже установлены, а сайт nginx нет.
+if id crpdeploy >/dev/null 2>&1 && { ((DRY == 0)) || [[ "$(id -u)" == 0 ]]; }; then
+  runuser -u crpdeploy -- test -r "$DEPLOY_DIR/nginx/maintenance.html" ||
+    { echo "install-ops.sh: пользователь crpdeploy не читает $DEPLOY_DIR/nginx/maintenance.html: выгрузка должна быть доступна на чтение (chmod 0755 на каталог выгрузки, RUNBOOK, раздел 2)" >&2; exit 2; }
+fi
 
 GRANTS="$DEPLOY_DIR/postgres/grants.sql"
 [[ -r "$GRANTS" ]] || { echo "install-ops.sh: нет deploy/postgres/grants.sql (нужен restore.sh)" >&2; exit 2; }
@@ -118,8 +135,13 @@ if [[ ! -e "$ROOT/shared/instance.json" ]]; then
 fi
 # Файл принадлежит crpdeploy: порт берём только если это обычный файл и число (дальше он попадёт в конфиг nginx).
 if [[ -z "$PORT" && -f "$ROOT/shared/instance.json" && ! -L "$ROOT/shared/instance.json" ]]; then
-  PORT="$(jq -r '.port // 3000' "$ROOT/shared/instance.json")"
-  [[ "$PORT" =~ ^[0-9]{2,5}$ ]] || { echo "install-ops.sh: в instance.json недопустимый port" >&2; exit 2; }
+  # Читаем от crpdeploy (владельца файла): root, открывший файл после проверки -f, попался бы на подмену FIFO.
+  if ((DRY)); then
+    PORT="$(jq -r '.port // 3000' "$ROOT/shared/instance.json")"
+  else
+    PORT="$(runuser -u crpdeploy -- jq -r '.port // 3000' "$ROOT/shared/instance.json")" || { echo "install-ops.sh: не удалось прочитать instance.json" >&2; exit 2; }
+  fi
+  valid_port "$PORT" || { echo "install-ops.sh: в instance.json недопустимый port" >&2; exit 2; }
 fi
 PORT="${PORT:-3000}"
 
@@ -154,13 +176,26 @@ render() {
 if ((DRY)); then
   echo "+ render nginx/crp.conf.template -> /etc/nginx/sites-available/crp.conf (domain=$DOMAIN root=$ROOT port=$PORT)"
 else
-  render >/etc/nginx/sites-available/crp.conf
-  chmod 0644 /etc/nginx/sites-available/crp.conf
-  ln -sfn /etc/nginx/sites-available/crp.conf /etc/nginx/sites-enabled/crp.conf
+  # Конфиг рендерится во временный файл; прежний сохраняется и возвращается, если nginx -t не пройдёт.
+  site=/etc/nginx/sites-available/crp.conf
+  new_conf="$(mktemp /etc/nginx/crp.conf.XXXXXX)"
+  old_conf=""
+  trap 'rm -f "$new_conf" "$old_conf"' EXIT
+  render >"$new_conf"
+  chmod 0644 "$new_conf"
+  if [[ -f "$site" ]]; then old_conf="$(mktemp /etc/nginx/crp.conf.old.XXXXXX)"; cp -p "$site" "$old_conf"; fi
+  mv -f "$new_conf" "$site"
+  ln -sfn "$site" /etc/nginx/sites-enabled/crp.conf
+  if ! nginx -t; then
+    if [[ -n "$old_conf" ]]; then mv -f "$old_conf" "$site"; old_conf=""; else rm -f "$site" /etc/nginx/sites-enabled/crp.conf; fi
+    echo "install-ops.sh: nginx -t не прошёл, прежний конфиг сайта возвращён (или сайт не включён)" >&2
+    exit 2
+  fi
+  rm -f "$old_conf"
+  trap - EXIT
   if [[ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then
     say "сертификата ещё нет: установлен только порт 80. Получите его (RUNBOOK, раздел 2) и запустите install-ops.sh снова"
   fi
-  nginx -t
   if systemctl is-active --quiet nginx; then systemctl reload nginx; fi
 fi
 

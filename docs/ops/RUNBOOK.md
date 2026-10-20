@@ -93,15 +93,24 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    `install-ops.sh`); `deploy.sh` останавливается с кодом 2, если группа релиза не `crp`.
    Корень и зеркало репозитория: `install -d -m 0751 -o crpdeploy -g crp /srv/crp`, затем
    `sudo -u crpdeploy git clone --mirror <адрес репозитория> /srv/crp/repo.git`. Зеркало принадлежит
-   `crpdeploy`, поэтому любой `git` по нему запускается от этого пользователя: от root git
-   (версии 2.35.2 и новее) отвечает «detected dubious ownership». Выгрузка комплекта нужного тега:
-   `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && sudo -u crpdeploy git -C /srv/crp/repo.git archive <тег> deploy | tar -x -C "$d"`
-   (`<каталог выгрузки>` ниже, в шагах 6-8, — это `$d`; postgres должен его читать).
+   `crpdeploy` и нужно только для `deploy.sh`. Комплект для root (скрипты, sudoers, крон, nginx) из зеркала
+   не берётся: скомпрометированный `crpdeploy` (например, через `postinstall` пакета при `npm ci`) мог бы
+   переставить тег на свой коммит с `crpdeploy ALL=(ALL) NOPASSWD: ALL` в `deploy/sudoers/crpdeploy`,
+   `visudo -c` такой файл пропустит, и он получил бы root (ops, риск 19). Поэтому комплект нужного тега
+   root клонирует сам, от root, прямо из репозитория, в каталог root с правами 0755:
+   `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && git clone --depth 1 --branch <тег> <адрес репозитория> "$d/crp"`
+   (`<каталог выгрузки>` ниже, в шагах 6-8, — это `$d/crp`; `crpdeploy` и postgres должны его читать,
+   `install-ops.sh` проверит это и предупредит, если каталог принадлежит не root). Сверьте, что
+   `git -C "$d/crp" rev-parse HEAD` совпадает с sha выпущенного тега. Если адрес закрытый, ключи доступа
+   у root вносит оператор вне репозитория, сюда они не пишутся.
 6. `apt install postgresql-16`; положить `<каталог выгрузки>/deploy/postgres/postgresql.conf.d/crp.conf` в
    `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
 7. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
    затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
-8. Поставить комплект: `sudo <каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
+8. Поставить комплект: `<каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>` (от root, из выгрузки
+   шага 5). Обновление комплекта на новом теге: тот же `git clone --depth 1 --branch <новый тег>` в новый
+   временный каталог от root и запуск `install-ops.sh` оттуда; зеркало `/srv/crp/repo.git` для этого
+   не используется. Старые выгрузки удалите (`rm -r "$d"`). Без сертификата
    скрипт ставит только порт 80. Получить сертификат:
    `certbot certonly --webroot -w /var/www/certbot -d <домен>`, затем
    `install-ops.sh --domain <домен>` ещё раз (подключит TLS). Таймер `certbot.timer` с
@@ -109,7 +118,9 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    кто-то заменил подкаталог корня ссылкой (раздел 1, граница crpdeploy и root): выясните причину,
    удалите ссылку и запустите скрипт снова.
 9. `shared/instance.json` создаётся install-ops.sh; для основной ветки, которой ещё нет в
-   репозитории, задайте `deployBranch` вручную.
+   репозитории, задайте `deployBranch` от имени `crpdeploy`, а не от root (файл принадлежит `crpdeploy`,
+   правка от root пошла бы по подложенной ссылке):
+   `sudo -u crpdeploy sh -c 'jq ".deployBranch = \"<ветка>\"" /srv/crp/shared/instance.json > /srv/crp/shared/instance.json.new && mv -T /srv/crp/shared/instance.json.new /srv/crp/shared/instance.json'`.
 10. Файлы `/etc/crp/*.env` по шаблонам `deploy/env/*.example`, права из раздела 1.
     `SESSION_SECRET` и ключ server actions создаются командой `openssl rand`, значения в
     репозиторий, чат и issue не попадают.

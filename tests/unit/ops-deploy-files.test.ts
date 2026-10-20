@@ -300,3 +300,29 @@ test('healthcheck.sh: токен бота не в argv curl', () => {
   assert.match(t, /curl [^\n]*-K -/);
   assert.doesNotMatch(t, /curl [^\n]*bot\$TG_TOKEN/);
 });
+
+test('install-ops.sh: комплект берётся мимо зеркала crpdeploy, каталог выгрузки проверяется (ops-polish)', () => {
+  const t = read('bin', 'install-ops.sh');
+  const head = t.split('set -euo pipefail')[0] ?? '';
+  assert.match(head, /git clone --depth 1 --branch <тег>/);
+  assert.doesNotMatch(head, /git archive/);
+  // предупреждение, если каталог выгрузки принадлежит не root
+  assert.match(t, /stat -c %u "\$DEPLOY_DIR"[^\n]*\n[^\n]*принадлежит не root/);
+  const runbook = readFileSync(join(ROOT, 'docs', 'ops', 'RUNBOOK.md'), 'utf8');
+  assert.match(runbook, /git clone --depth 1 --branch <тег>/);
+  assert.doesNotMatch(runbook, /crpdeploy git -C \/srv\/crp\/repo\.git archive/);
+});
+
+test('install-ops.sh: чтение instance.json от crpdeploy, проверка чтения выгрузки и nginx -t до замены', () => {
+  const t = read('bin', 'install-ops.sh');
+  assert.match(t, /PORT="\$\(runuser -u crpdeploy -- jq -r '\.port \/\/ 3000' "\$ROOT\/shared\/instance\.json"\)"/);
+  // проверка чтения идёт до первого действия (первой записи в /etc или каталоги)
+  const readable = t.indexOf('test -r "$DEPLOY_DIR/nginx/maintenance.html"');
+  assert.ok(readable > 0);
+  assert.ok(readable < t.indexOf('run install -d -m 0751 -o crpdeploy'), 'проверка до первого действия');
+  assert.match(t, /exit 2; \}\nfi/);
+  // конфиг nginx: временный файл, nginx -t, возврат прежнего при провале
+  assert.match(t, /new_conf="\$\(mktemp \/etc\/nginx\/crp\.conf\./);
+  assert.ok(t.indexOf('if ! nginx -t') > t.indexOf('mv -f "$new_conf" "$site"'));
+  assert.match(t, /if ! nginx -t; then[\s\S]*mv -f "\$old_conf" "\$site"/);
+});

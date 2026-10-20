@@ -868,3 +868,76 @@ test('install-ops.sh --dry-run: обычная раскладка проходи
   assert.ok(underRoot.length > 0, out(r));
   for (const l of underRoot) assert.match(l, /^\+ runuser -u crpdeploy -- /, l);
 });
+
+// --- previous пишется только после успешного switch_current (ops-polish).
+
+/** Каталог с оберткой mv: при наличии флага-файла и ключа -T падает, иначе передаёт настоящему mv (так ломается switch_current). */
+function failingMvPath(ctx: Ctx) {
+  const bin = join(ctx.dir, 'failmv');
+  mkdirSync(bin);
+  const real = spawnSync('sh', ['-c', 'command -v mv'], { encoding: 'utf8' }).stdout.trim();
+  writeFileSync(join(bin, 'mv'), `#!/usr/bin/env bash\nfor a in "$@"; do if [[ "$a" == -T && -e "$FAIL_MV_FLAG" ]]; then exit 1; fi; done\nexec ${real} "$@"\n`);
+  chmodSync(join(bin, 'mv'), 0o755);
+  return { path: `${bin}:${env(ctx).PATH}`, flag: join(ctx.dir, 'fail-mv-flag') };
+}
+
+test('rollback.sh: сбой switch_current не меняет previous и current', opts, () => {
+  const ctx = makeCtx();
+  assert.equal(deploy(ctx, 'v0.1.0').status, 0);
+  assert.equal(deploy(ctx, 'v0.2.0').status, 0);
+  const prevFile = join(ctx.root, 'shared', 'state', 'previous');
+  const before = readFileSync(prevFile, 'utf8');
+  const curBefore = currentId(ctx);
+  const { path, flag } = failingMvPath(ctx);
+  writeFileSync(flag, '');
+  const r = spawnSync('bash', [join(BIN, 'rollback.sh')], { env: env(ctx, { PATH: path, FAIL_MV_FLAG: flag }), encoding: 'utf8' });
+  assert.equal(r.status, 2, out(r));
+  assert.equal(readFileSync(prevFile, 'utf8'), before, 'previous не тронут');
+  assert.equal(currentId(ctx), curBefore);
+  // Следующий откат (mv снова работает) идёт на тот же релиз, а не отвечает «уже текущий».
+  rmSync(flag);
+  const again = rollback(ctx);
+  assert.equal(again.status, 0, out(again));
+  assert.equal(currentId(ctx), before.trim());
+});
+
+test('deploy.sh: сбой switch_current не меняет previous', opts, () => {
+  const ctx = makeCtx();
+  assert.equal(deploy(ctx, 'v0.1.0').status, 0);
+  assert.equal(deploy(ctx, 'v0.2.0').status, 0);
+  const prevFile = join(ctx.root, 'shared', 'state', 'previous');
+  const before = readFileSync(prevFile, 'utf8');
+  const curBefore = currentId(ctx);
+  const { path, flag } = failingMvPath(ctx);
+  writeFileSync(flag, '');
+  const r = deploy(ctx, 'v0.3.0', { PATH: path, FAIL_MV_FLAG: flag });
+  assert.equal(r.status, 2, out(r));
+  assert.equal(readFileSync(prevFile, 'utf8'), before, 'previous не тронут');
+  assert.equal(currentId(ctx), curBefore);
+});
+
+// --- install-ops.sh: диапазон порта.
+
+test('install-ops.sh --dry-run: порт вне 1-65535 или с ведущим нулём отклоняется (--port и instance.json)', opts, () => {
+  for (const bad of ['70000', '00080', '0', '65536', '3000;x']) {
+    const dir = mkdtempSync(join(tmpdir(), 'crp-install-'));
+    temps.push(dir);
+    const root = join(dir, 'srv');
+    mkdirSync(join(root, 'shared'), { recursive: true });
+    const viaArg = spawnSync('bash', [join(BIN, 'install-ops.sh'), '--dry-run', '--domain', 'x.kz', '--root', root, '--port', bad], { encoding: 'utf8' });
+    assert.equal(viaArg.status, 2, `--port ${bad}: ${out(viaArg)}`);
+    assert.match(viaArg.stderr, /недопустимый --port/);
+    writeFileSync(join(root, 'shared', 'instance.json'), JSON.stringify({ name: 'crp', port: bad }));
+    const viaFile = installOpsDry(root);
+    assert.equal(viaFile.status, 2, `instance.json ${bad}: ${out(viaFile)}`);
+    assert.match(viaFile.stderr, /недопустимый port/);
+  }
+  for (const good of ['1', '80', '3000', '65535']) {
+    const dir = mkdtempSync(join(tmpdir(), 'crp-install-'));
+    temps.push(dir);
+    const root = join(dir, 'srv');
+    mkdirSync(root);
+    const r = spawnSync('bash', [join(BIN, 'install-ops.sh'), '--dry-run', '--domain', 'x.kz', '--root', root, '--port', good], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `--port ${good}: ${out(r)}`);
+  }
+});
