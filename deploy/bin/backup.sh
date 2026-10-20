@@ -47,7 +47,8 @@ KEEP_MONTHLY="$(cfg BACKUP_KEEP_MONTHLY 6)"
 REMOTE="$(cfg BACKUP_REMOTE '')"
 REMOTE_KEY="$(cfg BACKUP_REMOTE_SSH_KEY '')"
 # Копия файлов уходит от crp: свой адрес и свой ключ, чтобы взлом приложения не давал записи в хранилище
-# дампов БД. Пустые значения — запасные общие BACKUP_REMOTE и BACKUP_REMOTE_SSH_KEY.
+# дампов БД. Пустой адрес — запасной общий BACKUP_REMOTE; ключ запасным не бывает (D-041): без
+# BACKUP_FILES_REMOTE_SSH_KEY копия файлов не уходит.
 FILES_REMOTE="$(cfg BACKUP_FILES_REMOTE '')"
 FILES_REMOTE_KEY="$(cfg BACKUP_FILES_REMOTE_SSH_KEY '')"
 STORAGE="$(cfg STORAGE_DIR '')"
@@ -76,12 +77,13 @@ write_status() {
   mkdir -p "$OPS_DIR" 2>/dev/null || return 0
   # Каталог с sticky-битом (1775): чужой файл в нём не удалить и не переименовать. Временный файл с
   # непредсказуемым именем (mktemp, O_EXCL) нельзя заранее подменить ссылкой; права ставим до mv,
-  # чтобы chmod не шёл по имени, которое успели подменить.
+  # чтобы chmod не шёл по имени, которое успели подменить. mv -T: если на месте статуса каталог или
+  # ссылка на каталог, файл не уйдёт внутрь него (mv без -T кладёт файл в такой каталог), а mv упадёт.
   tmp="$(mktemp "$OPS_DIR/.status.XXXXXX" 2>/dev/null)" || return 0
   if jq -n --argjson ok "$ok" --argjson at "$(date -u +%s)000" --arg file "$(basename "${OUT_FILE:-}")" \
     --argjson size "$size" --argjson verified "$VERIFIED" --argjson offsite "$OFFSITE" \
     '{ok: $ok, at: $at, file: $file, sizeBytes: $size, verified: $verified, offsite: $offsite}' \
-    >"$tmp" 2>/dev/null && chmod 644 "$tmp" 2>/dev/null && mv -f "$tmp" "$STATUS_FILE" 2>/dev/null; then
+    >"$tmp" 2>/dev/null && chmod 644 "$tmp" 2>/dev/null && mv -fT "$tmp" "$STATUS_FILE" 2>/dev/null; then
     return 0
   fi
   rm -f "$tmp" 2>/dev/null || true
@@ -129,13 +131,24 @@ push_offsite() {
   local remote="$REMOTE" key="$REMOTE_KEY"
   if ((FILES)); then
     remote="${FILES_REMOTE:-$REMOTE}"
-    key="${FILES_REMOTE_KEY:-$REMOTE_KEY}"
+    key="$FILES_REMOTE_KEY"
   fi
   if [[ -z "$remote" ]]; then
     if ((FILES)); then say "BACKUP_FILES_REMOTE и BACKUP_REMOTE не заданы: второй копии файлов нет (решение владельца, D-029)"; else
       say "BACKUP_REMOTE не задан: второй копии нет (решение владельца, D-029)"
     fi
     return 0
+  fi
+  if ((FILES)); then
+    # Общий ключ БД для файлов не подставляем: crp не должен ходить в хранилище дампов (D-041).
+    if [[ -z "$key" ]]; then
+      say "нужен свой ключ файлов BACKUP_FILES_REMOTE_SSH_KEY (D-041): общий ключ БД для копии файлов не используется"
+      return 1
+    fi
+    if [[ -n "$REMOTE_KEY" && "$key" == "$REMOTE_KEY" ]]; then
+      say "ключ файлов совпадает с ключом БД: заведите отдельный BACKUP_FILES_REMOTE_SSH_KEY (D-041)"
+      return 1
+    fi
   fi
   local ssh="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes"
   [[ -z "$key" ]] || ssh="$ssh -i $key"

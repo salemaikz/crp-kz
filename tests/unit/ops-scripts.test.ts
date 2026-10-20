@@ -414,7 +414,7 @@ test('backup.sh: вторая копия — только свои подкат�
   assert.match(bad.stdout, /НЕ отправлена/);
 });
 
-test('backup.sh --files: свои адрес и ключ, без них - запасные общие', opts, () => {
+test('backup.sh --files: свой ключ обязателен, общий ключ БД не подставляется', opts, () => {
   const rsyncLog = (b: ReturnType<typeof makeBackupCtx>) => join(b.ctx.dir, 'rsync.log');
   const withFile = (b: ReturnType<typeof makeBackupCtx>) => writeFileSync(join(b.storage, 'f.txt'), 'x');
   const set = (b: ReturnType<typeof makeBackupCtx>, extra: string) => writeFileSync(b.envFile, `${readFileSync(b.envFile, 'utf8')}${extra}`);
@@ -433,15 +433,25 @@ test('backup.sh --files: свои адрес и ключ, без них - зап
   assert.ok(existsSync(join(own.ctx.dir, 'files-remote', 'files')));
   assert.equal(existsSync(join(own.ctx.dir, 'db-remote')), false, 'адрес БД файлы не получают');
 
-  // только общие: запасные значения
+  // только общие значения: ключ БД для файлов не подставляется, копия не уходит (D-041)
   const shared = makeBackupCtx();
   withFile(shared);
   set(shared, `BACKUP_REMOTE=${join(shared.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=/k/db\n`);
   const r2 = shared.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(shared) });
   assert.equal(r2.status, 0, out(r2));
-  const l2 = readFileSync(rsyncLog(shared), 'utf8');
-  assert.match(l2, /-i \/k\/db /);
-  assert.match(l2, /dst=.*db-remote\/$/m);
+  assert.match(r2.stdout, /нужен свой ключ файлов BACKUP_FILES_REMOTE_SSH_KEY \(D-041\)/);
+  assert.equal(existsSync(rsyncLog(shared)), false, 'rsync не запускался');
+  assert.equal(existsSync(join(shared.ctx.dir, 'db-remote')), false);
+  assert.equal(shared.status('files-status.json').offsite, false);
+
+  // ключ файлов совпал с ключом БД: тоже отказ
+  const same = makeBackupCtx();
+  withFile(same);
+  set(same, `BACKUP_REMOTE=${join(same.ctx.dir, 'db-remote')}\nBACKUP_REMOTE_SSH_KEY=/k/db\nBACKUP_FILES_REMOTE_SSH_KEY=/k/db\n`);
+  const r4 = same.run(['--files'], { SHIM_RSYNC_LOG: rsyncLog(same) });
+  assert.equal(r4.status, 0, out(r4));
+  assert.match(r4.stdout, /совпадает с ключом БД/);
+  assert.equal(same.status('files-status.json').offsite, false);
 
   // бэкап БД своего файлового ключа не использует
   const db = makeBackupCtx();
@@ -472,6 +482,21 @@ test('backup.sh: статус пишется через mktemp, заранее �
   assert.equal(statSync(join(b.ops, 'backup-status.json')).mode & 0o777, 0o644);
   assert.equal(b.status().ok, true);
   assert.deepEqual(readdirSync(b.ops).filter((f) => f.startsWith('.status.')), [], 'временных файлов не осталось');
+});
+
+test('backup.sh: на месте статуса каталог или ссылка на каталог - цель не тронута, лишних файлов в ней нет', opts, () => {
+  for (const kind of ['dir', 'link']) {
+    const b = makeBackupCtx();
+    const victim = join(b.ctx.dir, `victim-${kind}`);
+    mkdirSync(victim);
+    const status = join(b.ops, 'backup-status.json');
+    if (kind === 'dir') mkdirSync(status);
+    else symlinkSync(victim, status);
+    const r = b.run();
+    assert.equal(r.status, 0, out(r)); // запись статуса не должна ронять бэкап
+    assert.deepEqual(readdirSync(kind === 'dir' ? status : victim), [], `${kind}: в целевом каталоге пусто`);
+    assert.deepEqual(readdirSync(b.ops).filter((f) => f.startsWith('.status.')), [], 'временных файлов не осталось');
+  }
 });
 
 test('backup.sh --label: статус ночного бэкапа не перезаписывается', opts, () => {

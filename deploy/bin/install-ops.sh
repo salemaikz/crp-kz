@@ -64,6 +64,11 @@ run install -d -m 0750 -o postgres -g adm /var/log/crp-backup
 # Sticky-бит: crp создаёт свои файлы статусов, но не удаляет и не переименовывает файлы postgres.
 run install -d -m 1775 -o postgres -g crp /var/lib/crp-ops
 run install -d -m 0700 -o crp -g crp /var/lib/crp /var/lib/crp/files
+# Статусы postgres создаём заранее: имена заняты файлами postgres, crp (группа каталога) не сможет
+# занять их каталогом или ссылкой; backup.sh дополнительно пишет через mv -T.
+for st in backup-status.json manual-status.json; do
+  if [[ ! -e /var/lib/crp-ops/$st && ! -L /var/lib/crp-ops/$st ]]; then run install -m 0644 -o postgres -g crp /dev/null "/var/lib/crp-ops/$st"; fi
+done
 run install -d -m 0711 -o root -g root /var/backups/crp
 run install -d -m 0700 -o postgres -g postgres /var/backups/crp/daily /var/backups/crp/weekly /var/backups/crp/monthly /var/backups/crp/manual
 run install -d -m 0700 -o crp -g crp /var/backups/crp/files

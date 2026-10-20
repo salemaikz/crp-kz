@@ -196,4 +196,4 @@ jq -n --argjson checks "$checks_json" --argjson at "${now_s}000" \
   --arg os "${extra[offsiteSince]:-}" \
   '{at: $at, checks: $checks, restartBase: $rb, restartBaseAt: $rba} + (if $os == "" then {} else {offsiteSince: ($os | tonumber)} end)' >"$state_tmp"
 chmod 644 "$state_tmp"
-mv -f "$state_tmp" "$STATE_FILE"
+mv -fT "$state_tmp" "$STATE_FILE"
