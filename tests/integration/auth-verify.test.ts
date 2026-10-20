@@ -1,6 +1,6 @@
 // Подтверждение email: sendVerification, verifyEmail, resendVerification на БД и server actions в
 // отдельном процессе (сценарии «verify: …» из fixtures/auth-recovery.flow.ts).
-// Регистрация при флаге — задача 3A, здесь sendVerification вызывается напрямую.
+// Регистрация при флаге (3A) проверяется сценариями fixtures/auth-actions.flow.ts.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -110,5 +110,23 @@ test('server actions подтверждения email: вход не выпол�
   );
   assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
   assert.match(res.stdout, /# pass 4\b/);
+  assert.match(res.stdout, /# fail 0\b/);
+});
+
+test('регистрация: письмо подтверждения в транзакции при флаге; без флага письма нет; лимит писем не откатывает регистрацию', () => {
+  // сценарии registerAction живут в fixtures/auth-actions.flow.ts (там же подмена next/headers)
+  const env = { ...process.env };
+  for (const k of ['DATABASE_URL', 'SESSION_SECRET', 'TEST_DATABASE_URL', 'DEMO_MODE', 'TRUST_X_REAL_IP', 'NODE_TEST_CONTEXT']) delete env[k];
+  env.TRUSTED_PROXY_HOPS = '1';
+  const res = spawnSync(
+    process.execPath,
+    [
+      '--experimental-test-module-mocks', '--no-warnings', '--import', 'tsx', '--test',
+      '--test-name-pattern=^register: (письмо подтверждения|лимит писем)', path.join(here, 'fixtures/auth-actions.flow.ts'),
+    ],
+    { env, encoding: 'utf8', timeout: 180_000 },
+  );
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  assert.match(res.stdout, /# pass 2\b/);
   assert.match(res.stdout, /# fail 0\b/);
 });

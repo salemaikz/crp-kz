@@ -15,7 +15,7 @@ test('сброс пароля: письмо, новый пароль, вход �
   await page.getByLabel('Имя и фамилия').fill('Тест Сброс');
   await page.getByLabel('Email').fill(email);
   await page.locator('input[name="password"]').fill(OLD_PASSWORD);
-  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page).toHaveURL(/\/ru\/learn/);
 
@@ -83,7 +83,7 @@ test('подтверждение email: плашка, «Отправить пи�
   await page.getByLabel('Имя и фамилия').fill('Тест Подтверждение');
   await page.getByLabel('Email').fill(email);
   await page.locator('input[name="password"]').fill(OLD_PASSWORD);
-  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page).toHaveURL(/\/ru\/learn/);
 
@@ -113,7 +113,7 @@ async function registerAndGetVerifyToken(page: Page, browser: Browser, tag: stri
   await page.getByLabel('Имя и фамилия').fill('Тест Переход');
   await page.getByLabel('Email').fill(email);
   await page.locator('input[name="password"]').fill(OLD_PASSWORD);
-  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page).toHaveURL(/\/ru\/learn/);
   await page.getByTestId('verify-notice').getByRole('button', { name: 'Отправить письмо' }).click();

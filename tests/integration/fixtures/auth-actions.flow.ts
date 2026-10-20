@@ -127,18 +127,135 @@ test('login: подделанный левый X-Forwarded-For не меняет
   hdrs.set('x-forwarded-for', '10.0.0.1');
 });
 
+const { REGISTER_CONSENTS } = await import('../../../src/lib/legal/types');
+const { versionsToken } = await import('../../../src/lib/legal/registry');
+const legalToken = versionsToken(REGISTER_CONSENTS, { allowDrafts: true });
+
+type ConsentRow = {
+  kind: string;
+  version: string;
+  locale: string | null;
+  context: string | null;
+  textSha256: string | null;
+};
+const consentsOf = (email: string) =>
+  db.sql<ConsentRow>`
+    SELECT c.kind, c.version, c.locale, c.context, c.text_sha256 FROM consents c
+    JOIN users u ON u.id = c.user_id WHERE u.email = ${email}`;
+const userCount = async (email: string) =>
+  Number((await db.sql<{ n: number }>`SELECT count(*) AS n FROM users WHERE email = ${email}`)[0]?.n);
+const verifyMails = (email: string) =>
+  db.sql<{ params: { next: string | null }; secret: string | null }>`
+    SELECT params, secret FROM mail_outbox WHERE template = 'email_verify' AND to_email = ${email}`;
+
+async function withEnv(vars: Record<string, string>, fn: () => Promise<void>): Promise<void> {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    await fn();
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
 test('register: согласие, слабый пароль, валидация, занятый email, успех', async () => {
-  const base = { name: 'Тест', email: 'new@x.kz', password: 'longpassword', consent: 'on', locale: 'ru' };
+  const base = { name: 'Тест', email: 'new@x.kz', password: 'longpassword', consent: 'on', locale: 'ru', legalToken };
   assert.equal((await A.registerAction(undefined, fd({ ...base, consent: '' })))?.error, 'consent');
   assert.equal((await A.registerAction(undefined, fd({ ...base, password: 'short' })))?.error, 'weak_password');
   assert.equal((await A.registerAction(undefined, fd({ ...base, email: 'bad' })))?.error, 'validation');
   assert.equal((await A.registerAction(undefined, fd({ ...base, email: 'client@crp.demo' })))?.error, 'exists');
+  assert.equal(await userCount('new@x.kz'), 0, 'ошибки формы пользователя не создают');
   const r = await outcome(A.registerAction(undefined, fd({ ...base, next: '/ru/courses/x' })));
   assert.equal(r.url, '/ru/courses/x');
-  const [c] = await db.sql<{ kind: string; version: string }>`
-    SELECT c.kind, c.version FROM consents c JOIN users u ON u.id = c.user_id WHERE u.email = 'new@x.kz'`;
-  assert.deepEqual(c, { kind: 'pd_processing', version: '2026-10-19' });
+  // LEGAL активен (демо): действующая редакция, язык показанного текста, контекст и хэш текста
+  const rows = await consentsOf('new@x.kz');
+  assert.equal(rows.length, 1);
+  const [c] = rows;
+  assert.equal(c?.kind, 'pd_processing');
+  assert.notEqual(c?.version, '2026-10-19');
+  assert.equal(c?.locale, 'ru');
+  assert.equal(c?.context, 'register');
+  assert.match(c?.textSha256 ?? '', /^[0-9a-f]{64}$/);
   assert.equal((await getCurrentUser())?.email, 'new@x.kz');
+});
+
+test('register: письмо подтверждения ставится в транзакции регистрации, next безопасный; без флага письма нет', async () => {
+  const base = { name: 'Тест', password: 'longpassword', consent: 'on', locale: 'kz', legalToken };
+  const r = await outcome(A.registerAction(undefined, fd({ ...base, email: 'mail1@x.kz', next: '/kz/courses/x/buy' })));
+  assert.equal(r.url, '/kz/courses/x/buy');
+  const mails = await verifyMails('mail1@x.kz');
+  assert.equal(mails.length, 1);
+  assert.equal(mails[0]?.params.next, '/kz/courses/x/buy');
+  assert.ok(mails[0]?.secret, 'ссылка в очереди');
+  const [u] = await db.sql<{ emailVerifiedAt: number | null }>`SELECT email_verified_at FROM users WHERE email = 'mail1@x.kz'`;
+  assert.equal(u?.emailVerifiedAt, null);
+
+  await outcome(A.registerAction(undefined, fd({ ...base, email: 'mail2@x.kz', next: 'https://evil.example/x' })));
+  assert.equal((await verifyMails('mail2@x.kz'))[0]?.params.next, null, 'чужой адрес отброшен');
+
+  await withEnv({ FEATURE_EMAIL_VERIFY: '0' }, async () => {
+    await outcome(A.registerAction(undefined, fd({ ...base, email: 'mail3@x.kz' })));
+    assert.equal(await userCount('mail3@x.kz'), 1);
+    assert.equal((await verifyMails('mail3@x.kz')).length, 0, 'EMAIL_VERIFY выключен: письма нет');
+  });
+});
+
+test('register: лимит писем регистрацию не откатывает', async () => {
+  await withEnv({ MAIL_AUTH_HOURLY_CAP: '1' }, async () => {
+    const r = await outcome(
+      A.registerAction(undefined, fd({ name: 'Тест', email: 'cap@x.kz', password: 'longpassword', consent: 'on', locale: 'ru', legalToken })),
+    );
+    assert.equal(r.error, undefined);
+    assert.equal(await userCount('cap@x.kz'), 1, 'пользователь создан');
+    assert.equal((await verifyMails('cap@x.kz')).length, 0, 'письмо не встало в очередь');
+    assert.equal((await consentsOf('cap@x.kz')).length, 1);
+  });
+});
+
+test('register: устаревший или чужой legalToken — legal_changed, пользователь и согласия не созданы', async () => {
+  const base = { name: 'Тест', email: 'stale@x.kz', password: 'longpassword', consent: 'on', locale: 'ru' };
+  for (const bad of [undefined, '', 'pd_consent@1999-01-01', 'offer@2026-10-20', `${legalToken};privacy@2026-10-20`]) {
+    const r = await A.registerAction(undefined, fd(bad === undefined ? base : { ...base, legalToken: bad }));
+    assert.equal(r?.error, 'legal_changed', String(bad));
+    assert.equal(r?.legalToken, legalToken, 'форме выдан актуальный токен');
+  }
+  assert.equal(await userCount('stale@x.kz'), 0);
+  const [n] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM consents c JOIN users u ON u.id = c.user_id WHERE u.email = 'stale@x.kz'`;
+  assert.equal(Number(n?.n), 0);
+  assert.equal((await verifyMails('stale@x.kz')).length, 0);
+});
+
+test('register: FEATURE_LEGAL=0 — как до плана: токена нет, согласие легаси без хэша', async () => {
+  await withEnv({ FEATURE_LEGAL: '0' }, async () => {
+    const r = await outcome(
+      A.registerAction(undefined, fd({ name: 'Тест', email: 'legacy@x.kz', password: 'longpassword', consent: 'on', locale: 'ru' })),
+    );
+    assert.equal(r.error, undefined);
+    const rows = await consentsOf('legacy@x.kz');
+    assert.deepEqual(
+      rows.map((c) => [c.kind, c.version, c.locale, c.textSha256]),
+      [['pd_processing', '2026-10-19', null, null]],
+    );
+  });
+});
+
+test('демо-вход одной кнопкой не пускает в обычный аккаунт на демо-адресе (проверка по id сида)', async () => {
+  jar.clear();
+  await db.sql`UPDATE users SET email = 'moved-away@x.kz' WHERE email = 'operator@crp.demo'`;
+  const squatterId = 'squatter-user';
+  await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
+               VALUES (${squatterId}, 'operator@crp.demo', 'x', 'Другой', 'learner', 'ru', 1)`;
+  try {
+    const r = await outcome(A.demoLoginAction(fd({ email: 'operator@crp.demo', locale: 'ru' })));
+    assert.equal(r.url, '/ru/login');
+    assert.equal(jar.has('crp_session'), false);
+  } finally {
+    await db.sql`DELETE FROM users WHERE id = ${squatterId}`;
+    await db.sql`UPDATE users SET email = 'operator@crp.demo' WHERE email = 'moved-away@x.kz'`;
+  }
 });
 
 test('logout, демо-вход и requireUser', async () => {

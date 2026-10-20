@@ -1,11 +1,37 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Browser, type Page } from '@playwright/test';
+import { openLatestMailLink } from './helpers/mail';
 
 // Покупка, Фаза 0 (D-007, D-020): гость → вход/регистрация → оформление заказа на свой аккаунт →
 // админ (демо) подтверждает оплату → заказ оплачен, доступ открыт. Покупатель — новый аккаунт:
 // сценарий не зависит от состояния демо-клиента и повторяется (retries в CI).
+// С EMAIL_VERIFY (D-032, предложено) форма покупки закрыта, пока новый аккаунт не подтвердит email;
+// с LEGAL (D-035, предложено) на покупке две галочки. В демо оба флага включены.
 
-test('гость: «Войти и купить» → регистрация → заказ «Удвоение личных продаж» через Kaspi → админ подтверждает', async ({
+/** Новый аккаунт открывает форму покупки, подтверждает email по письму из «Писем» и возвращается к форме. */
+async function confirmEmail(page: Page, browser: Browser, email: string): Promise<void> {
+  const panel = page.getByTestId('verify-notice-checkout');
+  await expect(panel).toContainText('Заказ можно оформить после подтверждения email');
+  await expect(page.getByTestId('verify-demo-hint')).toBeVisible();
+  // форма закрыта, а плашка из layout не дублирует кнопку: на странице одна кнопка отправки письма
+  await expect(page.getByLabel('Телефон')).toHaveCount(0);
+  await expect(page.getByTestId('verify-notice')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Отправить письмо' })).toHaveCount(1);
+  await expect(panel.getByRole('button', { name: 'Отправить письмо' })).toBeVisible();
+
+  const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
+  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}&next=/);
+  await page.goto(link);
+  // на странице подтверждения плашки из layout нет
+  await expect(page.getByTestId('verify-notice')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Подтвердить email' }).click();
+  await expect(page).toHaveURL(/\/ru\/courses\/sales-doubling\/buy$/);
+  await expect(page.getByTestId('verify-notice-checkout')).toHaveCount(0);
+  await expect(page.getByLabel('Телефон')).toBeVisible();
+}
+
+test('гость: «Войти и купить» → регистрация → подтверждение email → заказ «Удвоение личных продаж» через Kaspi → админ подтверждает', async ({
   page,
+  browser,
 }) => {
   const email = `e2e-${Date.now()}@example.kz`;
 
@@ -24,11 +50,15 @@ test('гость: «Войти и купить» → регистрация → 
   await page.getByLabel('Имя и фамилия').fill('Тест Покупатель');
   await page.getByLabel('Email').fill(email);
   await page.locator('input[name="password"]').fill('e2e-password-123');
-  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  // подпись галочки — со ссылками на документы, они открываются в новой вкладке
+  const registerConsent = page.getByLabel(/Даю согласие на сбор и обработку/);
+  await expect(page.locator('label.check a[target="_blank"]')).toHaveCount(2);
+  await registerConsent.check();
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
 
   await expect(page).toHaveURL(/\/ru\/courses\/sales-doubling\/buy$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Удвоение личных продаж' })).toBeVisible();
+  await confirmEmail(page, browser, email);
   await expect(page.getByText('49 000 ₸').first()).toBeVisible();
   // имя — из аккаунта, email — email аккаунта, его не меняют
   await expect(page.getByLabel('Имя и фамилия')).toHaveValue('Тест Покупатель');
@@ -39,13 +69,23 @@ test('гость: «Войти и купить» → регистрация → 
   await page.getByLabel('Телефон').fill('8 701 100 09 29');
   await expect(page.getByRole('radio', { name: /^Kaspi/ })).toBeChecked();
 
-  // без согласия заказ не создаётся, введённое сохраняется
+  // без согласий заказ не создаётся, введённое сохраняется; у каждой галочки своя ошибка
+  const offerError = 'Без согласия с офертой заказ не оформить.';
+  const pdError = 'Без согласия на обработку персональных данных заказ не оформить.';
   await page.getByRole('button', { name: /Оформить заказ/ }).click();
-  await expect(page.getByText('Без согласия мы не можем оформить заказ.')).toBeVisible();
+  await expect(page.getByText(offerError)).toBeVisible();
+  await expect(page.getByText(pdError)).toBeVisible();
   await expect(page.getByLabel('Телефон')).toHaveValue('8 701 100 09 29');
   await expect(page.getByLabel('Email')).toHaveValue(email);
 
+  // только оферта: ошибка остаётся у согласия на ПДн
   await page.getByLabel(/Принимаю условия публичной оферты/).check();
+  await page.getByRole('button', { name: /Оформить заказ/ }).click();
+  await expect(page.getByText(offerError)).toHaveCount(0);
+  await expect(page.getByText(pdError)).toBeVisible();
+  await expect(page.getByLabel(/Принимаю условия публичной оферты/)).toBeChecked();
+
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
   await page.getByRole('button', { name: /Оформить заказ/ }).click();
 
   await expect(page).toHaveURL(/\/ru\/orders\/CRP-\d{6}-\d{4}\?key=[\w-]{32}$/);
@@ -91,20 +131,23 @@ test('чужой заказ без ключа не открывается, бе�
 
 test('открытый заказ с другим способом оплаты: пометка на странице заказа, владелец отменяет его и оформляет новый', async ({
   page,
+  browser,
 }) => {
   const email = `e2e-own-${Date.now()}@example.kz`;
   await page.goto('/ru/register?next=%2Fru%2Fcourses%2Fsales-doubling%2Fbuy');
   await page.getByLabel('Имя и фамилия').fill('Тест Владелец');
   await page.getByLabel('Email').fill(email);
   await page.locator('input[name="password"]').fill('e2e-password-123');
-  await page.getByLabel(/Согласен\(на\) на сбор и обработку/).check();
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
   await page.getByRole('button', { name: 'Создать аккаунт' }).click();
   await expect(page).toHaveURL(/\/ru\/courses\/sales-doubling\/buy$/);
+  await confirmEmail(page, browser, email);
 
   const order = async (method: 'Kaspi' | 'Счёт на оплату') => {
     await page.getByLabel('Телефон').fill('8 701 100 09 29');
     await page.getByRole('radio', { name: new RegExp(`^${method}`) }).check();
     await page.getByLabel(/Принимаю условия публичной оферты/).check();
+    await page.getByLabel(/Даю согласие на сбор и обработку/).check();
     await page.getByRole('button', { name: /Оформить заказ/ }).click();
     await expect(page).toHaveURL(/\/ru\/orders\/CRP-\d{6}-\d{4}\?/);
     return /\/orders\/(CRP-\d{6}-\d{4})/.exec(page.url())?.[1] ?? '';
@@ -135,4 +178,33 @@ test('открытый заказ с другим способом оплаты:
   expect(fresh).not.toBe(first);
   await expect(page.getByRole('heading', { level: 1, name: 'Счёт на оплату готов' })).toBeVisible();
   await expect(page.getByTestId('order-notice')).toHaveCount(0);
+});
+
+test('плашка подтверждения из layout: кнопка передаёт страницу, где нажата; на покупке плашки нет', async ({ page, browser }) => {
+  const email = `e2e-notice-${Date.now()}@example.kz`;
+  await page.goto('/ru/register');
+  await page.getByLabel('Имя и фамилия').fill('Тест Плашка');
+  await page.getByLabel('Email').fill(email);
+  await page.locator('input[name="password"]').fill('e2e-password-123');
+  await page.getByLabel(/Даю согласие на сбор и обработку/).check();
+  await page.getByRole('button', { name: 'Создать аккаунт' }).click();
+  await expect(page).toHaveURL(/\/ru\/learn$/);
+
+  const banner = page.getByTestId('verify-notice');
+  await expect(banner).toBeVisible();
+  // кнопка плашки отправляет адрес страницы, где нажата (читается в момент нажатия)
+  const sent = page.waitForRequest((r) => r.method() === 'POST' && (r.postData() ?? '').includes('/ru/learn'));
+  await banner.getByRole('button', { name: 'Отправить письмо' }).click();
+  await sent;
+  await expect(page.getByTestId('verify-resent')).toBeVisible();
+
+  const link = await openLatestMailLink(browser, { to: email, template: 'email_verify' });
+  expect(link).toMatch(/^\/ru\/account\/verify#token=[\w-]{43}/);
+
+  // на странице курса плашка есть, на покупке её нет: там своя панель
+  await page.goto('/ru/courses/sales-doubling');
+  await expect(page.getByTestId('verify-notice')).toBeVisible();
+  await page.goto('/ru/courses/sales-doubling/buy');
+  await expect(page.getByTestId('verify-notice')).toHaveCount(0);
+  await expect(page.getByTestId('verify-notice-checkout')).toBeVisible();
 });

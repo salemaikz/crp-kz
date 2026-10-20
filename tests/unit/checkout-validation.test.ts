@@ -4,6 +4,11 @@ import { isValidBin, normalizePhone, parseCheckout } from '../../src/lib/orders/
 
 const VALID_BIN = '980101400008';
 
+/** Режим до D-035 (LEGAL выключен): одна галочка consent. */
+const parse = (raw: Record<string, unknown>) => parseCheckout(raw, { legal: false });
+/** LEGAL включён: две галочки consentOffer и consentPd. */
+const parseLegal = (raw: Record<string, unknown>) => parseCheckout(raw, { legal: true });
+
 const person = {
   courseSlug: 'sales-doubling',
   buyerType: 'person',
@@ -45,7 +50,7 @@ test('БИН: 12 цифр и контрольная цифра', () => {
 });
 
 test('физлицо: данные нормализованы, поля компании игнорируются', () => {
-  const r = parseCheckout({ ...person, companyName: 'ТОО', companyBin: '1' });
+  const r = parse({ ...person, companyName: 'ТОО', companyBin: '1' });
   assert.equal(r.ok, true);
   if (!r.ok) return;
   assert.deepEqual(r.data, {
@@ -61,12 +66,12 @@ test('физлицо: данные нормализованы, поля комп
 });
 
 test('ошибки по полям: обязательные, формат, согласие', () => {
-  const r = parseCheckout({ courseSlug: 'x', buyerType: 'person', paymentMethod: 'kaspi' });
+  const r = parse({ courseSlug: 'x', buyerType: 'person', paymentMethod: 'kaspi' });
   assert.equal(r.ok, false);
   if (r.ok) return;
   assert.deepEqual(r.errors, { name: 'required', email: 'required', phone: 'required', consent: 'required' });
 
-  const bad = parseCheckout({ ...person, name: 'А', email: 'not-an-email', phone: '+7 912 000 00 00' });
+  const bad = parse({ ...person, name: 'А', email: 'not-an-email', phone: '+7 912 000 00 00' });
   assert.equal(bad.ok, false);
   if (bad.ok) return;
   assert.equal(bad.errors.name, 'too_short');
@@ -79,20 +84,20 @@ test('ошибки по полям: обязательные, формат, со
 
 test('юрлицо: название, БИН с контрольной цифрой и только счёт', () => {
   const company = { ...person, buyerType: 'company', paymentMethod: 'invoice', companyName: 'ТОО «Дала»' };
-  const missing = parseCheckout(company);
+  const missing = parse(company);
   assert.equal(missing.ok, false);
   if (!missing.ok) assert.equal(missing.errors.companyBin, 'required');
 
-  const format = parseCheckout({ ...company, companyBin: '12345' });
+  const format = parse({ ...company, companyBin: '12345' });
   if (!format.ok) assert.equal(format.errors.companyBin, 'format');
-  const checksum = parseCheckout({ ...company, companyBin: '123456789012' });
+  const checksum = parse({ ...company, companyBin: '123456789012' });
   if (!checksum.ok) assert.equal(checksum.errors.companyBin, 'checksum');
 
-  const kaspi = parseCheckout({ ...company, companyBin: VALID_BIN, paymentMethod: 'kaspi' });
+  const kaspi = parse({ ...company, companyBin: VALID_BIN, paymentMethod: 'kaspi' });
   assert.equal(kaspi.ok, false);
   if (!kaspi.ok) assert.equal(kaspi.errors.paymentMethod, 'company_invoice_only');
 
-  const ok = parseCheckout({ ...company, companyBin: '9801 0140 0008' });
+  const ok = parse({ ...company, companyBin: '9801 0140 0008' });
   assert.equal(ok.ok, true);
   if (ok.ok) {
     assert.equal(ok.data.companyBin, VALID_BIN);
@@ -102,8 +107,8 @@ test('юрлицо: название, БИН с контрольной цифр�
 });
 
 test('физлицо может выбрать оплату по счёту; неизвестные значения отклоняются', () => {
-  assert.equal(parseCheckout({ ...person, paymentMethod: 'invoice' }).ok, true);
-  const r = parseCheckout({ ...person, paymentMethod: 'cash', buyerType: 'robot', courseSlug: '../etc' });
+  assert.equal(parse({ ...person, paymentMethod: 'invoice' }).ok, true);
+  const r = parse({ ...person, paymentMethod: 'cash', buyerType: 'robot', courseSlug: '../etc' });
   assert.equal(r.ok, false);
   if (!r.ok) {
     assert.equal(r.errors.paymentMethod, 'invalid');
@@ -113,7 +118,34 @@ test('физлицо может выбрать оплату по счёту; н�
 });
 
 test('сумма и цена из формы не принимаются', () => {
-  const r = parseCheckout({ ...person, amountKzt: '1', priceKzt: '1' });
+  const r = parse({ ...person, amountKzt: '1', priceKzt: '1' });
   assert.equal(r.ok, true);
   if (r.ok) assert.equal('amountKzt' in r.data || 'priceKzt' in r.data, false);
+});
+
+test('LEGAL: две галочки обязательны по отдельности, прежняя consent не заменяет их', () => {
+  const both = { ...person, consent: undefined, consentOffer: 'on', consentPd: 'on' };
+  assert.equal(parseLegal(both).ok, true);
+
+  const noOffer = parseLegal({ ...both, consentOffer: undefined });
+  assert.equal(noOffer.ok, false);
+  if (!noOffer.ok) {
+    assert.deepEqual(noOffer.errors, { consentOffer: 'required' });
+    assert.equal(noOffer.values.consentPd, true, 'отмеченная галочка в форме сохраняется');
+    assert.equal(noOffer.values.consentOffer, false);
+  }
+  const noPd = parseLegal({ ...both, consentPd: '' });
+  assert.equal(noPd.ok, false);
+  if (!noPd.ok) assert.deepEqual(noPd.errors, { consentPd: 'required' });
+
+  const legacyOnly = parseLegal(person);
+  assert.equal(legacyOnly.ok, false);
+  if (!legacyOnly.ok) assert.deepEqual(legacyOnly.errors, { consentOffer: 'required', consentPd: 'required' });
+});
+
+test('без LEGAL две галочки не требуются и не заменяют consent', () => {
+  const r = parse({ ...person, consent: undefined, consentOffer: 'on', consentPd: 'on' });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.deepEqual(r.errors, { consent: 'required' });
+  assert.equal(parse(person).ok, true);
 });

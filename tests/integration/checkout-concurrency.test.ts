@@ -4,6 +4,7 @@ import { canAccessCourse, getEnrollment } from '../../src/lib/access';
 import { newId } from '../../src/lib/db';
 import { seed, seedUserId } from '../../src/lib/db/seed';
 import { createTestDb, type TestDb } from '../../src/lib/db/testing';
+import { CHECKOUT_CONSENTS, prepareConsents, type PreparedConsent } from '../../src/lib/legal';
 import { markPaid, refundOrder } from '../../src/lib/orders/admin';
 import { createOrder } from '../../src/lib/orders/create';
 import type { CheckoutInput } from '../../src/lib/orders/validation';
@@ -17,6 +18,8 @@ const skip = PG ? false : 'нужен настоящий Postgres: TEST_DATABASE
 
 let db: TestDb;
 let salesId: string;
+/** Подготовленные согласия (в тестах LEGAL активен: демо). */
+let prepared: PreparedConsent[];
 const adminId = seedUserId('admin@crp.demo');
 
 let seq = 0;
@@ -37,8 +40,8 @@ function input(o: Partial<CheckoutInput> = {}): CheckoutInput {
 
 async function newUser(): Promise<string> {
   const id = newId();
-  await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, created_at)
-               VALUES (${id}, ${`race-${id}@example.kz`}, 'x', 'Пользователь', 'learner', 'ru', 1)`;
+  await db.sql`INSERT INTO users (id, email, password_hash, name, role, locale, email_verified_at, created_at)
+               VALUES (${id}, ${`race-${id}@example.kz`}, 'x', 'Пользователь', 'learner', 'ru', 1, 1)`;
   return id;
 }
 
@@ -61,10 +64,24 @@ before(async () => {
   const [row] = await db.sql<{ id: string }>`SELECT id FROM courses WHERE slug = 'sales-doubling'`;
   salesId = row?.id as string;
   assert.ok(salesId);
+  prepared = await prepareConsents(CHECKOUT_CONSENTS, 'ru');
   assert.equal(db.driver, 'postgres');
 });
 after(async () => {
   if (db) await db.close();
+});
+
+test('createOrder: два пользователя впервые принимают один текст одновременно — оба заказа, по одной строке legal_texts', { skip }, async () => {
+  const [before] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM legal_texts`;
+  assert.equal(Number(before?.n), 0, 'до первого заказа копий текстов нет');
+  const users = await Promise.all([newUser(), newUser(), newUser(), newUser()]);
+  const created = await Promise.all(users.map((userId) => createOrder(input(), { userId, consents: prepared })));
+  assert.equal(new Set(created.map((o) => o.id)).size, 4);
+  const texts = await db.sql<{ sha256: string }>`SELECT sha256 FROM legal_texts`;
+  assert.equal(texts.length, 2, 'оферта и согласие на ПДн — по одной строке');
+  assert.equal(new Set(texts.map((t) => t.sha256)).size, 2);
+  const [c] = await db.sql<{ n: number }>`SELECT count(*) AS n FROM consents WHERE text_sha256 IS NOT NULL`;
+  assert.equal(Number(c?.n), 8, 'у каждого заказа по два согласия');
 });
 
 test('createOrder: параллельные заказы одного пользователя — один заказ, все получают его', { skip }, async () => {
@@ -72,7 +89,7 @@ test('createOrder: параллельные заказы одного польз
     const userId = await newUser();
     const all = await Promise.all(
       Array.from({ length: 8 }, (_, i) =>
-        createOrder(input({ paymentMethod: i % 2 ? 'invoice' : 'kaspi' }), { userId }),
+        createOrder(input({ paymentMethod: i % 2 ? 'invoice' : 'kaspi' }), { userId, consents: prepared }),
       ),
     );
     assert.equal(new Set(all.map((o) => o.id)).size, 1, `попытка ${trial}: один заказ`);
@@ -85,7 +102,7 @@ test('createOrder: параллельные заказы одного польз
 test('refundOrder: одновременные возвраты двух оплаченных заказов — доступ закрыт, не переехал на возвращённый', { skip }, async () => {
   for (let trial = 0; trial < 25; trial++) {
     const userId = await newUser();
-    const a = await createOrder(input(), { userId });
+    const a = await createOrder(input(), { userId, consents: prepared });
     const b = await duplicate(a.id);
     assert.ok((await markPaid(a.id, adminId)).ok);
     assert.ok((await markPaid(b, adminId)).ok);
@@ -107,7 +124,7 @@ test('refundOrder: одновременные возвраты двух опла
 
 test('refundOrder: одновременные возвраты одного заказа — один успех, второй not_paid', { skip }, async () => {
   const userId = await newUser();
-  const a = await createOrder(input(), { userId });
+  const a = await createOrder(input(), { userId, consents: prepared });
   assert.ok((await markPaid(a.id, adminId)).ok);
   const results = await Promise.all(Array.from({ length: 4 }, () => refundOrder(a.id, adminId)));
   assert.equal(results.filter((r) => r.ok).length, 1);
