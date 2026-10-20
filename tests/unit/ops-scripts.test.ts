@@ -920,11 +920,19 @@ test('deploy.sh: сбой записи previous после переключен�
   const ctx = makeCtx();
   assert.equal(deploy(ctx, 'v0.1.0').status, 0);
   assert.equal(deploy(ctx, 'v0.2.0').status, 0);
+  const second = currentId(ctx);
   mkdirSync(join(ctx.root, 'shared', 'state', 'previous.tmp'));
   const r = deploy(ctx, 'v0.3.0');
-  assert.notEqual(r.status, 2, out(r));
+  assert.equal(r.status, 0, out(r));
   assert.ok(existsSync(join(ctx.root, 'current', 'RELEASE.json')), 'current разрешается в существующий релиз');
   assert.ok(releases(ctx).includes(currentId(ctx)));
+  assert.notEqual(currentId(ctx), second, 'переключение на новый релиз состоялось');
+  assert.ok(!existsSync(join(ctx.root, 'shared', 'state', 'previous')), 'устаревший previous удалён, а не оставлен на прошлом значении');
+  // Следующий откат без --to выбирает самый новый релиз, кроме текущего, — то есть v0.2.0.
+  rmSync(join(ctx.root, 'shared', 'state', 'previous.tmp'), { recursive: true });
+  const back = rollback(ctx);
+  assert.equal(back.status, 0, out(back));
+  assert.equal(currentId(ctx), second);
 });
 
 test('rollback.sh: сбой записи previous после переключения не обрывает перезагрузку', opts, () => {
