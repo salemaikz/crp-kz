@@ -144,11 +144,12 @@ test('админ: картинка, документ и ссылка в текс
   // предпросмотр: картинка загружена, карточка файла с «PDF · …»
   await page.getByTestId('mode-preview').click();
   const preview = page.locator('.adm-preview-card');
-  const img = preview.getByTestId('preview-image');
+  // карточка одна на урок и хранит файлы прошлых попыток: фильтруем по подписи прогона
+  const img = preview.locator(`img[alt="Схема ${run}"]`);
   await expect(img).toBeVisible();
   await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
-  await expect(preview.getByTestId('preview-file')).toContainText(/PDF · /);
-  await expect(preview.getByTestId('preview-file')).toContainText(docLabel);
+  const fileCard = preview.getByTestId('preview-file').filter({ hasText: docLabel });
+  await expect(fileCard).toContainText(/PDF · /);
 
   // админ получает документ: вложением, с защитными заголовками
   const res = await page.request.get(`/api/files/${ids.pdf}`);
@@ -239,7 +240,7 @@ test('админ: файл неверного типа отклоняется п
 
   // загрузка из APIRequestContext: сервер отклоняет запрос без Origin своего хоста
   const url = `/api/uploads?purpose=lesson_material&courseId=${ids.courseId}&lessonId=${ids.lessonId}`;
-  const headers = { 'Content-Type': 'application/octet-stream', 'X-Upload-Name': encodeURIComponent('лишний.png') };
+  const headers = { 'Content-Type': 'application/octet-stream', 'X-Upload-Name': encodeURIComponent(`лишний-${ids.run}.png`) };
   const noOrigin = await page.request.post(url, { data: png(16, 16), headers });
   expect(noOrigin.status()).toBe(403);
   expect(((await noOrigin.json()) as { error: string }).error).toBe('cross_site');
@@ -260,11 +261,11 @@ test('админ: страница «Файлы курса» — занято м
   await expect(used.getByTestId('file-delete')).toHaveCount(0);
 
   // файл из прошлого сценария нигде не используется: удаляется с подтверждением
-  const unused = page.getByRole('row').filter({ hasText: 'лишний.png' });
+  const unused = page.getByRole('row').filter({ hasText: `лишний-${ids.run}.png` });
   await expect(unused).toContainText('Не используется');
   page.once('dialog', (d) => void d.accept());
   await unused.getByTestId('file-delete').click();
-  await expect(page.getByRole('row').filter({ hasText: 'лишний.png' })).toHaveCount(0);
+  await expect(page.getByRole('row').filter({ hasText: `лишний-${ids.run}.png` })).toHaveCount(0);
   await expect(used).toBeVisible();
 });
 
