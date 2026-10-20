@@ -9,6 +9,7 @@ import { createCourse, deleteCourse, setCourseStatus, updateCourse } from './cou
 import { updateLesson } from './lessons';
 import { changeRole, grantAccess, revokeAccess } from './users';
 import { failure, type ActionResult } from './result';
+import { sendResetLink } from './userCard';
 
 type Loc = 'ru' | 'kz';
 
@@ -169,6 +170,24 @@ export async function revokeAccessAction(locale: string, userId: string, courseI
     await revokeAccess(actor, userId, courseId);
     return {};
   });
+}
+
+/**
+ * Ссылка для смены пароля из карточки пользователя. «Поставлено в очередь» (ok) — только когда письмо
+ * действительно встало в очередь; иначе error = причина (not_found, demo_seed, rate_limited, unavailable).
+ */
+export async function sendResetLinkAction(locale: string, userId: string): Promise<ActionResult> {
+  const loc = localeOf(locale);
+  const actor = await requireAdmin(loc);
+  try {
+    const res = await sendResetLink(actor, userId);
+    if (!res.sent) return { ok: false, error: res.reason };
+    revalidatePath(`/${loc}/admin`, 'layout');
+    return { ok: true };
+  } catch (e) {
+    unstable_rethrow(e);
+    return failure(e);
+  }
 }
 
 export async function changeRoleAction(locale: string, userId: string, formData: FormData): Promise<ActionResult> {

@@ -3,9 +3,11 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
 import { MailStatusBadge } from '@/components/admin/mail/MailStatusBadge';
+import { RunRemindersButton } from '@/components/admin/mail/RunRemindersButton';
 import '@/components/admin/mail/mail.css';
 import { Alert, Button, Chip, EmptyState, Table, type TableColumn } from '@/components/ui';
 import { isDemo } from '@/lib/env';
+import { isFeatureActive } from '@/lib/features';
 import { formatDate } from '@/lib/format';
 import { Link } from '@/lib/i18n/navigation';
 import {
@@ -18,6 +20,7 @@ import {
   type MailListRow,
   type MailStatus,
 } from '@/lib/mail';
+import { runRemindersAction } from '@/lib/mail/adminActions';
 import { adminPage, one, pageNumber } from '../_shared';
 
 type Props = {
@@ -52,13 +55,18 @@ export default async function AdminMailPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const rawStatus = one(sp.status);
   const status = (MAIL_STATUSES as readonly string[]).includes(rawStatus) ? (rawStatus as MailStatus) : null;
-  const page = pageNumber(sp.page);
+  const requestedPage = pageNumber(sp.page);
 
-  const [t, list] = await Promise.all([
+  const [t, first] = await Promise.all([
     getTranslations('admin.mail'),
-    listMail(user, { status, page }),
+    listMail(user, { status, page: requestedPage }),
   ]);
-  const pages = Math.max(1, Math.ceil(list.total / MAIL_PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(first.total / MAIL_PAGE_SIZE));
+  // страница за последней (письма удалили или ссылка устарела): показываем последнюю, а не «писем нет»
+  const page = Math.min(requestedPage, pages);
+  const list = page === requestedPage ? first : await listMail(user, { status, page });
+  // «Писем пока нет» — только при пустой очереди; при пустом фильтре подпись другая
+  const queueEmpty = list.rows.length === 0 && (status ? (await listMail(user, { page: 1 })).total === 0 : true);
   const mode = modeKey();
 
   const columns: TableColumn<MailListRow>[] = [
@@ -80,7 +88,11 @@ export default async function AdminMailPage({ params, searchParams }: Props) {
 
   return (
     <>
-      <AdminPageHead title={t('title')} lead={t('lead')} />
+      <AdminPageHead
+        title={t('title')}
+        lead={t('lead')}
+        actions={isFeatureActive('REMINDERS') ? <RunRemindersButton action={runRemindersAction.bind(null, locale)} /> : undefined}
+      />
       <Alert tone="info" data-testid="mail-mode">
         {t(`mode.${mode}`, { days: mailRetentionDays() })}
       </Alert>
@@ -100,7 +112,7 @@ export default async function AdminMailPage({ params, searchParams }: Props) {
 
       {list.rows.length === 0 ? (
         <EmptyState
-          title={t('empty')}
+          title={queueEmpty ? t('empty') : t('emptyFiltered')}
           action={
             status ? (
               <Button href="/admin/mail" variant="ghost">

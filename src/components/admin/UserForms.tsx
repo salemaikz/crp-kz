@@ -1,8 +1,9 @@
 'use client';
-// Формы карточки пользователя: выдать доступ к курсу, сменить роль.
+// Формы карточки пользователя: выдать доступ к курсу, сменить роль, отправить ссылку для смены пароля.
 import { Check } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Field, Input, Select, SubmitButton } from '@/components/ui';
+import { useState, useTransition } from 'react';
+import { Alert, Button, Field, Input, Select, SubmitButton } from '@/components/ui';
 import type { ActionResult } from '@/lib/admin/result';
 import { ErrorAlert } from './ErrorAlert';
 import { useActionForm } from './useActionForm';
@@ -91,5 +92,50 @@ export function RoleForm({ action, current, self }: RoleProps) {
         </p>
       )}
     </form>
+  );
+}
+
+/** Причины, по которым ссылка не ушла: у каждой свой текст в admin.users.sendResetFailed. */
+const RESET_REASONS = ['not_found', 'demo_seed', 'rate_limited', 'unavailable'] as const;
+
+/**
+ * «Отправить ссылку для смены пароля». Ответ «поставлено в очередь» показывается только при успехе
+ * действия; отказ (демо-аккаунт, лимит, недоступная очередь) — своим текстом.
+ */
+export function SendResetLinkButton({ action }: { action: () => Promise<ActionResult> }) {
+  const t = useTranslations('admin.users');
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<ActionResult | null>(null);
+
+  const run = () => {
+    setResult(null);
+    startTransition(async () => {
+      try {
+        setResult(await action());
+      } catch {
+        setResult({ ok: false, error: 'GENERIC' });
+      }
+    });
+  };
+
+  const reason = result && !result.ok ? RESET_REASONS.find((r) => r === result.error) : undefined;
+  return (
+    <div className="adm-action" data-testid="send-reset">
+      <Button type="button" variant="ghost" size="sm" onClick={run} disabled={pending} aria-busy={pending || undefined} data-testid="send-reset-button">
+        {pending && <span className="spinner" aria-hidden="true" />}
+        {t('sendReset')}
+      </Button>
+      {result?.ok && (
+        <p className="adm-savebar__ok" role="status" data-testid="send-reset-done">
+          <Check aria-hidden="true" /> {t('sendResetDone')}
+        </p>
+      )}
+      {result && !result.ok && reason && (
+        <Alert tone="warning" data-testid="send-reset-failed">
+          {t(`sendResetFailed.${reason}`)}
+        </Alert>
+      )}
+      {result && !result.ok && !reason && <ErrorAlert code={result.error} />}
+    </div>
   );
 }

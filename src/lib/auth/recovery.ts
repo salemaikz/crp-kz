@@ -25,29 +25,37 @@ function isDemoSeedAccount(user: { id: string; email: string }): boolean {
   return isDemo() && isSeedUser(user);
 }
 
+/** Исход запроса ссылки. Публичная форма его скрывает (нет перечисления аккаунтов), админ видит причину. */
+export type PasswordResetRequestResult =
+  | { sent: true }
+  | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' | 'unavailable' };
+
 /**
  * Запрос ссылки для смены пароля. Письмо уходит, только если аккаунт есть. Нет аккаунта, демо-аккаунт
- * сида в демо, сработал лимит писем — молча ничего: результат вызывающему не раскрывается (нет
- * перечисления аккаунтов). Вся работа — одна транзакция; если письмо не встало в очередь, она откатывается
- * и прежняя ссылка остаётся рабочей. actorId — админ, отправивший ссылку (NULL — публичная форма).
+ * сида в демо, сработал лимит писем, выключен флаг, письмо не встало в очередь — письма нет, причина
+ * возвращается вызывающему. Публичное действие её не показывает (всегда «отправлено»): иначе форма
+ * позволяла бы перечислять аккаунты. Вся работа — одна транзакция; если письмо не встало в очередь,
+ * она откатывается и прежняя ссылка остаётся рабочей. actorId — админ, отправивший ссылку
+ * (NULL — публичная форма).
  */
 export async function requestPasswordReset(input: {
   email: string;
   locale: Locale;
   actorId?: string | null;
   nowMs?: number;
-}): Promise<void> {
-  if (!isFeatureActive('PASSWORD_RESET')) return;
+}): Promise<PasswordResetRequestResult> {
+  if (!isFeatureActive('PASSWORD_RESET')) return { sent: false, reason: 'unavailable' };
   const t = input.nowMs ?? now();
   const email = normalizeRecipient(input.email);
   const db = await getDb();
   try {
-    await db.tx(async (sql) => {
+    return await db.tx(async (sql): Promise<PasswordResetRequestResult> => {
       const [user] = await sql<{ id: string; email: string; name: string }>`
         SELECT id, email, name FROM users WHERE email = ${email} FOR UPDATE`;
-      if (!user || isDemoSeedAccount(user)) return;
+      if (!user) return { sent: false, reason: 'not_found' };
+      if (isDemoSeedAccount(user)) return { sent: false, reason: 'demo_seed' };
       const secret = await issueToken(sql, { userId: user.id, email: user.email, kind: 'password_reset', nowMs: t });
-      if (!secret) return; // лимит писем: отвечаем как при успехе, ничего не отправляем
+      if (!secret) return { sent: false, reason: 'rate_limited' }; // лимит писем: ничего не отправляем
       const res = await enqueueMail(sql, {
         template: 'password_reset',
         locale: input.locale,
@@ -66,9 +74,11 @@ export async function requestPasswordReset(input: {
         entityId: user.id,
         createdAt: t,
       });
+      return { sent: true };
     });
   } catch (e) {
     if (!(e instanceof MailNotQueued)) throw e;
+    return { sent: false, reason: 'unavailable' };
   }
 }
 

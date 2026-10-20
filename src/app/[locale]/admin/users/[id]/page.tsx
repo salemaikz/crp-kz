@@ -3,11 +3,14 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/admin/ActionButton';
 import { AdminPageHead } from '@/components/admin/AdminPageHead';
-import { GrantAccessForm, RoleForm } from '@/components/admin/UserForms';
+import { GrantAccessForm, RoleForm, SendResetLinkButton } from '@/components/admin/UserForms';
+import { UserConsents } from '@/components/admin/UserConsents';
 import { Avatar, Badge, Card, EmptyState, Table, type BadgeTone } from '@/components/ui';
 import { getUserDetail, listCourseOptions, type UserEnrollment } from '@/lib/admin';
-import { grantAccessAction, changeRoleAction, revokeAccessAction } from '@/lib/admin/actions';
+import { grantAccessAction, changeRoleAction, revokeAccessAction, sendResetLinkAction } from '@/lib/admin/actions';
+import { getUserConsents } from '@/lib/admin/userCard';
 import { t as l10n } from '@/lib/content/l10n';
+import { isFeatureActive } from '@/lib/features';
 import { formatDate } from '@/lib/format';
 import { adminPage } from '../../_shared';
 
@@ -37,6 +40,10 @@ export default async function AdminUserPage({ params }: Props) {
     listCourseOptions(admin),
   ]);
   const isSelf = user.id === admin.id;
+  // кнопка ссылки — при PASSWORD_RESET, блок согласий — при LEGAL; данные согласий отдаёт только админу
+  const canSendReset = isFeatureActive('PASSWORD_RESET');
+  const showConsents = isFeatureActive('LEGAL');
+  const consents = showConsents ? await getUserConsents(admin, user.id) : [];
 
   const columns = [
     {
@@ -119,6 +126,7 @@ export default async function AdminUserPage({ params }: Props) {
             </span>
           </span>
         }
+        actions={canSendReset ? <SendResetLinkButton action={sendResetLinkAction.bind(null, locale, user.id)} /> : undefined}
         meta={
           <>
             <span className="meta" data-testid="user-email">{user.email}</span>
@@ -177,6 +185,8 @@ export default async function AdminUserPage({ params }: Props) {
           <Table columns={columns} rows={enrollments} rowKey={(e) => e.id} caption={<span className="visually-hidden">{t('enrollments.title')}</span>} />
         )}
       </section>
+
+      {showConsents && <UserConsents consents={consents} locale={locale} />}
 
       <Card as="section" padding="lg" aria-labelledby="u-grant">
         <header className="adm-card__head">

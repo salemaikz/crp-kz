@@ -4,6 +4,8 @@ import { enroll, enrollmentState, type Enrollment } from '../access';
 import { isManagerOf } from '../auth';
 import { getDb, now } from '../db';
 import { writeAudit } from '../audit';
+import { isFeatureActive } from '../features';
+import { queueAssignmentNotices } from '../reminders/assignment';
 import { listAssignableCourses } from './assignable';
 import { TeamError } from './types';
 
@@ -85,6 +87,17 @@ export async function assignCourse(input: AssignInput): Promise<AssignResult> {
         sql,
       );
       assigned.push(userId);
+    }
+
+    // Письмо «назначен курс» — в этой же транзакции: нет назначения — нет и письма
+    if (assigned.length > 0 && isFeatureActive('REMINDERS')) {
+      await queueAssignmentNotices(sql, {
+        orgId: input.orgId,
+        courseId: course.id,
+        userIds: assigned,
+        dueAt,
+        nowMs,
+      });
     }
 
     await writeAudit(sql, {
