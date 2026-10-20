@@ -274,13 +274,14 @@ export async function migrate(db: DbHandle, dir?: string, opts?: { lockTimeoutMs
 /** DB_MIGRATE_ON_START=1 → да; '0' → нет; иначе да, если isDemo(env) или NODE_ENV — development/test.
  *  Крон и CLI без NODE_ENV с DATABASE_URL миграции не накатывают (D-026). */
 export function autoMigrateEnabled(env?: Env): boolean;
-/** migrate (autoMigrate) или assertMigrated, затем сид, если нужен (seed по умолчанию — isDemo() || SEED_DEMO=1). */
+/** migrate (autoMigrate) или assertMigrated, затем сид, если нужен (seed по умолчанию — seedPermitted(env):
+ *  isDemo() || (SEED_DEMO=1 && NODE_ENV≠production); D-040, ops §3.13). */
 export async function prepareDb(db: DbHandle, opts?: { autoMigrate?: boolean; seed?: boolean }): Promise<void>;
 // init(): openDriver() → refreshSnapshotTime() (только демо-снимок) → prepareDb(db)
 ```
 
-Шаблон любого скрипта крона или CLI (`mail-worker`, `send-reminders`, `files-sweep`, `create-admin`,
-`ops-preflight --db`) — общий вход `openScriptDb()` из `src/lib/db/` (волна 0):
+Шаблон любого скрипта крона или CLI (`mail-worker`, `send-reminders`, `files-sweep`, `create-admin`)
+— общий вход `openScriptDb()` из `src/lib/db/` (волна 0):
 ```ts
 const close = await openScriptDb();   // openDriver → отказ для PGlite в памяти → prepareDb({ seed: false }) → setDb
 try {
@@ -289,6 +290,9 @@ try {
   await close();
 }
 ```
+Исключение — `ops-preflight --db`: он открывает голый драйвер `openDriver()` без `prepareDb`,
+потому что выкладка запускает его до `db:migrate` (ops §3.5, шаг 5), и `assertMigrated` ронял бы
+его `MigrationsPendingError` на каждой новой миграции. Его проверки только читают (ops §3.15).
 `npm run db:status` (`db-migrate.ts --status`) — только чтение, коды выхода по ops §3.13: 0 — всё
 накатано, 3 — есть ненакатанные, 1 — ошибка (в том числе БД в памяти и неверный аргумент). Расширение закрытых списков CHECK — D-037 и BUILD §2.
 Лог скриптов — только счётчики и id, без email, имён и текстов.
@@ -320,7 +324,7 @@ kz — с пометкой «требует проверки носителем�
 | `user.email_verify_request` | user / id | сам | 2A | Отправлено письмо для подтверждения email: {user} | Email-ды растау хаты жіберілді: {user} |
 | `user.email_verify` | user / id | сам | 2A | Email подтверждён: {user} | Email расталды: {user} |
 | `user.create_admin` | user / id | NULL (CLI) | 5A | Создан администратор: {user} | Әкімші құрылды: {user} |
-| `user.role_change` (есть) | user / id | NULL (CLI `--promote`), meta `{to:'admin', via:'cli'}` | 5A | — | — |
+| `user.role_change` (есть) | user / id | NULL (CLI `--promote`), meta `{to:'admin', via:'cli', sessionsRevoked}`; с `--identity-confirmed` ещё `{identity:'offline', passwordReset:true, emailVerified}` (D-039, 5A-хвосты) | 5A | — | — |
 | `org.create` | org / id | NULL (CLI) | 5A | Создана организация | Ұйым құрылды |
 | `org.member_add` | org / id, meta `{userId, role}` | NULL (CLI) | 5A | В организацию добавлен сотрудник | Ұйымға қызметкер қосылды |
 | `mail.fail` | mail / mailId, meta `{template}` | NULL | 4A | Письмо не отправлено после 5 попыток | Хат 5 әрекеттен кейін жіберілмеді |
@@ -562,7 +566,8 @@ NEXT_TELEMETRY_DISABLED=
 - **4A.** Сид не создаёт строк `mail_outbox`: время в `dedupe_key` и `params` при сдвиге снимка
   не меняется. Скрипты — через `openScriptDb()`.
 - **5A.** `/api/health` ловит `MigrationsPendingError` из `getDb()` и отвечает 503. Preflight
-  предупреждает о `SEED_DEMO=1` в production. `db:status` уже есть (волна 0). После волны 3:
+  даёт ошибку `ERROR seed_demo_set` при `SEED_DEMO=1` (ops §3.15): в пустую боевую БД сид засеял
+  бы админа с опубликованным паролем уже на проверочном старте. `db:status` уже есть (волна 0). После волны 3:
   preflight предупреждает (`WARN`), если в production включены `FEATURE_EMAIL_VERIFY` или
   `FEATURE_LEGAL`: они включают и предложенные правила D-032 (заказ только с подтверждённого
   email) и D-035 (две галочки), которые ждут владельца.
@@ -598,11 +603,13 @@ NEXT_TELEMETRY_DISABLED=
   - **4A.** Кнопка «Отправить ссылку для смены пароля» в карточке пользователя вызывает
     `requestPasswordReset({ email, locale: user.locale, actorId })` из `src/lib/auth/recovery.ts`
     (он сам пишет `user.password_reset_request` с `actorId`) и пишет `user.password_reset_link`.
-    **После волны 2:** `requestPasswordReset` сейчас возвращает `void` и молчит (сид в демо, лимит,
-    письмо не встало в очередь) — у админа это ложный успех и ложная запись журнала. 4A меняет его на
+    **После волны 2:** `requestPasswordReset` возвращал `void` и молчал (сид в демо, лимит,
+    письмо не встало в очередь) — у админа это ложный успех и ложная запись журнала. 4A сделал
     результат `{ sent: true } | { sent: false; reason: 'not_found' | 'demo_seed' | 'rate_limited' |
-    'global_cap' | 'unavailable' }` — так сделано в 4A (`unavailable` — флаг выключен или письмо не встало в очередь; в список
-    файлов 4A добавляется `src/lib/auth/recovery.ts`), публичное
+    'global_cap' | 'unavailable' }` (`global_cap` — сработал общий часовой предохранитель писем
+    категории auth на всех получателей, `MAIL_AUTH_HOURLY_CAP`, по умолчанию 300; `unavailable` —
+    флаг выключен или письмо не встало в очередь; в список файлов 4A добавлен
+    `src/lib/auth/recovery.ts`), публичное
     `requestPasswordResetAction` по-прежнему всегда отвечает «отправлено», а `sendResetLinkAction`
     пишет `user.password_reset_link` и отвечает `sendResetDone` только при `sent: true`, иначе —
     отдельные тексты (новые ключи `admin.json` в этой задаче разрешены, исключение из К-6). Тест
@@ -820,6 +827,158 @@ NEXT_TELEMETRY_DISABLED=
 Если владелец даст сервер раньше, волну 5 можно поставить на место волны 4: её зоны
 пересекаются только с W0.
 
+### Волна 5 — хвосты после ревью
+
+Ревью волны 5 нашло вопросы доступа и расхождения документов. Решения — D-039 (повышение до
+админа), D-040 (сид в production), D-041 (граница пользователей ОС); ops.md сведён с кодом и
+комплектом. Задачи ниже независимы по файлам и идут параллельно (не больше двух worktree сразу).
+
+**5A-хвосты. create-admin и сид в рантайме** — T2→T1, `builder`; ревью Opus (доступы, сид).
+Зависит от 5A.
+- ТЗ: D-039, D-040; ops §3.13 «Сид в рантайме», §3.16.
+- Файлы: `src/lib/ops/{createAdmin,createAdminArgs}.ts`; `scripts/create-admin.ts`;
+  `src/lib/db/seed-guard.ts`; `src/lib/db/index.ts` (только `shouldSeed` и предупреждение);
+  `scripts/db-seed.ts` (только если меняется текст); `.env.example` (только комментарий к
+  `SEED_DEMO`); `tests/integration/{ops-create-admin,ops-db-seed}.test.ts`;
+  `tests/unit/{db-seed-guard,ops-create-admin-text}.test.ts` (новые);
+  `tests/integration/db-seed-runtime.test.ts` (новый).
+- Шаги:
+  1. `seed-guard.ts`: `export function seedPermitted(env = process.env): boolean` —
+     `isDemo(env) || (env.SEED_DEMO?.trim() === '1' && env.NODE_ENV !== 'production')`.
+     `seedRefusal` = `seedPermitted ? null : текст`; при `SEED_DEMO=1` и `NODE_ENV=production`
+     текст свой: «SEED_DEMO=1 в production не действует без DEMO_MODE=1: демо-учётки с
+     публичным паролем в боевую базу не пишутся. Администратора создаёт admin:create». Без
+     пароля, адреса БД и значений переменных.
+  2. `index.ts`: `shouldSeed()` = `seedPermitted(process.env)`. Если `SEED_DEMO=1`, а сид не
+     разрешён, — один `console.warn` на процесс (флаг на `globalThis`, как
+     `__crpSnapshotWarned`): «SEED_DEMO=1 проигнорирован: production без DEMO_MODE=1». Не
+     бросать: приложение работает, опасное действие просто не выполняется.
+  3. `createAdminArgs.ts`: булев флаг `--identity-confirmed` (форма `=…` — usage); без
+     `--promote` — usage. Поле `identityConfirmed` в `CreateAdminArgs`. Обновить
+     `CREATE_ADMIN_USAGE`. Чистая функция `unverifiedMessage(env = process.env): string`:
+     всегда — про `--identity-confirmed` («сотрудник рядом и лично подтвердил, что адрес и ящик
+     его; он задаст новый пароль, все сессии аккаунта закроются, адрес будет отмечен
+     подтверждённым»); фраза «или пусть сотрудник подтвердит адрес письмом или восстановлением
+     пароля» — только при `isFeatureActive('EMAIL_VERIFY', env) || isFeatureActive('PASSWORD_RESET', env)`.
+  4. `createAdmin.ts`: вход `identityConfirmed?: boolean`; результат + `sessionsRevoked: number`,
+     `identityConfirmed: boolean`. Пароль при `promote && identityConfirmed` обязателен (нет —
+     `validation`), проверяется как при создании (`passwordProblem`, ≥ 12 — иначе
+     `weak_password`), хэш — до транзакции. В транзакции после `SELECT … FOR UPDATE`:
+     уже `admin` → ничего не менять, журнала нет; `email_verified_at IS NULL && !identityConfirmed`
+     → `unverified`; иначе `UPDATE users SET role='admin'` (+ при `identityConfirmed`
+     `password_hash`, `email_verified_at = COALESCE(email_verified_at, t)`), `DELETE FROM sessions
+     WHERE user_id = … RETURNING id` → `sessionsRevoked`; при `identityConfirmed` ещё
+     `UPDATE auth_tokens SET used_at = t WHERE user_id = … AND used_at IS NULL` и `cancelSecrets`
+     (`src/lib/mail/outbox.ts`) для `password_reset` и `email_verify`. Журнал — один
+     `user.role_change` через `writeAudit`, `actorId: null`, meta `{to:'admin', via:'cli',
+     sessionsRevoked}` (+ `{identity:'offline', passwordReset:true, emailVerified:<был NULL>}`).
+     Новых действий журнала нет. Обновить комментарий в начале блока promote: «пароль, имя и
+     сессии не трогаем» больше не верно.
+  5. `scripts/create-admin.ts`: пароль читается при `!promote` или `promote && identityConfirmed`;
+     для `unverified` — `unverifiedMessage()`; коды выхода без изменений (`unverified` — 3).
+     Вывод: «Роль admin выдана: <id>. Закрыто сессий: N.»; с `--identity-confirmed` ещё
+     «Пароль заменён, адрес отмечен подтверждённым.»; уже админ — «Пользователь уже
+     администратор, ничего не менялось: <id>». Email и пароль не печатаются.
+  6. `.env.example`: комментарий к `SEED_DEMO` — «только разработка и тесты; в production без
+     DEMO_MODE=1 не действует (D-040)».
+- Готово: `--promote` закрывает сессии повышаемого и только его; неподтверждённый адрес без
+  флага — код 3, ничего не изменено, сообщение не советует недоступного в production; с
+  `--identity-confirmed` — новый пароль, адрес подтверждён, сессии и ссылки погашены, один
+  `user.role_change` без ПДн; `SEED_DEMO=1` в production без `DEMO_MODE=1` не сеет ни
+  `getDb()`, ни `db:seed`, приложение при этом стартует; Netlify (`NODE_ENV=production`,
+  `DEMO_MODE=1`) и e2e сеют как раньше.
+- Тесты:
+  - `tests/unit/db-seed-guard.test.ts` — матрица `seedPermitted`: `{DEMO_MODE:1, NODE_ENV:production}`
+    → true; `{NODE_ENV:production, DATABASE_URL, SEED_DEMO:1}` → false; то же + `DEMO_MODE:1` →
+    true; `{NODE_ENV:development|test, DATABASE_URL, SEED_DEMO:1}` → true; `{DATABASE_URL}` →
+    false; `{}` → true; `{VERCEL:1, NODE_ENV:production}` → true; `{DATABASE_URL, SEED_DEMO:1}`
+    без `NODE_ENV` → true (скрипт под tsx; остаточный риск D-040). `seedRefusal` в production —
+    текст без `demo12345`, пароля и хоста из `DATABASE_URL`.
+  - `tests/integration/db-seed-runtime.test.ts` (отдельный файл: меняет `process.env` и проверяет
+    «один раз на процесс») — пустая мигрированная БД (`createTestDb({ register: false })`),
+    `NODE_ENV=production`, `SEED_DEMO=1`, без `DEMO_MODE`: `prepareDb(db, { autoMigrate: false })`
+    дважды → `users` пуста, `console.warn` с «SEED_DEMO» ровно один раз; затем `DEMO_MODE=1` →
+    `prepareDb` засевает. Окружение восстанавливается в `finally`.
+  - `tests/integration/ops-db-seed.test.ts` — `db-seed` с `PGLITE_DIR`, `NODE_ENV=production`,
+    `SEED_DEMO=1` → код 1, `users` пуста, в stderr нет `demo12345`; прежние проверки остаются.
+  - `tests/integration/ops-create-admin.test.ts` — по ops §7.2: сессии повышаемого удалены, чужие
+    целы, `meta` = `{to, via, sessionsRevoked}`; уже админ — сессии целы, журнала нет;
+    `unverified` — сессии и роль целы; `identityConfirmed`: хэш новый (`verifyPassword`), старый не
+    подходит, `email_verified_at` задан, `sessions` пуста, все `auth_tokens` с `used_at`, письма с
+    секретами `cancelled` и без `secret`, в журнале нет email и имени; без пароля → `validation`,
+    короткий → `weak_password`, ничего не изменено; разбор: `--identity-confirmed` без `--promote`
+    и `--identity-confirmed=1` → usage. CLI (как существующие, `PGLITE_DIR` + `--allow-demo`):
+    `--promote --identity-confirmed --password-stdin` → код 0, ни email, ни пароль не напечатаны;
+    `--promote` неподтверждённого с `FEATURE_EMAIL_VERIFY=0 FEATURE_PASSWORD_RESET=0` → код 3, в
+    stderr есть `--identity-confirmed` и нет «подтвердит адрес письмом».
+  - `tests/unit/ops-create-admin-text.test.ts` — `unverifiedMessage`: production-окружение с
+    выключенными флагами — без фразы о письме; демо — с ней; оба — с `--identity-confirmed`.
+
+**5B-хвосты. Комплект: вторая копия файлов, offsite, граница пользователей ОС** —
+`backup.sh`, `healthcheck.sh`, `install-ops.sh` — T2→T1 (ревью `architect`); остальное — T1.
+Зависит от 5B.
+- ТЗ: D-041; ops §3.1 (пометки «5B-хвосты»), §3.7, §3.9, §3.10, §3.16 (текст для RUNBOOK §3).
+- Файлы: `deploy/bin/{backup,healthcheck,install-ops,restore}.sh`; `deploy/cron/crp.cron`;
+  `deploy/logrotate/crp`; `deploy/env/backup.env.example`; `docs/ops/RUNBOOK.md`;
+  `tests/unit/{ops-scripts,ops-deploy-files}.test.ts`; `tests/fixtures/ops-shims/**`.
+- Шаги:
+  1. Вторая копия файлов: в `backup.sh --files` адрес `BACKUP_FILES_REMOTE` и ключ
+     `BACKUP_FILES_REMOTE_SSH_KEY`; пустые — запасные `BACKUP_REMOTE` и `BACKUP_REMOTE_SSH_KEY`.
+     Пример и комментарий в `deploy/env/backup.env.example` (ключ для files — свой, `crp` 0600,
+     свой каталог и `rrsync -wo -no-del -no-overwrite`); RUNBOOK §6.1 — как завести два ключа.
+  2. `healthcheck.sh check_offsite`: `backup-status.json` — при заданном `BACKUP_REMOTE`;
+     `files-status.json` — только если `STORAGE_DIR` непуст (то же условие, что `backup_files`),
+     задан `BACKUP_FILES_REMOTE` или `BACKUP_REMOTE`, и статус моложе 26 ч (старый статус уже
+     даёт `backup_files=fail`, второй раз его не учитываем).
+  3. D-041, журнал бэкапа БД: `/var/log/crp-backup/backup.log` (каталог postgres:adm 0750 создаёт
+     `install-ops.sh`), строки крона, блок logrotate `su postgres adm`; `/var/log/crp` — 0750
+     crp:adm. RUNBOOK §1, §7, §8 (таблица «что делать»): новые пути; на уже установленном сервере
+     старый `/var/log/crp/backup/` удалить после переноса.
+  4. D-041, статусы: `/var/lib/crp-ops` — 1775 postgres:crp (sticky: crp не удаляет и не
+     переименовывает файлы postgres). `backup.sh write_status`: временный файл через `mktemp` в
+     `$OPS_DIR`, `chmod 644` временного файла, затем `mv -f`; `chmod` после `mv` убрать (он шёл бы
+     по подменённой ссылке). То же — для `monitor-state.json` в `healthcheck.sh`.
+  5. `restore.sh --force-prod`: порт проверки «приложение остановлено» из
+     `shared/instance.json` (если читается), иначе `CRP_APP_PORT`/3000.
+  6. RUNBOOK §3: `--promote` (сессии закрываются, человек входит заново) и порядок
+     `--promote --identity-confirmed`: сотрудник рядом, сам читает адрес в команде, подтверждает
+     ящик и вводит новый пароль; коды выхода 0/2/3/1; в журнал — только `user.role_change` без ПДн.
+- Готово: файлы и база получают вторую копию разными ключами; устаревший или ненужный
+  `files-status.json` не включает `backup_offsite`; ни один путь, куда пишет `postgres`, не лежит
+  в каталоге, где `crp` может подменить файл или подкаталог.
+- Тесты: `ops-scripts` — `--files` передаёт в ssh `-i <BACKUP_FILES_REMOTE_SSH_KEY>` и шлёт в
+  `BACKUP_FILES_REMOTE`; без них — запасные общие; `check_offsite`: пустой `STORAGE_DIR` и
+  `files-status.json` с `offsite=false` → проверки нет или `ok`; статус старше 26 ч не учитывается;
+  подложенная ссылка `<status>.tmp`/предсказуемое имя не трогает цель, статус 0644, временных
+  файлов не остаётся. `ops-deploy-files` — путь журнала бэкапа в cron и logrotate,
+  `install-ops.sh` ставит `/var/log/crp` 0750 и `/var/lib/crp-ops` 1775.
+
+**4B-e2e. Устойчивость `uploads.spec.ts`** — T1, `builder`; сделано
+(`bc34f0f`, `49ed5e5`): независимость от прежнего состояния через уникальную подпись прогона,
+перекрытие двух загрузок через `page.route`, правки урока при задержанном ответе загрузки.
+- Хвост: перед каждым `expect.poll(… naturalWidth …)` — `await img.scrollIntoViewIfNeeded()`:
+  после 4+ попыток на одном сервере в уроке много блоков, ленивая картинка вне экрана не
+  грузится, и опрос висит до таймаута.
+- Файлы: `tests/e2e/uploads.spec.ts`.
+- Готово и критерий: три прогона `uploads.spec.ts` подряд на одном заранее запущенном `next start`
+  (`DEMO_MODE=1`, без перезапуска между прогонами) — зелёные; полный `npm run test:e2e` зелёный.
+
+**mail-хвосты** — T1, `builder` или `mechanic` для текста.
+- `docs/lms/design/mail-account.md` (~стр. 410, `purgeMail`): «удаляет письма старше
+  `MAIL_RETENTION_DAYS` (не меньше 31: меньшее значение поднимается до 31 с одним
+  предупреждением на процесс)».
+- `src/lib/mail/worker.ts` (~стр. 172, комментарий `purgeMail`): то же уточнение.
+- Тест: новый файл `tests/unit/mail-retention-warn.test.ts` — `mailRetentionDays` с `'10'`,
+  `'5'` и снова `'10'` → `console.warn` ровно один раз. Отдельный файл обязателен: флаг
+  предупреждения модульный, а `node --test` запускает каждый файл в своём процессе
+  (`mail-config.test.ts` уже вызывает предупреждение в своём процессе).
+
+**Вне волны 5** (заводятся issue):
+- зона admin (T1, ревью Opus): `changeRole` в `src/lib/admin/users.ts` при повышении до `admin`
+  закрывает сессии пользователя в той же транзакции (правило D-039 для UI); `meta` журнала без
+  `name` (PLAN §2.6: без ФИО), подпись берёт имя по `entityId`;
+- оркестратор (T0): BUILD §2 «Сид» — условие сида по D-040.
+
 ### Итог (после волны 5)
 
 - `tester` (T1): полный прогон на PGlite и Postgres 16, сборка, e2e; отчёт о флаки-тестах.
@@ -837,6 +996,7 @@ NEXT_TELEMETRY_DISABLED=
 | 3 | 3A регистрация и покупка ‖ 3B файлы: сервер | T2→T1 ‖ T2→T1 | 1B, 2A ‖ W0 |
 | 4 | 4A напоминания, воркер, карточка ‖ 4B файлы: интерфейс | T2→T1 ‖ T1 | 1A, 1B, 2A ‖ 3B |
 | 5 | 5A ops: код ‖ 5B ops: комплект и RUNBOOK | T2→T1 ‖ T2→T1/T1 | W0 ‖ W0 |
+| 5-хвосты | 5A-хвосты ‖ 5B-хвосты; 4B-e2e, mail-хвосты | T2→T1 ‖ T2→T1/T1; T1, T1 | 5A ‖ 5B; 4B, 4A |
 | итог | регрессия и ревью | T1 + T2 | все |
 
 Пересечение зон внутри волн проверено по спискам файлов: общих путей нет.
