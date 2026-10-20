@@ -147,7 +147,11 @@ test('админ: картинка, документ и ссылка в текс
   // карточка одна на урок и хранит файлы прошлых попыток: фильтруем по подписи прогона
   const img = preview.locator(`img[alt="Схема ${run}"]`);
   await expect(img).toBeVisible();
-  await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  await expect.poll(async () => {
+      // ленивая картинка грузится в зоне видимости: подводим её перед каждым опросом
+      await img.scrollIntoViewIfNeeded();
+      return img.evaluate((el) => (el as HTMLImageElement).naturalWidth);
+    }).toBeGreaterThan(0);
   const fileCard = preview.getByTestId('preview-file').filter({ hasText: docLabel });
   await expect(fileCard).toContainText(/PDF · /);
 
@@ -172,7 +176,11 @@ test('слушатель в демо: картинка видна, докуме�
     await expect(figure).toHaveCount(1);
     const img = figure.locator('img');
     await expect(figure).toContainText(`Рисунок ${run}`);
-    await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(async () => {
+      // ленивая картинка грузится в зоне видимости: подводим её перед каждым опросом
+      await img.scrollIntoViewIfNeeded();
+      return img.evaluate((el) => (el as HTMLImageElement).naturalWidth);
+    }).toBeGreaterThan(0);
     const imgRes = await page.request.get(`/api/files/${ids.png}`);
     expect(imgRes.status()).toBe(200);
     expect(imgRes.headers()['content-type']).toBe('image/png');
@@ -296,7 +304,11 @@ test('админ: обложка курса видна гостю в катал�
     await gp.goto('/ru/courses');
     const img = gp.locator(`img[src="/api/files/${cover?.id}"]`).first();
     await expect(img).toBeVisible();
-    await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(async () => {
+      // ленивая картинка грузится в зоне видимости: подводим её перед каждым опросом
+      await img.scrollIntoViewIfNeeded();
+      return img.evaluate((el) => (el as HTMLImageElement).naturalWidth);
+    }).toBeGreaterThan(0);
   } finally {
     await guest.close();
   }
