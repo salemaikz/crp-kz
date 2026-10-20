@@ -825,3 +825,46 @@ test('restore.sh --force-prod: порт проверки из shared/instance.js
   assert.match(r.stderr, /порту 3456/);
   assert.match(readFileSync(calls, 'utf8'), /127\.0\.0\.1:3456\/api\/health/);
 });
+
+// --- install-ops.sh: от root ничего не делается по ссылкам под корнем, порт из instance.json — только число.
+
+function installOpsDry(root: string) {
+  return spawnSync('bash', [join(BIN, 'install-ops.sh'), '--dry-run', '--domain', 'x.kz', '--root', root], { encoding: 'utf8' });
+}
+
+test('install-ops.sh --dry-run: releases — ссылка, отказ с кодом 2 до любых действий', opts, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crp-install-'));
+  temps.push(dir);
+  const root = join(dir, 'srv');
+  mkdirSync(join(root, 'shared'), { recursive: true });
+  mkdirSync(join(dir, 'elsewhere'));
+  symlinkSync(join(dir, 'elsewhere'), join(root, 'releases'));
+  const r = installOpsDry(root);
+  assert.equal(r.status, 2, out(r));
+  assert.match(r.stderr, /символическая ссылка/);
+  assert.doesNotMatch(r.stdout, /^\+ /m, 'до проверки ссылок ничего не выполняется');
+});
+
+test('install-ops.sh --dry-run: port в instance.json не число — отказ с кодом 2', opts, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crp-install-'));
+  temps.push(dir);
+  const root = join(dir, 'srv');
+  mkdirSync(join(root, 'shared'), { recursive: true });
+  writeFileSync(join(root, 'shared', 'instance.json'), JSON.stringify({ name: 'crp', port: '3000;x' }));
+  const r = installOpsDry(root);
+  assert.equal(r.status, 2, out(r));
+  assert.match(r.stderr, /недопустимый port/);
+});
+
+test('install-ops.sh --dry-run: обычная раскладка проходит, под корнем всё от crpdeploy', opts, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crp-install-'));
+  temps.push(dir);
+  const root = join(dir, 'srv');
+  mkdirSync(root);
+  const r = installOpsDry(root);
+  assert.equal(r.status, 0, out(r));
+  // «+ write» и «+ render» — пометки пробного прогона, а не команды (настоящая запись instance.json — тоже от crpdeploy).
+  const underRoot = r.stdout.split('\n').filter((l) => l.startsWith('+ ') && !/^\+ (write|render) /.test(l) && l.includes(`${root}/`));
+  assert.ok(underRoot.length > 0, out(r));
+  for (const l of underRoot) assert.match(l, /^\+ runuser -u crpdeploy -- /, l);
+});

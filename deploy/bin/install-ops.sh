@@ -108,10 +108,12 @@ if [[ ! -e "$ROOT/shared/instance.json" ]]; then
     echo "+ write $ROOT/shared/instance.json"
   else
     tmp_inst="$(mktemp /etc/crp/instance.XXXXXX)"
+    trap 'rm -f "$tmp_inst"' EXIT
     jq -n --argjson port "${PORT:-3000}" '{name: "crp", port: $port, configDir: "/etc/crp", smokePort: 3109, deployBranch: "main"}' >"$tmp_inst"
     chmod 0644 "$tmp_inst"
     if ! runuser -u crpdeploy -- install -T -m 0644 -g crp "$tmp_inst" "$ROOT/shared/instance.json"; then rm -f "$tmp_inst"; exit 2; fi
     rm -f "$tmp_inst"
+    trap - EXIT
   fi
 fi
 # Файл принадлежит crpdeploy: порт берём только если это обычный файл и число (дальше он попадёт в конфиг nginx).
