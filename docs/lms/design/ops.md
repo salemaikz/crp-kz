@@ -1,6 +1,8 @@
 # Проект «ops»: выкладка на сервер ЦРП в Казахстане (#24, ops.1)
 
 > Проект до реализации. После реализации источник истины — код и docs/lms/BUILD.md; решения — DECISIONS.md. Статусы решений — только в DECISIONS.md.
+> После волны 5 (2026-10-20) §3 и §7 сверены с кодом, `deploy/**` и `docs/ops/RUNBOOK.md`; что
+> ещё меняется, помечено «5B-хвосты»/«D-039…D-041» и расписано в PLAN §5, «Волна 5 — хвосты после ревью».
 
 Уровень: T2 (доступы, ПДн, миграции, бэкапы). Автор: architect. Код не написан, файлы репозитория
 не менялись.
@@ -49,7 +51,7 @@
 
 **Решения владельца остаются открытыми** (§9): хостер и размер сервера, домен, где лежит
 вторая копия бэкапов в РК, у кого ключ расшифровки, канал алертов, внешний uptime-монитор,
-список людей с SSH, стейдж.
+список людей с SSH, стейдж, домен адресов администраторов.
 
 ---
 
@@ -178,27 +180,36 @@ schema_migrations`. От имени `crp_app` это ошибка: в PG15+ пр
 ```
 /srv/crp/                          root:crp 0751
   repo.git/                        bare-зеркало github.com/salemaikz/crp-kz (crpdeploy)
-  releases/<UTC-ts>-<tag>/         crpdeploy:crp 0750; .next/cache — 2770 (пишет crp)
+  releases/                        crpdeploy:crp 2750 — setgid: новые релизы получают группу crp
+    <UTC-ts>-<tag>/                .next/cache — 2770 (пишет crp)
      RELEASE.json                  {id, tag, sha, builtAt}
      .env.production -> /etc/crp/app.env
   current -> releases/<id>         атомарная замена: ln -s … current.tmp && mv -T current.tmp current
-  shared/
-     instance.json                 {"name":"crp","port":3000,"configDir":"/etc/crp","smokePort":3109}
-     static/_next/static/          объединение .next/static всех живых релизов (читает nginx)
+  shared/                          crpdeploy:crp 0755
+     instance.json                 {"name":"crp","port":3000,"configDir":"/etc/crp","smokePort":3109,"deployBranch":"main"}
+     static/_next/static/          объединение .next/static всех живых релизов (читает nginx; D755/F644)
      maintenance/maintenance.html
-     state/{previous,deploy.log}
-/etc/crp/                          root:crp 0750
+     state/                        0750: previous, deploy.log, deploy.lock, build-<id>.log, smoke-<id>.log
+/etc/crp/                          root:crp 0751 (x для всех: postgres читает backup.env)
   app.env        root:crp 0640     переменные приложения (DATABASE_URL роли crp_app, …)
   migrate.env    root:crpdeploy 0640  DATABASE_URL роли crp_owner, MIGRATE_LOCK_TIMEOUT_MS
-  backup.env     root:postgres 0640   настройки бэкапа
-  monitor.env    root:crp 0640     настройки алертов (по умолчанию пусто)
+  backup.env     root:root 0644    настройки бэкапа, секретов нет (читают postgres и crp)
+  monitor.env    root:crp 0640     домен и алерты (по умолчанию пусто)
   backup-recipients.txt root 0644  открытые ключи age
-/usr/local/lib/crp/                root 0755 — копии deploy/bin/* (ставит install-ops.sh)
+/usr/local/lib/crp/                root 0755 — копии deploy/bin/* и grants.sql (ставит install-ops.sh)
 /var/lib/crp/files                 crp 0700 — STORAGE_DIR (uploads.md)
-/var/lib/crp-ops/                  статусы бэкапа и мониторинга
-/var/log/crp/                      crp:adm 0750 — логи PM2 и крона
-/var/backups/crp/{daily,weekly,monthly,files}  0700
+/var/lib/crp-ops/                  postgres:crp 0775 — статусы бэкапа и мониторинга (5B-хвосты: 1775)
+/var/log/crp/                      crp:adm 0755 — логи PM2 и крона (5B-хвосты: 0750)
+  backup/backup.log                postgres:adm — журнал бэкапа БД (5B-хвосты: /var/log/crp-backup/)
+/var/backups/crp/                  root 0711: daily, weekly, monthly, manual (postgres 0700), files (crp 0700)
 ```
+
+Пометки «5B-хвосты» — граница пользователей ОС (D-041): postgres не пишет туда, где crp может
+подменить файл или подкаталог. Сейчас crp владеет `/var/log/crp` и может переименовать
+подкаталог `backup/` и подложить символическую ссылку `backup.log` на файл postgres (например,
+`postgresql.auto.conf`); крон от postgres допишет в неё строки, и Postgres не стартует. То же с
+предсказуемым `backup-status.json.tmp` в `/var/lib/crp-ops` (группа crp пишет в каталог).
+Исправление — PLAN §5, «Волна 5 — хвосты после ревью», 5B-хвосты.
 
 ОС-пользователи:
 - `crp` — запускает PM2 и крон приложения, только читает код;
@@ -259,12 +270,12 @@ production не используется.
 | `deploy/bin/install-ops.sh` | ops (B) | от root: копирует `deploy/bin/*` в `/usr/local/lib/crp`, ставит cron, logrotate, sudoers, nginx-сайт из шаблона (`--domain`). Идемпотентный, `--dry-run` |
 | `deploy/bin/lib.sh` | ops (B) | общие функции: `log`, `die`, `read_env_file` (разбор `KEY=VALUE` без `source`/`eval`), `instance_json` |
 | `deploy/cron/crp.cron` | ops (B) | §3.10 |
-| `deploy/logrotate/crp` | ops (B) | `/var/log/crp/*.log`: daily, rotate 14, compress, delaycompress, copytruncate, missingok, notifempty, `su crp adm` |
+| `deploy/logrotate/crp` | ops (B) | два блока по владельцу файла: журналы crp (`su crp adm`) и журнал бэкапа БД (`su postgres adm`); daily, rotate 14, compress, delaycompress, copytruncate, missingok, notifempty |
 | `deploy/sudoers/crpdeploy` | ops (B) | `crpdeploy ALL=(crp) NOPASSWD: /usr/bin/pm2`; `crpdeploy ALL=(postgres) NOPASSWD: /usr/local/lib/crp/backup.sh --label pre-deploy-*` |
 | `deploy/env/app.env.example` | ops (B) | §3.11, без значений секретов |
 | `deploy/env/migrate.env.example`, `backup.env.example`, `monitor.env.example` | ops (B) | §3.11 |
 | `deploy/postgres/roles.sql`, `grants.sql` | db (A) | §2.2, §2.3 |
-| `deploy/postgres/postgresql.conf.d/crp.conf` | ops (B) | `listen_addresses='localhost'`, `ssl=on`, `password_encryption=scram-sha-256`, `log_min_duration_statement=1000`, `log_statement='none'`, `log_line_prefix='%m [%p] %u@%d '`, памятка по `shared_buffers` (25 % RAM) |
+| `deploy/postgres/postgresql.conf.d/crp.conf` | ops (B) | `listen_addresses='localhost'`, `ssl=on`, `password_encryption=scram-sha-256`, `log_min_duration_statement=1000`, `log_statement='none'`, `log_parameter_max_length=0` и `…_on_error=0` (значения параметров с ПДн не пишутся), `log_error_verbosity=terse` (без строк DETAIL с ключами), `log_line_prefix='%m [%p] %u@%d '`, памятка по `shared_buffers` (25 % RAM) |
 | `deploy/postgres/pg_hba.snippet` | ops (B) | `local all postgres peer`; `hostssl crp crp_app 127.0.0.1/32 scram-sha-256`; `hostssl crp crp_owner 127.0.0.1/32 scram-sha-256`; остальное — reject |
 | `deploy/README.md` | ops (B) | одна страница: что где, ссылка на RUNBOOK |
 | `docs/ops/RUNBOOK.md` | ops (B) | §3.12 |
@@ -299,7 +310,8 @@ module.exports = {
     exec_mode: 'cluster',
     instances: 1,
     node_args: '--max-old-space-size=1024',
-    env: { NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1' },
+    env: { NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
+           NEXT_DEPLOYMENT_ID: '<id из ../RELEASE.json>' },   // рантайму для сверки версии клиента
     listen_timeout: 20000,
     kill_timeout: 20000,                               // дренаж запросов при reload
     max_memory_restart: '1200M',
@@ -351,7 +363,8 @@ server {
   server_tokens off;
 
   access_log /var/log/nginx/crp.access.log crp_noquery;
-  error_log  /var/log/nginx/crp.error.log warn;
+  error_log  /var/log/nginx/crp.error.log crit;   # в записях уровня error — строка запроса и Referer
+  limit_req_log_level warn;
 
   client_max_body_size 2m;            # server actions — до 1 МБ (Next), запас на multipart
   client_body_timeout 15s; client_header_timeout 15s; send_timeout 30s; keepalive_timeout 30s;
@@ -403,6 +416,11 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsaf
 ```
 
 Пояснения:
+- сервер на порту 80 тоже пишет журнал в формате `crp_noquery`. Блоки 443 в шаблоне стоят между
+  `# BEGIN-TLS` и `# END-TLS`: пока сертификата нет, `install-ops.sh` их вырезает, после
+  `certbot` повторный запуск подключает TLS (RUNBOOK §2, шаг 8);
+- `error_log … crit`, а не `warn`: записи уровня error содержат строку запроса с токенами и
+  ключами заказов. Сбои приложения видны в журнале PM2 и по `healthcheck.sh`;
 - шрифты `next/font/google` при сборке скачиваются и отдаются с нашего домена, поэтому
   `font-src 'self'`;
 - видео — `youtube-nocookie` (`VideoBlock.tsx`). Закрытый видеохостинг (D-008) добавит свой
@@ -419,26 +437,34 @@ nginx"`. OCSP stapling не настраиваем: Let's Encrypt закрыл O
 `set -euo pipefail`, `umask 027`, единственный запуск через `flock -n {{ROOT}}/shared/state/deploy.lock`.
 Выполняется от `crpdeploy`. Каждый шаг пишет строку в `shared/state/deploy.log`.
 
-1. **Вход.** Тег по шаблону `^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$`. Читается
-   `instance.json` (`name`, `port`, `configDir`, `smokePort`).
+1. **Вход.** Тег по шаблону `^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$`. Затем `unset
+   DATABASE_URL PGLITE_DIR DEMO_MODE SEED_DEMO NODE_ENV DB_MIGRATE_ON_START`: переменные из
+   shell оператора не влияют на сборку и проверки. Читается `instance.json` (`name`, `port`,
+   `configDir`, `smokePort`, `deployBranch`).
 2. **Код.** `git -C repo.git fetch --prune --tags origin`. Далее
    `sha=$(git rev-parse "$tag^{commit}")`. Проверка `git merge-base --is-ancestor $sha
-   origin/main` (только код из `main`; до появления `main` — ветка из `DEPLOY_BRANCH` в
-   `instance.json`). Проверка CI: `curl` публичного
+   refs/heads/<deployBranch>` (только код из основной ветки; `deployBranch` из `instance.json`,
+   по умолчанию `main`). Проверка CI: `curl` публичного
    `api.github.com/repos/salemaikz/crp-kz/commits/$sha/check-runs`. Нужен `conclusion=success`
    для «Проверки и e2e». Иначе отказ; `--skip-ci-check` пишет предупреждение в лог.
 3. **Каталог.** `id=$(date -u +%Y%m%d-%H%M%S)-$tag`; `git archive $sha | tar -x -C
    releases/$id`. В релизе нет `.git`, код совпадает с тегом. `RELEASE.json` = `{"id","tag",
-   "sha","builtAt"}`. `ln -s $configDir/app.env releases/$id/.env.production`.
+   "sha","builtAt"}`. `ln -s $configDir/app.env releases/$id/.env.production`. Группа каталога
+   релиза обязана быть `crp` (setgid на `releases`), иначе стоп с кодом 2: PM2 от `crp` не
+   прочитал бы релиз, а проверка на `smokePort` от `crpdeploy` этого не заметила бы.
 4. **Зависимости.** `npm ci --include=dev --no-audit --no-fund`. Dev-зависимости нужны:
    `tsx` для миграций и крона, tailwind для сборки.
 5. **Проверка окружения.** `NODE_ENV=production node --env-file=$configDir/app.env --import
    tsx scripts/ops-preflight.ts --db`. Любая `ERROR` → стоп: релиз не собран, прод не тронут.
-6. **Сборка.** `NEXT_DEPLOYMENT_ID=$id NEXT_TELEMETRY_DISABLED=1 npm run build`. `prebuild`
-   снимок демо пропускает: `DEMO_MODE` не задан. Проверить, что есть `.next/BUILD_ID`. Каталог
-   `.next/cache` создать с группой `crp` и правами 2770.
-7. **Статика.** `rsync -a releases/$id/.next/static/ shared/static/_next/static/`, без
-   `--delete`.
+6. **Сборка.** `DATABASE_URL=<заведомо недоступный адрес 127.0.0.1:9 без пароля>
+   NEXT_DEPLOYMENT_ID=$id NEXT_TELEMETRY_DISABLED=1 npm run build`. Сборка не ходит в БД: миграции
+   идут позже (шаг 9), а `.env.production` уже подключён; переменная процесса главнее файла
+   (RUNBOOK §4, «Сборка не ходит в БД»). `prebuild` снимок демо пропускает: `DEMO_MODE` не задан.
+   Проверить, что есть `.next/BUILD_ID`. Каталог `.next/cache` создать с группой `crp` и правами
+   2770.
+7. **Статика.** `umask 022; rsync -a --chmod=D755,F644 releases/$id/.next/static/
+   shared/static/_next/static/`, без `--delete`. Права явные: nginx (www-data) не входит в группы
+   `crp` и `crpdeploy`, а сборка идёт с `umask 027`.
 8. **Бэкап перед миграциями.** `NODE_ENV=production node --env-file=$configDir/migrate.env
    --import tsx scripts/db-migrate.ts --status`. Код 0 — бэкап не нужен; 3 — есть ненакатанные
    миграции: тогда `sudo -u postgres /usr/local/lib/crp/backup.sh --label pre-deploy-$id`; любой
@@ -469,8 +495,10 @@ nginx"`. OCSP stapling не настраиваем: Let's Encrypt закрыл O
 `sudo -u crp -H pm2`), `CRP_SUDO_POSTGRES`, `CRP_NODE` — чтобы тест подменил внешние команды
 шимами (§7.1).
 
-Коды выхода: 0 — выложено; 1 — сбой после переключения, откат выполнен; 2 — сбой до
-переключения, прод не тронут; 4 — уже идёт другая выкладка.
+Коды выхода: 0 — выложено; 1 — сбой после переключения, откат выполнен (при первой выкладке
+откатываться некуда, это пишется в журнал); 2 — сбой до переключения, прод не тронут, каталог
+недособранного релиза удалён (журналы сборки и smoke остаются в `shared/state`); 4 — уже идёт
+другая выкладка.
 
 ### 3.6 `deploy/bin/rollback.sh [--to <release-id>] [--reason <text>]`
 
@@ -503,20 +531,29 @@ nginx"`. OCSP stapling не настраиваем: Let's Encrypt закрыл O
      каждой таблицы; (г) `users` > 0;
    - `dropdb crp_restorecheck`.
 5. Шифрование: `age -R $BACKUP_AGE_RECIPIENTS_FILE -o $out.age $tmp/db.dump`. Открытые ключи
-   двух хранителей (§9). **Приватного ключа на сервере нет.**
-6. Файл `daily/crp-<UTCts>.dump.age` и рядом `.sha256`. В воскресенье — жёсткая ссылка в
-   `weekly/`, первого числа — в `monthly/`. С `--label` файл кладётся в `manual/` и не
-   ротируется (чистится вручную по RUNBOOK).
+   двух хранителей (§9). **Приватного ключа на сервере нет.** Файл получателей проверяется до
+   дампа: строка-заглушка или не-`age1…` — отказ (бэкап без настоящих ключей не делается, и
+   выкладка с новыми миграциями останавливается на шаге 8, RUNBOOK «Ждёт решения владельца»).
+6. Файл `daily/crp-<UTCts>.dump.age` и рядом `.sha256`. В воскресенье **по Астане** — жёсткая
+   ссылка в `weekly/`, первого числа по Астане — в `monthly/`. С `--label` файл кладётся в
+   `manual/` и не ротируется (чистится вручную по RUNBOOK).
 7. Ротация: `BACKUP_KEEP_DAILY=14`, `BACKUP_KEEP_WEEKLY=8`, `BACKUP_KEEP_MONTHLY=6`.
-8. Вторая копия: если задан `BACKUP_REMOTE`, выполняется `rsync -a --ignore-existing` по SSH в
-   хранилище **в РК** (§9). Пустая переменная — копии нет, в статусе `offsite=false`.
+8. Вторая копия: если задан `BACKUP_REMOTE`, выполняется `rsync -aHR --ignore-existing` по SSH
+   (`BatchMode`, `StrictHostKeyChecking=yes`, ключ `BACKUP_REMOTE_SSH_KEY`) в хранилище **в РК**
+   (§9). Каждый пользователь отправляет только свои подкаталоги: postgres — `daily weekly monthly
+   manual`, crp — `files`. Пустая переменная — копии нет, в статусе `offsite=false`. Сбой отправки
+   не отменяет локальную копию: `ok=true`, `offsite=false`.
 9. Статус: `/var/lib/crp-ops/backup-status.json` =
-   `{ok, at, file, sizeBytes, verified, offsite}`. При ошибке `trap ERR` пишет `ok=false`.
-   Алерт отправляет `healthcheck.sh`.
+   `{ok, at, file, sizeBytes, verified, offsite}`. С `--label` статус пишется в
+   `manual-status.json` и не подменяет статус ночного бэкапа. При ошибке `trap ERR` пишет
+   `ok=false`. Алерт отправляет `healthcheck.sh`.
 
 Режим `--files` (от `crp`, отдельная строка крона): `tar -C $STORAGE_DIR -czf - . | age -R … >
-files/files-<ts>.tar.gz.age`, та же ротация и статус `files-status.json`. Если `STORAGE_DIR` не
-задан или пуст (флаг `UPLOADS` выключен), режим ничего не делает и выходит с кодом 0.
+files/files-<ts>.tar.gz.age`, ротация по `BACKUP_KEEP_DAILY` и статус `files-status.json`. Если
+`STORAGE_DIR` не задан или пуст (флаг `UPLOADS` выключен), режим ничего не делает и выходит с
+кодом 0. Вторая копия файлов — 5B-хвосты: свой адрес и ключ (`BACKUP_FILES_REMOTE`,
+`BACKUP_FILES_REMOTE_SSH_KEY`, запасное значение — общие `BACKUP_REMOTE*`), потому что ключ
+для `files/` читает пользователь приложения.
 
 **Отвергли:**
 - *gpg с паролем на сервере* — копия на внешнем хранилище расшифровывается тем же паролем,
@@ -536,10 +573,12 @@ files/files-<ts>.tar.gz.age`, та же ротация и статус `files-st
   "SELECT set_config('crp.app_role','crp_app',false), set_config('crp.owner_role','crp_owner',false)"
   -f grants.sql` → те же проверки, что в §3.7 п.4. Печатаются число таблиц, имя последней
   миграции и счётчики строк. **Строки не печатаются.** Без `--keep` база удаляется.
-- Цель = `BACKUP_DB` требует `--force-prod`. Скрипт проверяет, что приложение остановлено
-  (`pm2 jlist` → нет `online`). Если запущено — отказ с подсказкой. Боевую базу не удаляет:
+- Цель = `BACKUP_DB` требует `--force-prod`. Скрипт проверяет, что приложение остановлено:
+  `curl 127.0.0.1:<порт>/api/health` не отвечает (от `postgres` список PM2 пользователя `crp` не
+  виден). Если отвечает — отказ с подсказкой. Боевую базу не удаляет:
   `ALTER DATABASE crp RENAME TO crp_broken_<ts>`, затем восстановление в `crp`. Порядок
-  действий — RUNBOOK §6.3.
+  действий — RUNBOOK §6.3: сначала крон приложения выключается (`mail-worker` подключается к БД
+  каждую минуту и мешает переименованию), затем `pm2 stop`.
 
 ### 3.9 Мониторинг: `deploy/bin/healthcheck.sh` (крон каждые 5 минут, от `crp`)
 
@@ -550,14 +589,20 @@ files/files-<ts>.tar.gz.age`, та же ротация и статус `files-st
 |---|---|
 | `GET 127.0.0.1:$port/api/health` | `status=ok`, ответ < 5 с |
 | PM2: процесс `online`, рост `restart_time` | fail, если процесс не `online`; warn, если +3 рестарта за час |
-| Свежесть бэкапа (`backup-status.json`) | `ok=true` и `at` моложе 26 ч; файлы — моложе 26 ч, если `STORAGE_DIR` не пуст |
+| Свежесть бэкапа (`backup`, `backup_files`) | `ok=true` и `at` моложе 26 ч; `backup_files` — только если `STORAGE_DIR` не пуст |
+| Вторая копия (`backup_offsite`) | только при заданном `BACKUP_REMOTE`: `offsite=false` в статусе — warn, 48 ч подряд — fail. 5B-хвосты: `files-status.json` учитывается при тех же условиях, что `backup_files`, и только свежий (моложе 26 ч) |
 | Свободное место на `/`, `/var/backups`, `STORAGE_DIR` | warn < 20 %, fail < 10 % |
-| Срок сертификата TLS (`openssl x509 -enddate`) | warn < 21 дня, fail < 7 дней |
+| Срок сертификата TLS (`openssl s_client` на 127.0.0.1:443 с SNI домена) | warn < 21 дня, fail < 7 дней |
 | Внешний взгляд | `curl -fsS https://$DOMAIN/api/health` — проверяет DNS, TLS и nginx |
 
-Алерт отправляется **только при смене состояния** (ok→fail, fail→ok), чтобы не спамить. Канал
+Имена проверок в `monitor-state.json` и алертах: `app_health`, `pm2`, `backup`, `backup_files`,
+`backup_offsite`, `disk`, `tls_cert`, `external`.
+
+Алерт отправляется **только при смене состояния** (ok→fail, fail→ok), чтобы не спамить; warn
+считается рабочим состоянием. Канал
 задаёт `monitor.env`:
-- `ALERT_TELEGRAM_BOT_TOKEN` + `ALERT_TELEGRAM_CHAT_ID` — после решения владельца;
+- `ALERT_TELEGRAM_BOT_TOKEN` + `ALERT_TELEGRAM_CHAT_ID` — после решения владельца; адрес с
+  токеном передаётся `curl` конфигом через stdin (`-K -`), а не в argv: `ps` видят все;
 - иначе `logger -t crp-alert` (journald) и строка в `/var/log/crp/healthcheck.log`.
 
 Текст алерта: имя проверки, имя экземпляра (`crp`) и время. **Без IP, ПДн и текста ошибок.**
@@ -574,12 +619,12 @@ Debian/Ubuntu cron его не поддерживает надёжно. В ко�
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-# Бэкап БД 02:30 Астаны; в воскресенье — с полной проверкой восстановления
-30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp/backup.log 2>&1
-30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp/backup.log 2>&1
+# Бэкап БД 02:30 Астаны; в ночь на воскресенье по Астане (суббота 21:30 UTC) — с полной проверкой восстановления
+30 21 * * 0-5  postgres /usr/local/lib/crp/backup.sh                  >> /var/log/crp/backup/backup.log 2>&1
+30 21 * * 6    postgres /usr/local/lib/crp/backup.sh --verify-restore >> /var/log/crp/backup/backup.log 2>&1
 # Бэкап загруженных файлов 03:00 Астаны
 0 22 * * *     crp /usr/local/lib/crp/backup.sh --files               >> /var/log/crp/backup-files.log 2>&1
-# Очередь писем (mail-account.md): раз в минуту; при выключенных флагах — выход с кодом 0
+# Очередь писем (mail-account.md): раз в минуту; при транспорте outbox только чистит старое, код 0
 * * * * *      crp /usr/local/lib/crp/run-script.sh mail-worker       >> /var/log/crp/mail.log 2>&1
 # Напоминания о сроках: 09:00–19:00 Астаны = 04:00–14:00 UTC
 0 4-14 * * *   crp /usr/local/lib/crp/run-script.sh send-reminders    >> /var/log/crp/reminders.log 2>&1
@@ -589,15 +634,22 @@ MAILTO=""
 */5 * * * *    crp /usr/local/lib/crp/healthcheck.sh                  >> /var/log/crp/healthcheck.log 2>&1
 ```
 
+Журнал бэкапа БД пишет `postgres`, поэтому он лежит в своём подкаталоге `backup/` (владелец
+postgres) и ротируется отдельным блоком logrotate с `su postgres adm`. В 5B-хвостах он
+переезжает в `/var/log/crp-backup/backup.log`: каталог `/var/log/crp` принадлежит `crp`, и
+подкаталог postgres внутри него можно подменить (§3.1, D-041). `files-sweep` флаг `UPLOADS` не
+проверяет: мусор убирается всегда.
+
 `run-script.sh <name> [-- args]`:
 - имя по шаблону `^[a-z0-9-]+$`, файл `{{ROOT}}/current/scripts/<name>.ts` должен существовать.
   Если файла нет, скрипт пишет «нет в этом релизе» и выходит с кодом 0: крон ставится заранее,
   а скрипт приходит со своим релизом;
 - `flock -n /run/lock/crp-<name>.lock` — без наложений;
-- `cd current && NODE_ENV=production timeout 15m node --env-file=/etc/crp/app.env --import tsx
-  scripts/<name>.ts "$@"`;
+- `cd current && NODE_ENV=production timeout --foreground 15m node --env-file=/etc/crp/app.env
+  --import tsx scripts/<name>.ts "$@"` (`--foreground`: интерактивному `create-admin` нужен
+  терминал);
 - флаги функций (`REMINDERS` и др.) проверяет сам скрипт и при выключенном флаге выходит с
-  кодом 0.
+  кодом 0; `files-sweep` работает при любом флаге.
 
 ### 3.11 Переменные окружения (шаблоны в `deploy/env/*.example`, значения — только на сервере)
 
@@ -613,7 +665,8 @@ MAILTO=""
 | `NEXT_PUBLIC_SITE_URL` | `https://<домен>` (вшивается при сборке) |
 | `TRUSTED_PROXY_HOPS` | `1` |
 | `TRUST_X_REAL_IP` | пусто |
-| `DEMO_MODE`, `SEED_DEMO`, `PGLITE_DIR` | пусто (preflight: ошибка, если заданы) |
+| `DB_APP_ROLE`, `DB_OWNER_ROLE` | `crp_app`, `crp_owner` (preflight: `database_url_privileged_user`) |
+| `DEMO_MODE`, `SEED_DEMO`, `PGLITE_DIR`, `MIGRATIONS_DIR` | пусто (preflight: ошибка, если заданы). `SEED_DEMO=1` в production без `DEMO_MODE=1` рантайм не исполняет (D-040) |
 | `NEXT_TELEMETRY_DISABLED` | `1`. Телеметрия Next уходит за рубеж |
 | `FEATURE_PASSWORD_RESET`, `FEATURE_EMAIL_VERIFY`, `FEATURE_REMINDERS`, `FEATURE_UPLOADS`, `FEATURE_LEGAL`, `FEATURE_CERT_PDF` | `0`, пока функция не прошла приёмку |
 | `MAIL_*`, `SMTP_*` | из `mail-account.md`; `MAIL_TRANSPORT=outbox`, пока ЦРП не выбрал почту |
@@ -622,10 +675,12 @@ MAILTO=""
 `/etc/crp/migrate.env`: `DATABASE_URL=postgres://crp_owner:<пароль>@127.0.0.1:5432/crp?sslmode=require`,
 `MIGRATE_LOCK_TIMEOUT_MS=5000`, `DB_APP_ROLE=crp_app`, `DB_OWNER_ROLE=crp_owner`.
 
-`/etc/crp/backup.env`: `BACKUP_DB=crp`, `BACKUP_DIR=/var/backups/crp`,
+`/etc/crp/backup.env` (root:root 0644, секретов нет — только пути): `BACKUP_DB=crp`,
+`BACKUP_OWNER_ROLE=crp_owner`, `BACKUP_APP_ROLE=crp_app`, `BACKUP_DIR=/var/backups/crp`,
 `BACKUP_AGE_RECIPIENTS_FILE=/etc/crp/backup-recipients.txt`, `BACKUP_KEEP_DAILY=14`,
 `BACKUP_KEEP_WEEKLY=8`, `BACKUP_KEEP_MONTHLY=6`, `BACKUP_REMOTE=` (пусто до решения),
-`STORAGE_DIR=/var/lib/crp/files`.
+`BACKUP_REMOTE_SSH_KEY=` (путь к ключу), `STORAGE_DIR=/var/lib/crp/files`. 5B-хвосты добавляют
+`BACKUP_FILES_REMOTE=` и `BACKUP_FILES_REMOTE_SSH_KEY=` для `--files`.
 
 `/etc/crp/monitor.env`: `DOMAIN=`, `ALERT_TELEGRAM_BOT_TOKEN=`, `ALERT_TELEGRAM_CHAT_ID=`.
 
@@ -653,7 +708,8 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
 3. **Первый администратор.** `sudo -u crp /usr/local/lib/crp/run-script.sh create-admin --
    --email … --name … --owner-org-name "ЦРП" --owner-org-slug crp`. Пароль вводится в
    приглашении, не в командной строке. Демо-данных на проде нет: preflight проверяет, что нет
-   `@crp.demo`.
+   `@crp.demo`. Повышение существующего аккаунта (`--promote`) и подтверждение личности вне
+   системы (`--identity-confirmed`) — §3.16, D-039; текст для RUNBOOK §3 — 5B-хвосты.
 4. **Выкладка.** Тег ставится на `main` после зелёного CI. Затем `deploy.sh vX.Y.Z`. Что
    значат коды выхода. Как читать `deploy.log`. Ассеты старых страниц продолжают отдаваться.
 5. **Миграции.** Только добавляющие и идемпотентные. Удаление колонки или таблицы — в два
@@ -664,7 +720,7 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
    - 6.1 Что, когда и где лежит; где копия в РК; у кого ключ.
    - 6.2 Учебное восстановление раз в месяц (чек-лист): `restore.sh` в `crp_restore_*`,
      сравнение счётчиков, удаление, запись даты в журнал учений вне репозитория.
-   - 6.3 Авария: `pm2 stop crp` → `restore.sh --target crp --force-prod` →
+   - 6.3 Авария: крон приложения выключить → `pm2 stop crp` → `restore.sh --target crp --force-prod` →
      `db-migrate` (если код новее дампа) → `db-grants` → `pm2 start` → health. Потерянные
      с момента бэкапа оплаты восстанавливаются по банковской выписке, «Оплачено» ставится
      заново.
@@ -679,7 +735,7 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
    - пароли ролей — `\password`, правка env, `pm2 reload`;
    - ключ age — перешифровывать старые бэкапы не нужно, новые идут на новый ключ, старый
      ключ хранится до истечения ротации.
-10. **Стейдж и приёмка #24** — чек-лист §7.4.
+10. **Стейдж и приёмка #24** — чек-лист §7.4; стейдж на отдельном сервере (§7.4).
 11. **Инциденты.**
     - 502 и страница обслуживания: процесс упал → `pm2 logs`;
     - health=fail и `migrations=pending`: выложили без миграций → `db-migrate`;
@@ -690,7 +746,7 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
 12. **Нельзя.**
     - подменять `.next` на месте и править файлы в `releases/` руками;
     - `pm2 restart` вместо `startOrReload`;
-    - `DEMO_MODE` и `SEED_DEMO` на проде;
+    - `DEMO_MODE`, `SEED_DEMO` и `PGLITE_DIR` на проде;
     - копия бэкапа за пределами РК;
     - ПДн в ИИ-сессиях;
     - IP, пароли и ключи в репозитории, issue и PR.
@@ -732,6 +788,15 @@ export async function prepareDb(db: DbHandle, opts?: { autoMigrate?: boolean; se
 сбрасывается, поэтому после `db-migrate` процесс поднимется со следующего запроса, без
 рестарта.
 
+**Сид в рантайме (D-040).** Сид по умолчанию разрешает одна функция `seedPermitted(env)` из
+`src/lib/db/seed-guard.ts`: `isDemo(env)` или (`SEED_DEMO=1` и `NODE_ENV≠production`). Её же
+использует `db:seed` (`seedRefusal`). В production без `DEMO_MODE=1` значение `SEED_DEMO=1`
+не действует: `getDb()` сид не запускает и один раз на процесс пишет в журнал, что переменная
+проигнорирована; приложение работает дальше. `db:seed` в том же окружении отказывает с кодом 1.
+Netlify и e2e (`NODE_ENV=production`, `DEMO_MODE=1`) сеют как раньше: это демо. Preflight
+по-прежнему даёт `ERROR seed_demo_set` (§3.15) — это громкий сигнал до выкладки, а рантайм —
+вторая линия, если preflight не запускали.
+
 `scripts/db-migrate.ts`:
 - `--status` печатает `applied=N pending=M unknown=K` и имена pending. Код выхода: 0 — всё
   накатано, 3 — есть pending, 1 — ошибка;
@@ -769,19 +834,28 @@ export type HealthReport = {
 export async function getHealth(deps?: { getDb?: () => Promise<Db>; timeoutMs?: number; release?: ReleaseInfo }): Promise<HealthReport>;
 ```
 
+Поля ответа реализованы ровно так: `status`, `release` (id из `RELEASE.json`, иначе sha платформы
+или `'dev'`), `sha`, `mode` (`isDemo()` → `'demo'`, иначе `'production'`), `checks.db`,
+`checks.migrations`, `pendingCount` (0, если не `pending`), `time`. `deploy.sh` и `healthcheck.sh`
+опираются только на `status` и `release`; остальные поля — для оператора.
+
 Логика проверок:
 - `getDb()` бросил `MigrationsPendingError` → `db='ok'`, `migrations='pending'`,
-  `pendingCount=e.pending.length`;
+  `pendingCount=e.pending.length`. Ошибка из другого бандла Next может не пройти `instanceof`,
+  поэтому она узнаётся и по `name`;
+- `getDb()` успешен, но `migrationStatus` видит pending (автонакатка в демо не успела или файл
+  добавлен после старта) → тоже `pending`;
 - любая другая ошибка или таймаут → `db='fail'`, `migrations='unknown'`;
 - `status='ok'` ⇔ `db='ok'` и `migrations='ok'`;
-- ошибка пишется в `console.error` одной строкой с кодом (`e.code`), **без** текста запроса и
+- ошибка пишется в `console.error` одной строкой с кодом (`e.code` по шаблону
+  `^[A-Za-z0-9_]{1,40}$`, иначе `unknown`; таймаут — `TIMEOUT`), **без** текста запроса и
   параметров.
 
 `src/app/api/health/route.ts`:
 ```ts
 export const dynamic = 'force-dynamic';
 export async function GET(): Promise<Response>;
-// 200 при ok, 503 при fail; Content-Type: application/json; Cache-Control: no-store; X-Robots-Tag: noindex
+// 200 при ok, 503 при fail; Content-Type: application/json; charset=utf-8; Cache-Control: no-store; X-Robots-Tag: noindex
 ```
 
 - Доступ публичный: нужен nginx, deploy.sh и монитору. Ответ не содержит ПДн, имён таблиц,
@@ -804,13 +878,18 @@ export async function checkProductionDb(db: Pick<Db, 'sql'>): Promise<PreflightI
 
 Правила `checkProductionEnv` — уровень `error`:
 - `demo_mode_set` — `DEMO_MODE=1`;
-- `seed_demo_set` — `SEED_DEMO=1`;
+- `seed_demo_set` — `SEED_DEMO=1`. Ошибка, а не предупреждение: в пустую боевую БД сид засеял
+  бы админа с опубликованным паролем уже при старте на `smokePort`, а `demo_users_present`
+  сработал бы только на следующей выкладке. Рантайм страхует отдельно (D-040, §3.13);
 - `pglite_dir_set` — задан `PGLITE_DIR`;
+- `migrations_dir_set` — задан `MIGRATIONS_DIR` (каталог миграций подменяется только в тестах);
 - `database_url_missing`, `database_url_not_postgres`;
 - `database_url_no_ssl` — нет `sslmode=require|verify-ca|verify-full`;
 - `database_url_privileged_user` — пользователь `postgres` или `DB_OWNER_ROLE`/`crp_owner`;
-- `session_secret_weak` — `SESSION_SECRET` < 32 символов;
-- `site_url_not_https` — `NEXT_PUBLIC_SITE_URL` не `https://`;
+- `session_secret_weak` — `SESSION_SECRET` нет или < 32 символов;
+- `site_url_not_https` — `NEXT_PUBLIC_SITE_URL` не задан, не разбирается или не `https://`;
+- `site_url_local` — `https://` на `localhost`, `127.*` или `[::1]`: ссылки в письмах и QR
+  вели бы на сервер читателя;
 - `proxy_hops_not_1` — `TRUSTED_PROXY_HOPS` ≠ 1. За nginx на этом сервере должно быть ровно
   1; если появится CDN, правило меняют вместе с nginx;
 - `trust_x_real_ip_set` — `TRUST_X_REAL_IP=1` при hops=1;
@@ -819,7 +898,11 @@ export async function checkProductionDb(db: Pick<Db, 'sql'>): Promise<PreflightI
 Уровень `warn`:
 - `server_actions_key_missing` — нет `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`;
 - `telemetry_on` — `NEXT_TELEMETRY_DISABLED` ≠ 1;
-- `feature_on:<NAME>` — флаг включён: напоминание, что функция должна пройти приёмку.
+- `feature_on:<NAME>` — флаг включён: напоминание, что функция должна пройти приёмку;
+- `feature_blocked:<NAME>:<причина>` — флаг включён, но функция не работает: причина из
+  `featureBlockers` (`mail_outbox`, `site_url`, `legal_not_approved`);
+- `proposed_rules:<NAME>` — флаг включает и правила, которые ждут владельца: `EMAIL_VERIFY`
+  (заказ только с подтверждённого email, D-032) и `LEGAL` (две галочки, D-035).
 
 Правила `checkProductionDb`:
 - `db_superuser` (error) — `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`;
@@ -828,55 +911,98 @@ export async function checkProductionDb(db: Pick<Db, 'sql'>): Promise<PreflightI
   Таблицы нет — пропуск: это первая выкладка до миграций.
 
 Вывод: `ERROR <code>` / `WARN <code>` по строке, без значений. Код выхода 1, если есть `error`.
+`--db` открывает **голый драйвер** (`openDriver()`), а не `openScriptDb()`/`prepareDb`: preflight
+идёт до `db:migrate` (шаг 5 выкладки), и `assertMigrated` уронил бы его на каждой новой миграции
+(`MigrationsPendingError`). Если адрес БД уже признан негодным (`database_url_*`,
+`pglite_dir_set`), БД не открывается и печатается `SKIP db_checks`. Сбой подключения — строка
+`ERROR db_unreachable (<имя класса ошибки>)` без текста: в нём бывает хост.
 
 ### 3.16 Первый администратор: `scripts/create-admin.ts`
 
 ```
-create-admin --email <e> --name <n> [--locale ru|kz] [--promote]
+create-admin --email <e> --name <n> [--locale ru|kz] [--promote [--identity-confirmed]]
              [--owner-org-name <name> --owner-org-slug <slug>] [--password-stdin] [--allow-demo]
 ```
 
-`src/lib/ops/createAdmin.ts`:
+`src/lib/ops/createAdmin.ts` (реализовано в 5A; поля с пометкой D-039 — 5A-хвосты):
 ```ts
 export type CreateAdminInput = {
-  email: string; name: string; locale: 'ru' | 'kz'; password?: string;   // без password — только --promote
-  promote: boolean; ownerOrg?: { name: string; slug: string };
+  email: string; name: string; locale: 'ru' | 'kz';
+  password?: string;              // создание; при promote — только вместе с identityConfirmed
+  promote: boolean;
+  identityConfirmed?: boolean;    // D-039: личность и ящик подтверждены вне системы
+  ownerOrg?: { name: string; slug: string };
 };
 export type CreateAdminResult = {
   userId: string; created: boolean; promoted: boolean; orgId: string | null; orgCreated: boolean;
+  sessionsRevoked: number;        // D-039
+  identityConfirmed: boolean;     // D-039: пароль заменён, адрес отмечен подтверждённым
 };
-export class CreateAdminError extends Error { readonly code: 'validation' | 'weak_password' | 'exists' | 'not_found' | 'bad_slug'; }
+export class CreateAdminError extends Error {
+  readonly code: 'validation' | 'weak_password' | 'exists' | 'not_found' | 'bad_slug' | 'unverified';
+}
 export const ADMIN_PASSWORD_MIN_LENGTH = 12;
 export async function createAdmin(db: Db, input: CreateAdminInput): Promise<CreateAdminResult>;
 ```
 
-- Email приводится к виду `normalizeEmail` из `src/lib/auth` и проверяется той же zod-схемой,
-  что при регистрации. Имя — 1–100 символов. Пароль: `passwordProblem` + не короче 12 символов
-  для админа. Хэш — `hashPassword` (bcryptjs, cost 10).
+- Email приводится к виду `normalizeEmail` (`trim().toLowerCase()`; своя копия в `createAdmin.ts`:
+  модуль `src/lib/auth` тянет `next/*`, скрипту он не нужен) и проверяется zod `email().max(254)`.
+  Имя — 1–100 символов. Пароль: `passwordProblem` + не короче 12 символов для админа. Хэш —
+  `hashPassword` (bcryptjs), считается до транзакции.
 - Одна транзакция:
-  - `INSERT … ON CONFLICT (email) DO NOTHING RETURNING id` с `role='admin'` и
+  - создание: `INSERT … ON CONFLICT (email) DO NOTHING RETURNING id` с `role='admin'` и
     `email_verified_at=now()`: адрес ввёл оператор;
-  - конфликт без `--promote` → `exists`. Конфликт с `--promote` → `UPDATE users SET
-    role='admin'`. Пароль и сессии не меняются;
-  - `--promote` без существующего пользователя → `not_found`;
-  - организация-владелец: если нет строки `kind='owner'`, создаётся (`slug` по `^[a-z0-9-]{2,40}$`).
-    Админ добавляется в неё как `manager` (`ON CONFLICT DO NOTHING`). Если владелец уже есть,
-    берётся он, второй не создаётся;
-  - аудит (`actor_id NULL`, `meta {via:'cli'}`, email в `meta` **не** пишется):
-    `user.create_admin`, `user.promote_admin`, `org.create`, `org.member_add`.
-    Вставка своя, в `src/lib/ops`: `writeAudit` из зоны admin требует `actorId: string`.
+  - конфликт без `--promote` → `exists`; `--promote` без существующего пользователя → `not_found`;
+  - `--promote`: `SELECT … FOR UPDATE`. Уже `admin` → ничего не меняется (ни роль, ни пароль, ни
+    сессии), журнала нет, `promoted=false`. Иначе:
+    - `email_verified_at IS NULL` и нет `--identity-confirmed` → `unverified`, ничего не меняется.
+      Регистрация открыта: аккаунт на похожий адрес мог заранее завести кто угодно;
+    - `UPDATE users SET role='admin'`, затем **`DELETE FROM sessions WHERE user_id = …`** (D-039):
+      смена уровня привилегий закрывает все открытые сессии повышаемого. Сессия, оставшаяся на
+      общем компьютере или утёкшая раньше, не становится админской. Пароль и имя при обычном
+      повышении не меняются, пользователь просто входит заново;
+    - с `--identity-confirmed` (D-039) в том же `UPDATE` ещё `password_hash` = новый хэш и
+      `email_verified_at = COALESCE(email_verified_at, now)`; сессии закрываются; все непогашенные
+      `auth_tokens` пользователя гасятся (`used_at = now`), письма со ссылками-секретами снимаются
+      (`cancelSecrets` для `password_reset` и `email_verify`). Без пароля → `validation`, пароль
+      слабее правила админа → `weak_password`; в обоих случаях ничего не меняется;
+  - организация-владелец: если нет строки `kind='owner'`, создаётся (`slug` по `^[a-z0-9-]{2,40}$`;
+    slug занят клиентской организацией → `bad_slug`). Админ добавляется в неё как `manager`
+    (`ON CONFLICT DO NOTHING`). Если владелец уже есть, берётся он, второй не создаётся;
+  - журнал — общий `writeAudit` из `src/lib/audit.ts` (PLAN §2.6) с `actorId: null`; email и имя в
+    `meta` **не** пишутся:
+    - `user.create_admin`, `meta {via:'cli'}`;
+    - `user.role_change`, `meta {to:'admin', via:'cli', sessionsRevoked:<n>}`; с
+      `--identity-confirmed` ещё `identity:'offline'`, `passwordReset:true`,
+      `emailVerified:<true, если адрес был не подтверждён>`. Отдельных действий
+      `user.email_verify`/`user.password_reset` не пишем: их подписи означают «сам, по ссылке»;
+    - `org.create`, `meta {via:'cli', kind:'owner'}`; `org.member_add`, `meta {userId,
+      role:'manager', via:'cli'}`.
 - CLI:
-  - пароль спрашивается дважды без эха (`readline` с подавлением вывода);
-  - `--password-stdin` читает одну строку (для автоматизации);
+  - пароль спрашивается дважды без эха; `--password-stdin` читает одну строку. При обычном
+    `--promote` пароль не спрашивается; при `--promote --identity-confirmed` — спрашивается
+    (новый пароль вводит сам сотрудник за терминалом оператора);
+  - `--identity-confirmed` без `--promote` → usage (код 2);
   - в argv пароль **не принимается**: он виден в `ps` и истории shell;
   - `isDemo()` → отказ с кодом 2, если нет `--allow-demo`: в демо админ есть в сиде;
-  - сначала `assertMigrated(db)`: работает от `crp_app`;
-  - коды выхода: 0 — успех, 2 — validation/weak_password/bad_slug/демо, 3 — exists/not_found,
-    1 — прочее;
-  - вывод: «Администратор создан» или «Роль admin выдана», плюс id. Email не печатается
-    повторно.
+  - БД открывается через `openScriptDb()` (PLAN §2.5): в production `prepareDb` только проверяет
+    миграции (`assertMigrated`), роль — `crp_app`;
+  - коды выхода: 0 — успех, 2 — validation/weak_password/bad_slug/usage/демо, 3 —
+    exists/not_found/unverified, 1 — прочее;
+  - сообщение `unverified` не советует невозможного: подтверждение письмом или восстановлением
+    пароля предлагается, только если `isFeatureActive('EMAIL_VERIFY')` или
+    `isFeatureActive('PASSWORD_RESET')`; всегда предлагается `--identity-confirmed` с условием
+    «сотрудник рядом и лично подтвердил, что адрес и ящик его»;
+  - вывод: «Администратор создан», «Роль admin выдана, закрыто сессий: N» (с
+    `--identity-confirmed` — ещё «пароль заменён, адрес отмечен подтверждённым») или
+    «Пользователь уже администратор, ничего не менялось», плюс id. Email не печатается повторно.
 - Сообщения CLI — для оператора, а не для пользователя платформы, поэтому в `messages/*` не
   выносятся. Пишутся по-русски.
+- Остаточный риск (D-039): `--identity-confirmed` защищает от чужой сессии и чужого пароля, но не
+  от ошибки в адресе. Если оператор повысил аккаунт на похожий адрес, владелец того ящика
+  (злоумышленник) получит админа через сброс пароля, как только включат `PASSWORD_RESET`. Поэтому
+  сотрудник сам читает адрес в команде на экране оператора и подтверждает, что это его ящик. Ограничение адресов
+  администраторов доменом ЦРП — вопрос владельцу (D-039, предложено).
 - Позже, когда включат `PASSWORD_RESET` (`mail-account.md`), добавится `--invite`: админ без
   пароля + письмо со ссылкой установки. Это follow-up, не часть ops.1.
 
@@ -893,6 +1019,10 @@ export async function createAdmin(db: Db, input: CreateAdminInput): Promise<Crea
 - **Откат:** `sudo -u crpdeploy /usr/local/lib/crp/rollback.sh`, около 20 с.
 - **Учебное восстановление:** раз в месяц по чек-листу RUNBOOK §6.2.
 - **Первый вход:** `create-admin` → вход в `/ru/login` → админка пустая, демо-курсов нет.
+  Сотрудник, который уже зарегистрировался как слушатель, повышается `--promote`: его открытые
+  сессии закрываются, он входит заново. Адрес не подтверждён — сотрудник рядом с оператором
+  читает адрес в команде, подтверждает, что ящик его, и сам вводит новый пароль
+  (`--promote --identity-confirmed`).
   Курсы создаются в конструкторе.
 
 ### 4.2 Пользователь платформы
@@ -939,13 +1069,15 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 | 12 | Токены и ключи заказов в логах | Формат лога nginx без `$args`/`$request`/`$http_referer`. `Referrer-Policy: strict-origin-when-cross-origin`. Крон-скрипты пишут только счётчики и id (mail-account.md). Health не логирует запросы |
 | 13 | ПДн за рубежом | Телеметрия Next выключена. Алерты без ПДн. Внешний монитор только с решения владельца, видит лишь `/api/health`. При сборке наружу идут запросы к npm, GitHub и Google Fonts — без ПДн. Логи с прода — не в ИИ |
 | 14 | DoS и большие тела запросов | `client_max_body_size` 2m (30m только `/api/uploads`). Таймауты тела и заголовков. `limit_req` 20 r/s (всплеск 60). `limit_conn` 50. Ответ 429, а не 503 |
-| 15 | Демо-режим или демо-данные на проде | `assertDbConfigured` (есть). Preflight: `DEMO_MODE`, `SEED_DEMO`, `PGLITE_DIR`, пользователи `@crp.demo` → ошибка, выкладка останавливается |
+| 15 | Демо-режим или демо-данные на проде | `assertDbConfigured` (есть). Preflight: `DEMO_MODE`, `SEED_DEMO`, `PGLITE_DIR`, пользователи `@crp.demo` → ошибка, выкладка останавливается. Рантайм: `SEED_DEMO=1` в production без `DEMO_MODE=1` не сеет, `db:seed` отказывает (D-040) |
 | 16 | Health раскрывает внутренности | Только статусы и счётчик. Без текста ошибок, хоста, имён таблиц. Ограничение частоты в nginx |
 | 17 | Сбой, который никто не заметил (многократные рестарты без алерта) | `healthcheck.sh`: рестарты, свежесть бэкапа, диск, сертификат, внешний HTTPS; алерт при смене состояния |
 | 18 | Наложение крон-задач, зависшие задачи | `flock -n` + `timeout 15m` в `run-script.sh` |
 | 19 | Эскалация `crpdeploy` → root | sudoers: только `pm2` от `crp` и `backup.sh --label pre-deploy-*` от postgres. Скрипты в `/usr/local/lib/crp` принадлежат root |
 | 20 | Подмена зависимостей при сборке | `npm ci` строго по lock-файлу, версии закреплены (BUILD §1). Проверить на стейдже `--ignore-scripts`; если сборка проходит — включить |
 | 21 | Пароль админа в истории shell или в `ps` | `create-admin` не принимает пароль аргументом: приглашение без эха или stdin |
+| 23 | Повышение чужого аккаунта: заранее зарегистрирован похожий адрес, или старая сессия повышаемого осталась на общем компьютере | `--promote` закрывает все сессии повышаемого; неподтверждённый адрес — `unverified`, пока сотрудник лично не подтвердит адрес и ящик (`--identity-confirmed`: новый пароль, сессии и ссылки погашены). Остаточный риск — ошибка в адресе; ограничение доменом ЦРП — вопрос владельцу (D-039) |
+| 24 | Взломанное приложение (`crp`) портит файлы `postgres` через подменённый журнал или статус бэкапа | Граница пользователей ОС (D-041): postgres пишет только в каталоги, где `crp` не может подменить файл или подкаталог; статусы — через `mktemp` и `chmod` до `mv`. Сейчас нарушено, исправляют 5B-хвосты |
 | 22 | Clickjacking, XSS со сторонних источников | `X-Frame-Options DENY` + `frame-ancestors 'none'`. CSP разрешает внешний источник только `youtube-nocookie` во фрейме |
 
 ---
@@ -954,9 +1086,10 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 
 **Флага нет.** Ops — инфраструктура, а не пользовательская функция. `/api/health` нужен с
 первой выкладки, скрипты — только CLI. Правило «новые функции за флагом» соблюдается так:
-- крон запускается всегда, но каждый скрипт сам проверяет свой флаг (`REMINDERS`,
-  `EMAIL_VERIFY`/`PASSWORD_RESET` для очереди писем, `UPLOADS` для `files-sweep` и
-  `backup --files`) и при выключенном флаге выходит с кодом 0;
+- крон запускается всегда, но каждый скрипт сам решает, работать ли: `send-reminders` проверяет
+  флаг `REMINDERS`; `mail-worker` при транспорте `outbox` только чистит старое; `backup --files`
+  ничего не делает при пустом `STORAGE_DIR`; `files-sweep` работает всегда (мусор убирается и
+  при выключенном `UPLOADS`, PLAN К-11). Выход в этих случаях — с кодом 0;
 - `app.env.example` задаёт все `FEATURE_*=0`. Preflight предупреждает (`warn`) о каждом
   включённом флаге.
 
@@ -1047,7 +1180,13 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 - `ops-create-admin.test.ts`:
   - создаёт админа: `role=admin`, `email_verified_at` задан, хэш проверяется `verifyPassword`;
   - email нормализуется;
-  - повтор → `exists`; `--promote` существующего learner → admin, `password_hash` не изменился;
+  - повтор → `exists`; `--promote` существующего learner → admin, `password_hash` не изменился,
+    его сессии удалены (сессии других пользователей целы), `meta.sessionsRevoked` — их число;
+  - `--promote` уже админа — ни роль, ни сессии, ни журнал не меняются;
+  - неподтверждённый адрес без `--identity-confirmed` → `unverified`, сессии и роль целы;
+  - `--promote --identity-confirmed`: новый хэш, `email_verified_at` задан, сессии удалены,
+    `auth_tokens` погашены, письма с секретами `cancelled`; без пароля → `validation`, короткий →
+    `weak_password`, в обоих случаях ничего не изменилось;
   - promote несуществующего → `not_found`;
   - пароль из 11 символов → `weak_password`;
   - организация-владелец создаётся один раз, при втором вызове переиспользуется (одна строка
@@ -1082,8 +1221,12 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 
 ### 7.4 Приёмка на стейдже (ручная, чек-лист в RUNBOOK §10; условие «готово» из #24)
 
-Стейдж: `instance.json` с `name=crp-staging`, `port=3001`, `configDir=/etc/crp-staging`, БД
-`crp_staging` с ролями `crp_staging_owner`/`crp_staging_app`. Только синтетические данные.
+Стейдж — **отдельный сервер или виртуальная машина**, установленная по RUNBOOK §2 с собственным
+доменом под basic auth; только синтетические данные (RUNBOOK §10). На одном сервере с продом
+комплект его не поддерживает: `install-ops.sh` пишет сайт nginx, крон и скрипты в общие пути
+(`crp.conf`, `/etc/cron.d/crp`, `/usr/local/lib/crp`), и установка стейджа заменила бы
+настройки прода. Поля `instance.json` (`name`, `port`, `configDir`) остаются параметрами, но
+второй экземпляр на той же машине не поддерживается.
 
 1. Установка с нуля по RUNBOOK §2 — без шагов, которых нет в документе.
 2. `deploy.sh vA` → `create-admin` → вход → создать курс.
@@ -1095,15 +1238,24 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 5. Сломанный релиз (тег с падающей сборкой или health) → прод не тронут (код 2) / автооткат
    (код 1).
 6. `backup.sh --verify-restore` → статус ok. `restore.sh` с настоящим ключом в
-   `crp_staging_restore_*` → счётчики совпадают.
+   `crp_restore_*` на стейдже → счётчики совпадают.
 7. Перезагрузка сервера → PM2 поднимает приложение, health ok.
 8. `certbot renew --dry-run` проходит.
 9. Остановить приложение → `healthcheck.sh` фиксирует fail, после старта — ok, алерт приходит
    ровно два раза.
 10. Проверить, что нет `X-Powered-By`, есть CSP/HSTS. В консоли браузера нет нарушений CSP на
     страницах: каталог, урок с YouTube, тест, сертификат, админка.
-11. Подделка IP: `curl -H 'X-Forwarded-For: 1.2.3.4'` → лимит входа считается по реальному IP
-    (21-я неверная попытка с одного IP блокируется).
+11. Подделка IP: `curl -H 'X-Forwarded-For: 203.0.113.7'` → лимит входа считается по реальному
+    IP (21-я неверная попытка с одного IP блокируется).
+12. Сборка без доступа к БД проходит (§3.5 шаг 6); `npm run build` с рабочим `DATABASE_URL` ведёт
+    себя так же.
+13. Статика через nginx: `curl -I https://<стейдж>/_next/static/<файл>` → 200, страница со стилями.
+14. Картинка урока с внешнего https-адреса не показывается (CSP `img-src 'self'`, намеренно).
+15. Крон: `mail-worker` раз в минуту, `send-reminders` 04:00–14:00 UTC, `files-sweep` в 23:00 UTC;
+    в журналах видны запуски и коды.
+16. Первый админ из уже зарегистрированного слушателя: `--promote` закрывает его сессию в другом
+    браузере; неподтверждённый адрес — код 3 без `--identity-confirmed`, с ним — вход новым
+    паролем (D-039).
 
 ---
 
@@ -1220,8 +1372,15 @@ A и B не пересекаются по файлам и работают па�
    SalemAI + 1 от ИТ ЦРП, у каждого своя учётка и ключ. Список хранится вне репозитория.
 8. **HSTS `includeSubDomains`/preload для `crp.kz`.** Возможно, только если все поддомены ЦРП
    работают по HTTPS. *Рекомендация:* без `includeSubDomains`, пока это не проверено.
-9. **Стейдж для приёмки #24.** *Рекомендация:* на том же сервере второй экземпляр
-   (`crp-staging`, своя БД и роли, поддомен `staging-learn.crp.kz` под basic auth, только
-   синтетические данные). Дешевле второго сервера; комплект это поддерживает (`instance.json`).
+9. **Стейдж для приёмки #24.** *Рекомендация:* отдельный небольшой VPS или виртуальная машина в
+   РК (поддомен `staging-learn.crp.kz` под basic auth, только синтетические данные), установка по
+   RUNBOOK §2. Второй экземпляр на сервере прода комплект не поддерживает (RUNBOOK §10): общие
+   пути nginx, крона и `/usr/local/lib/crp`. Стейдж можно снимать после приёмки и поднимать
+   заново перед крупными выкладками.
 10. **Окно обслуживания** для работ с простоем (мажорное обновление Postgres, перенос сервера).
     *Рекомендация:* воскресенье 06:00–08:00 по Астане, с уведомлением за сутки.
+11. **Адреса администраторов только в домене ЦРП** (D-039, предложено). `create-admin` создаёт и
+    повышает только адреса из списка доменов (`ADMIN_EMAIL_DOMAINS`, на сервере). Так аккаунт на
+    похожий внешний адрес нельзя сделать админом даже по ошибке оператора. *Рекомендация:* да,
+    если у сотрудников ЦРП есть корпоративные ящики; какой домен — сообщает ЦРП. Если ящиков
+    нет — оставить проверку подтверждения адреса и `--identity-confirmed` (§3.16).
