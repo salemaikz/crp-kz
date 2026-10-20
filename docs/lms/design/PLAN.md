@@ -917,7 +917,7 @@ NEXT_TELEMETRY_DISABLED=
 **5B-хвосты. Комплект: вторая копия файлов, offsite, граница пользователей ОС** —
 `backup.sh`, `healthcheck.sh`, `install-ops.sh` — T2→T1 (ревью `architect`); остальное — T1.
 Зависит от 5B. Сделано; исправления по проверке перед слиянием волны (владелец корня установки,
-нефатальная уборка релизов, запасной ключ файлов) — задача gate5-fixes, также сделано.
+нефатальная уборка релизов, ключ файлов без запасного (отказ при совпадении с ключом БД или если ключ БД читается `crp`)) — задача gate5-fixes, также сделано.
 - ТЗ: D-041; ops §3.1, §3.7, §3.9, §3.10, §3.16 (текст для RUNBOOK §3).
 - Файлы: `deploy/bin/{backup,healthcheck,install-ops,restore}.sh`; `deploy/cron/crp.cron`;
   `deploy/logrotate/crp`; `deploy/env/backup.env.example`; `docs/ops/RUNBOOK.md`;

@@ -660,6 +660,34 @@ test('deploy.sh: уборка старого релиза не удалась - 
   assert.equal(count(ctx, 'health:3000:ok'), 3);
 });
 
+function setfaclStub(ctx: Ctx, code: number) {
+  const bin = join(ctx.dir, 'aclbin');
+  mkdirSync(bin);
+  const argsFile = join(ctx.dir, 'setfacl.args');
+  writeFileSync(join(bin, 'setfacl'), `#!/bin/sh\necho "$@" >>"${argsFile}"\nexit ${code}\n`);
+  chmodSync(join(bin, 'setfacl'), 0o755);
+  return { path: `${bin}:${env(ctx).PATH}`, argsFile };
+}
+
+test('deploy.sh: default ACL группы приложения ставится на .next/cache релиза', opts, () => {
+  const ctx = makeCtx();
+  const group = spawnSync('id', ['-gn'], { encoding: 'utf8' }).stdout.trim();
+  const st = setfaclStub(ctx, 0);
+  const r = deploy(ctx, 'v0.1.0', { CRP_APP_GROUP: group, PATH: st.path });
+  assert.equal(r.status, 0, out(r));
+  const args = readFileSync(st.argsFile, 'utf8').trim();
+  assert.match(args, new RegExp(`^-d -m g:${group}:rwX .*/releases/[^ ]+/\\.next/cache$`));
+});
+
+test('deploy.sh: setfacl не удался - предупреждение в deploy.log, выкладка код 0', opts, () => {
+  const ctx = makeCtx();
+  const group = spawnSync('id', ['-gn'], { encoding: 'utf8' }).stdout.trim();
+  const st = setfaclStub(ctx, 1);
+  const r = deploy(ctx, 'v0.1.0', { CRP_APP_GROUP: group, PATH: st.path });
+  assert.equal(r.status, 0, out(r));
+  assert.match(readFileSync(join(ctx.root, 'shared', 'state', 'deploy.log'), 'utf8'), /setfacl не удался/);
+});
+
 // --- healthcheck.sh: curl и pm2 подменены в каталоге теста; запросы curl пишутся в файл.
 
 function makeHealthCtx(opts2: { remote?: boolean; offsite?: boolean; filesOffsite?: boolean; filesAt?: number; emptyStorage?: boolean; since?: number; tg?: boolean } = {}) {

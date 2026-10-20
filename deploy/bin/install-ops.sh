@@ -48,12 +48,23 @@ GRANTS="$DEPLOY_DIR/postgres/grants.sql"
 # --- Каталоги. Права по RUNBOOK, раздел 1.
 # Корень принадлежит crpdeploy: deploy.sh и rollback.sh меняют в нём симлинк current (ln, mv -T). Группа crp
 # получает только r-x, записи в корне у приложения нет; o+x нужен nginx (читает shared/static).
+# Граница crpdeploy -> root (ops §3.1, риск 24): crpdeploy вправе переименовать подкаталоги корня и подложить
+# ссылку, поэтому root НЕ делает chown/chmod по путям ниже $ROOT (install -d идёт по ссылкам). Всё внутри корня
+# создаётся от имени crpdeploy, без -o; сам корень лежит в каталоге root, подменить его crpdeploy не может.
+refuse_link() {
+  echo "install-ops.sh: $1 - символическая ссылка; удалите её вручную и запустите установку снова (RUNBOOK, раздел 1)" >&2
+  exit 2
+}
+no_link() { local p; for p in "$@"; do if [[ -L "$p" ]]; then refuse_link "$p"; fi; done; }
+as_deploy() { run runuser -u crpdeploy -- "$@"; }
+no_link "$ROOT" "$ROOT/releases" "$ROOT/shared" "$ROOT/shared/static" "$ROOT/shared/maintenance" "$ROOT/shared/state" \
+  "$ROOT/shared/instance.json" "$ROOT/shared/maintenance/maintenance.html"
 run install -d -m 0751 -o crpdeploy -g crp "$ROOT"
 # setgid: новые релизы наследуют группу crp, иначе PM2 от crp не прочитает релиз, собранный crpdeploy.
-run install -d -m 2750 -o crpdeploy -g crp "$ROOT/releases"
-run install -d -m 0755 -o crpdeploy -g crp "$ROOT/shared"
-run install -d -m 0755 -o crpdeploy -g crp "$ROOT/shared/static" "$ROOT/shared/maintenance"
-run install -d -m 0750 -o crpdeploy -g crp "$ROOT/shared/state"
+as_deploy install -d -m 2750 -g crp "$ROOT/releases"
+as_deploy install -d -m 0755 -g crp "$ROOT/shared"
+as_deploy install -d -m 0755 -g crp "$ROOT/shared/static" "$ROOT/shared/maintenance"
+as_deploy install -d -m 0750 -g crp "$ROOT/shared/state"
 # /etc/crp: x для всех, чтобы postgres прочитал backup.env и список ключей (сами файлы с секретами закрыты).
 run install -d -m 0751 -o root -g crp /etc/crp
 run install -d -m 0755 -o root -g root /usr/local/lib/crp
@@ -90,17 +101,24 @@ if [[ -d /var/log/crp/backup && ! -L /var/log/crp/backup ]]; then
 fi
 
 # --- instance.json: имя, порты, каталог настроек, ветка выкладки. Существующий не перезаписываем.
-if [[ ! -f "$ROOT/shared/instance.json" ]]; then
+# Пишем во временный файл в /etc/crp (каталог root), кладёт его в корень сам crpdeploy.
+if [[ ! -e "$ROOT/shared/instance.json" ]]; then
   say "создаю $ROOT/shared/instance.json"
   if ((DRY)); then
     echo "+ write $ROOT/shared/instance.json"
   else
-    jq -n --argjson port "${PORT:-3000}" '{name: "crp", port: $port, configDir: "/etc/crp", smokePort: 3109, deployBranch: "main"}' >"$ROOT/shared/instance.json"
-    chown crpdeploy:crp "$ROOT/shared/instance.json"
-    chmod 0644 "$ROOT/shared/instance.json"
+    tmp_inst="$(mktemp /etc/crp/instance.XXXXXX)"
+    jq -n --argjson port "${PORT:-3000}" '{name: "crp", port: $port, configDir: "/etc/crp", smokePort: 3109, deployBranch: "main"}' >"$tmp_inst"
+    chmod 0644 "$tmp_inst"
+    if ! runuser -u crpdeploy -- install -T -m 0644 -g crp "$tmp_inst" "$ROOT/shared/instance.json"; then rm -f "$tmp_inst"; exit 2; fi
+    rm -f "$tmp_inst"
   fi
 fi
-if [[ -z "$PORT" && -f "$ROOT/shared/instance.json" ]]; then PORT="$(jq -r '.port // 3000' "$ROOT/shared/instance.json")"; fi
+# Файл принадлежит crpdeploy: порт берём только если это обычный файл и число (дальше он попадёт в конфиг nginx).
+if [[ -z "$PORT" && -f "$ROOT/shared/instance.json" && ! -L "$ROOT/shared/instance.json" ]]; then
+  PORT="$(jq -r '.port // 3000' "$ROOT/shared/instance.json")"
+  [[ "$PORT" =~ ^[0-9]{2,5}$ ]] || { echo "install-ops.sh: в instance.json недопустимый port" >&2; exit 2; }
+fi
 PORT="${PORT:-3000}"
 
 # --- Скрипты эксплуатации: копии принадлежат root, код из релиза от postgres и root не запускается.
@@ -124,7 +142,7 @@ fi
 
 # --- nginx: заголовки, страница обслуживания, сайт из шаблона.
 run install -m 0644 -o root -g root "$DEPLOY_DIR/nginx/crp-security-headers.conf" /etc/nginx/snippets/crp-security-headers.conf
-run install -m 0644 -o crpdeploy -g crp "$DEPLOY_DIR/nginx/maintenance.html" "$ROOT/shared/maintenance/maintenance.html"
+as_deploy install -m 0644 -g crp "$DEPLOY_DIR/nginx/maintenance.html" "$ROOT/shared/maintenance/maintenance.html"
 render() {
   local tls_ready=0
   if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]]; then tls_ready=1; fi

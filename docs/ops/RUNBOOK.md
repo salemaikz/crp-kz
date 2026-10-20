@@ -62,6 +62,9 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 Владелец корня `/srv/crp` — `crpdeploy`: `deploy.sh` и `rollback.sh` создают в нём `current.tmp` и
 переименовывают его в `current`. Для `crp` корень открыт только на чтение и проход (группа crp, r-x),
 новых путей записи у приложения нет; подкаталоги `releases` (2750) и `shared` принадлежат `crpdeploy`.
+Граница crpdeploy и root: `crpdeploy` может переименовать подкаталоги корня и подложить ссылку, а
+`install-ops.sh` работает от root. Поэтому скрипт отказывает (код 2), если корень или его подкаталог
+оказался ссылкой, и создаёт всё внутри корня от имени `crpdeploy`, без `chown` и `chmod` от root.
 Нет права записи в корне означает код 2 и строку «нет права записи в <корень>» в `deploy.log`.
 
 Пользователи ОС: `crp` запускает PM2 и крон приложения и только читает код; `crpdeploy`
@@ -81,12 +84,9 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 2. SSH только по ключам, `PermitRootLogin no`, `ufw allow 22,80,443`, `fail2ban` для sshd,
    `unattended-upgrades` (security), swap 2 ГБ.
 3. Node 22 (NodeSource), `npm i -g pm2@<точная версия>`.
-4. `apt install postgresql-16`; положить `deploy/postgres/postgresql.conf.d/crp.conf` (из выгрузки комплекта, шаг 7) в
-   `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
-5. Роли и БД (комплект выгружен на шаге 7): `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
-   затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
-6. `apt install nginx certbot python3-certbot-nginx age rsync jq acl`.
-7. Пользователи без пароля и без оболочки для входа:
+4. Пакеты: `apt install git nginx certbot python3-certbot-nginx age rsync jq acl` (`acl` нужен для
+   удаления старых релизов, см. раздел 4).
+5. Пользователи без пароля и без оболочки для входа:
    `useradd --create-home --shell /usr/sbin/nologin crp`, затем
    `useradd --create-home --shell /usr/sbin/nologin --groups crp crpdeploy` (crp для crpdeploy
    дополнительная группа). Группу новых релизов задаёт setgid на `releases` (его ставит
@@ -96,12 +96,18 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    `crpdeploy`, поэтому любой `git` по нему запускается от этого пользователя: от root git
    (версии 2.35.2 и новее) отвечает «detected dubious ownership». Выгрузка комплекта нужного тега:
    `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && sudo -u crpdeploy git -C /srv/crp/repo.git archive <тег> deploy | tar -x -C "$d"`
-   (`<каталог выгрузки>` ниже и в шагах 4 и 5 — это `$d`; postgres должен его читать).
-8. Поставить комплект: затем `sudo <каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
+   (`<каталог выгрузки>` ниже, в шагах 6-8, — это `$d`; postgres должен его читать).
+6. `apt install postgresql-16`; положить `<каталог выгрузки>/deploy/postgres/postgresql.conf.d/crp.conf` в
+   `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
+7. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
+   затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
+8. Поставить комплект: `sudo <каталог выгрузки>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
    скрипт ставит только порт 80. Получить сертификат:
    `certbot certonly --webroot -w /var/www/certbot -d <домен>`, затем
    `install-ops.sh --domain <домен>` ещё раз (подключит TLS). Таймер `certbot.timer` с
-   `--deploy-hook "systemctl reload nginx"`.
+   `--deploy-hook "systemctl reload nginx"`. Если `install-ops.sh` отвечает «символическая ссылка»,
+   кто-то заменил подкаталог корня ссылкой (раздел 1, граница crpdeploy и root): выясните причину,
+   удалите ссылку и запустите скрипт снова.
 9. `shared/instance.json` создаётся install-ops.sh; для основной ветки, которой ещё нет в
    репозитории, задайте `deployBranch` вручную.
 10. Файлы `/etc/crp/*.env` по шаблонам `deploy/env/*.example`, права из раздела 1.
@@ -199,14 +205,15 @@ sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z
 15. Оставляет 5 последних релизов, а также `current` и `previous`. Из общей статики удаляет только
     файлы, которых нет ни в одном оставленном релизе. Уборка не фатальна: если релиз не удалился
     (в `deploy.log` строка «не удалось удалить релиз»), выкладка всё равно кончается кодом 0, а лишний
-    каталог удаляют вручную от `crpdeploy`. Код 1 остаётся только для сбоя health после переключения.
+    каталог удаляют вручную от root: `sudo rm -rf /srv/crp/releases/<id>`, предварительно сверив, что `<id>` не
+    равен `current` и `shared/state/previous` (от `crpdeploy` удаление упадёт с той же ошибкой, что и в скрипте). Код 1 остаётся только для сбоя health после переключения.
 
 ### Права на .next/cache
 
 Каталог `.next/cache` (2770, группа crp) пишет приложение от `crp`. Подкаталоги, которые оно создаёт
 с umask 022, получили бы `crp:crp 0755`, и `crpdeploy` не смог бы удалить такой релиз. Выбран
 default ACL: `deploy.sh` ставит `setfacl -d -m g:crp:rwX` на `.next/cache` (нужен пакет `acl`, он в
-списке шага 6 раздела 2). Новые подкаталоги получают группе crp права rwX, а `crpdeploy` входит в
+списке шага 4 раздела 2). Новые подкаталоги получают группе crp права rwX, а `crpdeploy` входит в
 группу crp. Нет `setfacl` или ФС без ACL: выкладка идёт, в журнал пишется предупреждение, а старые
 релизы могут не удаляться (см. шаг 15). umask 007 для процесса в PM2 не выбран: PM2 не задаёт umask
 дочернему процессу.

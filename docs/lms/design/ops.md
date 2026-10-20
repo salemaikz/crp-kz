@@ -699,13 +699,13 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
    - SSH только по ключам, `PermitRootLogin no`, `ufw allow 22,80,443`, `fail2ban` для sshd,
      `unattended-upgrades` (security), swap 2 ГБ;
    - Node 22 из NodeSource; `npm i -g pm2@<точная версия>`;
-   - `apt install postgresql-16` → `crp.conf`, `pg_hba` → `roles.sql` → `\password`;
-   - nginx, certbot, `age`, `rsync`, `jq`;
-   - пользователи `crp` и `crpdeploy`, каталоги и права;
-   - `git clone --mirror` в `repo.git`, файлы `/etc/crp/*.env` по шаблонам;
-   - `install-ops.sh --domain …`;
+   - пакеты `git nginx certbot python3-certbot-nginx age rsync jq acl` (без `acl` старые релизы не удаляются);
+   - пользователи `crp` и `crpdeploy`, корень `/srv/crp` (`crpdeploy:crp 0751`);
+   - от `crpdeploy`: `git clone --mirror` в `repo.git` и `git archive <тег> deploy` в выгрузку комплекта;
+   - `apt install postgresql-16` → `crp.conf`, `pg_hba` → `roles.sql` (всё из выгрузки) → `\password`;
+   - `install-ops.sh --domain …` из выгрузки, файлы `/etc/crp/*.env` по шаблонам;
    - первая выкладка `deploy.sh vX.Y.Z`;
-   - `pm2 startup systemd -u crp` + `pm2 save`;
+   - `pm2 startup systemd -u crp` + `pm2 save` (запуск от `crp`, как в RUNBOOK §2);
    - первый админ (п. 3), первый бэкап и учебное восстановление (п. 6.2).
 3. **Первый администратор.** `sudo -u crp /usr/local/lib/crp/run-script.sh create-admin --
    --email … --name … --owner-org-name "ЦРП" --owner-org-slug crp`. Пароль вводится в
@@ -1080,6 +1080,7 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 | 21 | Пароль админа в истории shell или в `ps` | `create-admin` не принимает пароль аргументом: приглашение без эха или stdin |
 | 23 | Повышение чужого аккаунта: заранее зарегистрирован похожий адрес, или старая сессия повышаемого осталась на общем компьютере | `--promote` закрывает все сессии повышаемого; неподтверждённый адрес — `unverified`, пока сотрудник лично не подтвердит адрес и ящик (`--identity-confirmed`: новый пароль, сессии и ссылки погашены). Остаточный риск — ошибка в адресе; ограничение доменом ЦРП — вопрос владельцу (D-039) |
 | 24 | Взломанное приложение (`crp`) портит файлы `postgres` через подменённый журнал или статус бэкапа | Граница пользователей ОС (D-041): postgres пишет только в каталоги, где `crp` не может подменить файл или подкаталог; статусы — через `mktemp` и `chmod` до `mv`. Корень установки принадлежит `crpdeploy` (r-x для группы crp), поэтому владение им не даёт `crp` новых путей записи |
+| 25 | `crpdeploy` → root через подложенную ссылку в корне: переименовать `releases` или `shared`, поставить ссылку на системный каталог и дождаться повторного `install-ops.sh` от root | Всё под корнем `install-ops.sh` создаёт от имени `crpdeploy` без `-o` (root не делает `chown`/`chmod` по путям, которыми владеет `crpdeploy`); `instance.json` пишется во временный файл в `/etc/crp` и ставится `install -T`; перед установкой отказ (код 2), если корень или подкаталог — ссылка; порт из `instance.json` проверяется числом. Остаточный риск: `crpdeploy` и так вправе собирать код, который запускает `crp`, и менять `shared/*` |
 | 22 | Clickjacking, XSS со сторонних источников | `X-Frame-Options DENY` + `frame-ancestors 'none'`. CSP разрешает внешний источник только `youtube-nocookie` во фрейме |
 
 ---

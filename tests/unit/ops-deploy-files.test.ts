@@ -243,7 +243,7 @@ test('Postgres: значения параметров не попадают в �
 
 test('install-ops.sh: releases с setgid, журнал бэкапа вне каталога crp, права каталогов (D-041)', () => {
   const t = read('bin', 'install-ops.sh');
-  assert.match(t, /-m 2750 -o crpdeploy -g crp "\$ROOT\/releases"/);
+  assert.match(t, /as_deploy install -d -m 2750 -g crp "\$ROOT\/releases"/);
   assert.match(read('logrotate', 'crp'), /\/var\/log\/crp-backup\/backup\.log \{/);
   assert.match(read('cron', 'crp.cron'), /\/var\/log\/crp-backup\/backup\.log/);
   assert.doesNotMatch(read('cron', 'crp.cron') + read('logrotate', 'crp'), /\/var\/log\/crp\/backup\//);
@@ -261,6 +261,30 @@ test('install-ops.sh: корень с current принадлежит польз�
   assert.doesNotMatch(t, /(chmod|install -d -m) (0?[0-7]?[0-7][2367][0-7]|[0-7]*[2367]) [^\n]*"\$ROOT"$/m);
   assert.match(read('bin', 'lib.sh'), /ln -s [^\n]*\|\| die 2 "нет права записи в \$CRP_ROOT"/);
   assert.match(read('bin', 'lib.sh'), /mv -T [^\n]*\|\| die 2 "нет права записи в \$CRP_ROOT"/);
+});
+
+test('install-ops.sh: граница crpdeploy -> root: под корнем root не делает chown/chmod и не идёт по ссылкам', () => {
+  const t = read('bin', 'install-ops.sh');
+  // единственный install с -o crpdeploy - сам корень; остальное под $ROOT создаёт crpdeploy без -o
+  const owned = t.split('\n').filter((l) => /^\s*(run )?install [^\n]*-o crpdeploy/.test(l));
+  assert.deepEqual(owned.map((l) => l.trim()), ['run install -d -m 0751 -o crpdeploy -g crp "$ROOT"']);
+  assert.match(t, /as_deploy\(\) \{ run runuser -u crpdeploy -- "\$@"; \}/);
+  for (const sub of ['shared"', 'shared/static"', 'shared/state"', 'shared/maintenance/maintenance.html"']) {
+    assert.ok(t.includes(`"$ROOT/${sub}`), sub);
+  }
+  assert.match(t, /no_link "\$ROOT" "\$ROOT\/releases"[^\n]*\\\n[^\n]*instance\.json[^\n]*maintenance\.html"/);
+  assert.doesNotMatch(t, /^[^#\n]*\b(chown|chmod) [^\n]*\$ROOT/m);
+  assert.doesNotMatch(t, /^[^#\n]*>\s*"\$ROOT\//m);
+  // instance.json: временный файл в /etc/crp, в корень кладёт crpdeploy через install -T
+  assert.match(t, /mktemp \/etc\/crp\/instance/);
+  assert.match(t, /runuser -u crpdeploy -- install -T [^\n]*"\$ROOT\/shared\/instance\.json"/);
+  assert.match(t, /as_deploy install -m 0644 -g crp "\$DEPLOY_DIR\/nginx\/maintenance\.html"/);
+});
+
+test('deploy.sh: default ACL на .next/cache и предупреждения об отсутствии setfacl', () => {
+  const t = read('bin', 'deploy.sh');
+  assert.match(t, /setfacl -d -m "g:\$APP_GROUP:rwX" "\$REL\/\.next\/cache"/);
+  assert.match(t, /нет setfacl \(пакет acl\)/);
 });
 
 test('install-ops.sh: предупреждает, если имя статуса занято каталогом или ссылкой', () => {
