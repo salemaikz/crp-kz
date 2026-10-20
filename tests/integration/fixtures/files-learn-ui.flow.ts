@@ -75,6 +75,7 @@ test('Blocks: UPLOADS выключен — блоки не выводятся, �
 
 test('Markdown: регистр id не важен, абсолютный адрес и ссылка со строкой запроса тоже скрываются', () => {
   const md = `[a](/api/files/${PDF.toUpperCase()}) [b](https://crp.example/api/files/${PDF}?x=1) [c](https://example.org)`;
+  // eslint-disable-next-line react/no-children-prop -- тип Markdown требует children в пропсах
   const out = renderToStaticMarkup(createElement(Markdown, { hiddenFileIds: [PDF], hiddenLabel: LABEL, children: md }));
   assert.ok(!out.includes('/api/files/'));
   assert.equal(out.split(LABEL).length - 1, 2);
@@ -82,6 +83,7 @@ test('Markdown: регистр id не важен, абсолютный адре
 });
 
 test('Markdown: без параметров — как раньше, ссылки на файлы с href', () => {
+  // eslint-disable-next-line react/no-children-prop -- тип Markdown требует children в пропсах
   const out = renderToStaticMarkup(createElement(Markdown, { children: `[a](/api/files/${PDF})` }));
   assert.ok(out.includes(`href="/api/files/${PDF}"`));
 });
