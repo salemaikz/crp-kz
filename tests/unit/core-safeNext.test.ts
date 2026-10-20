@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { safeNext } from '../../src/lib/auth/safeNext';
+import { safeNext, safeNextPath } from '../../src/lib/auth/safeNext';
 
 test('safeNext: относительные пути проходят', () => {
   assert.equal(safeNext('/ru/learn'), '/ru/learn');
@@ -35,4 +35,11 @@ test('safeNext: внешние и подозрительные адреса от
 test('safeNext: нормализация не уводит на другой хост', () => {
   const out = safeNext('/..//evil.com');
   assert.ok(out === null || (out.startsWith('/') && !out.startsWith('//')), String(out));
+});
+
+test('safeNextPath: только путь, без query и фрагмента; небезопасное — null', () => {
+  assert.equal(safeNextPath('/ru/orders/CRP-1?key=K#h'), '/ru/orders/CRP-1');
+  assert.equal(safeNextPath('/kz/courses/x/buy'), '/kz/courses/x/buy');
+  assert.equal(safeNextPath('//evil.example/x'), null);
+  assert.equal(safeNextPath('https://evil.example/x'), null);
 });

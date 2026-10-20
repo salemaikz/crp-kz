@@ -18,3 +18,13 @@ export function safeNext(next: unknown): string | null {
   const out = `${url.pathname}${url.search}${url.hash}`;
   return out.startsWith('/') && !out.startsWith('//') ? out : null;
 }
+
+/**
+ * Только путь, без query и фрагмента: для next, который сохраняется надолго (параметры письма).
+ * В query бывают секреты страницы (ключ заказа ?key=…) — в БД и в письмо они не попадают.
+ */
+export function safeNextPath(next: unknown): string | null {
+  const safe = safeNext(next);
+  if (!safe) return null;
+  return new URL(safe, BASE).pathname;
+}

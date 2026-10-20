@@ -55,6 +55,12 @@ test('sendVerification: письмо со ссылкой, безопасный n
   await send('https://evil.example/x', T0 + MIN);
   const rows = await db.sql<{ params: { next: string | null } }>`SELECT params FROM mail_outbox ORDER BY created_at`;
   assert.equal(rows[1]?.params.next, null, 'чужой адрес отброшен');
+
+  // query и фрагмент (например, ключ заказа ?key=…) в параметры письма не попадают
+  await send('/ru/orders/CRP-1?key=SECRETKEY#top', T0 + 2 * MIN);
+  const all = await db.sql<{ params: { next: string | null } }>`SELECT params FROM mail_outbox ORDER BY created_at`;
+  assert.equal(all[2]?.params.next, '/ru/orders/CRP-1');
+  assert.ok(!JSON.stringify(all).includes('SECRETKEY'));
 });
 
 test('verifyEmail: подтверждает, повтор, истёкший и чужой вид токена — invalid_token', async () => {

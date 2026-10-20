@@ -9,7 +9,7 @@ import { isFeatureActive } from '../features';
 import { cancelSecrets, enqueueMail, normalizeRecipient } from '../mail/outbox';
 import type { EnqueueResult } from '../mail/types';
 import { consumeToken, issueToken } from './tokens';
-import { safeNext } from './safeNext';
+import { safeNextPath } from './safeNext';
 import { isSeedUser } from './session';
 
 /** Внутренний сигнал: транзакция, единственная цель которой письмо, не поставила его — откатить. */
@@ -139,7 +139,7 @@ export async function sendVerification(
     locale: input.locale,
     to: input.email,
     userId: input.userId,
-    params: { name: input.name, next: safeNext(input.next) },
+    params: { name: input.name, next: safeNextPath(input.next) },
     secret,
     capsChecked: true,
     nowMs: t,
