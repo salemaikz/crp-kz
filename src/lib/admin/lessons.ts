@@ -6,6 +6,7 @@ import type { L10n, LessonContent } from '../content/types';
 import { writeAudit } from './audit';
 import { AdminError, type ContentIssue, type FieldErrors } from './errors';
 import { toContentIssues } from './contentIssues';
+import { resolveLessonFiles, syncLessonFiles } from '../files/refs';
 import { kzQuizzesInSync } from './kzQuizzes';
 import { assertAdmin, type Actor } from './guard';
 import { fieldErrorsFromZod, lessonMetaSchema } from './schemas';
@@ -63,11 +64,6 @@ export function kzQuizzesMatch(content: LessonContent): boolean {
   return kzQuizzesInSync(content.ru.blocks, content.kz?.blocks ?? []);
 }
 
-function hasFileBlocks(content: LessonContent): boolean {
-  const all = [...content.ru.blocks, ...(content.kz?.blocks ?? [])];
-  return all.some((b) => b.type === 'image' || b.type === 'file');
-}
-
 export type LessonSaveInput = {
   titleRu?: unknown;
   titleKz?: unknown;
@@ -98,10 +94,6 @@ export async function updateLesson(
 
   const m = meta.data;
   const doc = content.data;
-  // Схема принимает image/file, но проверка ссылок на файлы (принадлежность, права) появится в 3B.
-  // До этого такие блоки не сохраняем: ссылка на чужой или несуществующий файл попала бы в урок.
-  // Снимет 3B вместе с проверкой ссылок.
-  if (hasFileBlocks(doc)) throw new AdminError('FEATURE_DISABLED');
   if (!kzQuizzesMatch(doc)) throw new AdminError('KZ_QUIZ_MISMATCH', { content: 'kzQuizMismatch' });
 
   const db = await getDb();
@@ -123,12 +115,17 @@ export async function updateLesson(
         slug = m.slug.slice(0, SLUG_MAX);
       }
 
+      // Ссылки на файлы (блоки и Markdown) проверяются всегда, независимо от флага UPLOADS:
+      // снимки переписываются из БД, lesson_files пересобирается по фактическому контенту.
+      const { content: resolved, fileIds } = await resolveLessonFiles(sql, courseId, doc);
+
       const title: L10n = m.titleKz ? { ru: m.titleRu, kz: m.titleKz } : { ru: m.titleRu };
       const t = now();
       await sql`
         UPDATE lessons SET slug = ${slug}, title = ${db.json(title)}, duration_min = ${m.durationMin},
-               status = ${status}, content = ${db.json(doc)}, updated_at = ${t}
+               status = ${status}, content = ${db.json(resolved)}, updated_at = ${t}
         WHERE id = ${lessonId}`;
+      await syncLessonFiles(sql, lessonId, fileIds);
       await sql`UPDATE courses SET updated_at = ${t} WHERE id = ${courseId}`;
 
       await writeAudit(sql, actor.id, 'lesson.update', 'lesson', lessonId, {
@@ -136,6 +133,7 @@ export async function updateLesson(
         title: m.titleRu,
         blocksRu: doc.ru.blocks.length,
         blocksKz: doc.kz?.blocks.length ?? 0,
+        files: fileIds.length,
       });
       if (status !== cur.status) {
         await writeAudit(

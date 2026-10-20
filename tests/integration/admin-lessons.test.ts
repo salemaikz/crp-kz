@@ -244,14 +244,13 @@ test('не администратор не редактирует и не чит
   );
 });
 
-test('блоки image и file до задачи 3B отклоняются кодом FEATURE_DISABLED', async () => {
+test('блоки image и file: ссылка на несуществующий файл — VALIDATION с file_not_found (запрет 3B снят)', async () => {
   const fileId = '11111111-1111-4111-8111-111111111111';
   const image = { id: 'img1', type: 'image', fileId, alt: 'Схема', width: 800, height: 600 };
   const file = { id: 'f1', type: 'file', fileId, label: 'Памятка', name: 'memo', ext: 'pdf', sizeBytes: 1000 };
   for (const block of [image, file]) {
-    await assert.rejects(
-      () => save({}, [block]),
-      (e: unknown) => e instanceof AdminError && e.code === 'FEATURE_DISABLED',
-    );
+    const e = await fails(save({}, [block]));
+    assert.equal(e.issues?.[0]?.code, 'file_not_found');
+    assert.deepEqual(e.issues?.[0]?.path, ['ru', 'blocks', 0, 'fileId']);
   }
 });
