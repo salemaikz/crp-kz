@@ -10,6 +10,7 @@ import path from 'node:path';
 import { assertDbConfigured, isDemo, type Env } from '../env';
 import type { Db, DbHandle } from './core';
 import { assertMigrated, migrate } from './migrate';
+import { seedPermitted } from './seed-guard';
 import { refreshSnapshotTime } from './snapshot';
 
 export type { Db, DbHandle, Row, Sql } from './core';
@@ -17,7 +18,7 @@ export { isUniqueViolation } from './core';
 
 export const DEMO_SNAPSHOT_REL = path.join('.demo', 'pglite-snapshot.tar.gz');
 
-type DbGlobal = typeof globalThis & { __crpDb?: { promise: Promise<DbHandle> }; __crpSnapshotWarned?: boolean };
+type DbGlobal = typeof globalThis & { __crpDb?: { promise: Promise<DbHandle> }; __crpSnapshotWarned?: boolean; __crpSeedWarned?: boolean };
 const g = globalThis as DbGlobal;
 
 /** Открыть драйвер без миграций и сида (скрипты npm run db:*). */
@@ -51,7 +52,13 @@ export function demoSnapshotPath(): string | undefined {
 }
 
 function shouldSeed(): boolean {
-  return isDemo() || process.env.SEED_DEMO === '1';
+  const ok = seedPermitted(process.env);
+  // SEED_DEMO=1 в production без DEMO_MODE=1 (D-040): не сеем, не падаем, предупреждаем один раз на процесс
+  if (!ok && process.env.SEED_DEMO?.trim() === '1' && !g.__crpSeedWarned) {
+    g.__crpSeedWarned = true;
+    console.warn('SEED_DEMO=1 проигнорирован: production без DEMO_MODE=1, демо-данные не записываются');
+  }
+  return ok;
 }
 
 /**
@@ -68,7 +75,7 @@ export function autoMigrateEnabled(env: Env = process.env): boolean {
 
 /**
  * Подготовка открытого драйвера: migrate (autoMigrate) или assertMigrated, затем сид, если нужен
- * (по умолчанию isDemo() или SEED_DEMO=1; сид идёт только в пустую БД). Для getDb(), скриптов и тестов.
+ * (по умолчанию seedPermitted, D-040; сид идёт только в пустую БД). Для getDb(), скриптов и тестов.
  * В production с выключенной автонакаткой DDL не выполняется вовсе.
  */
 export async function prepareDb(db: DbHandle, opts: { autoMigrate?: boolean; seed?: boolean } = {}): Promise<void> {
@@ -126,7 +133,7 @@ async function init(): Promise<DbHandle> {
 }
 
 /**
- * Ленивая инициализация: драйвер → миграции (в production — только проверка) → сид (если users пуста и демо или SEED_DEMO=1).
+ * Ленивая инициализация: драйвер → миграции (в production — только проверка) → сид (если users пуста и seedPermitted, D-040).
  * Один экземпляр на процесс (переживает hot reload); параллельные вызовы ждут один промис.
  */
 export function getDb(): Promise<Db> {

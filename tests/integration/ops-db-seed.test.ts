@@ -47,6 +47,7 @@ test('seedRefusal: настоящая БД без DEMO_MODE/SEED_DEMO — отк
   assert.equal(seedRefusal({ DATABASE_URL: url, SEED_DEMO: '1' }), null);
   assert.equal(seedRefusal({ DATABASE_URL: url, DEMO_MODE: '1' }), null);
   assert.equal(seedRefusal({}), null, 'локальная разработка без БД — демо');
+  assert.ok(seedRefusal({ DATABASE_URL: url, SEED_DEMO: '1', NODE_ENV: 'production' }), 'production: SEED_DEMO не действует');
 });
 
 test('db-seed: вне демо — код 1 и users пуста; в демо (PGLITE_DIR без NODE_ENV) — засевает', async () => {
@@ -61,6 +62,19 @@ test('db-seed: вне демо — код 1 и users пуста; в демо (PG
     const ok = run('db-seed.ts', [], { PGLITE_DIR: dir });
     assert.equal(ok.status, 0, ok.stderr);
     assert.ok((await usersCount(dir)) > 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('db-seed: SEED_DEMO=1 в production без DEMO_MODE — код 1, users пуста, без пароля', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'crp-seed-prod-'));
+  try {
+    const r = run('db-seed.ts', [], { PGLITE_DIR: dir, NODE_ENV: 'production', SEED_DEMO: '1' });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /DEMO_MODE/);
+    assert.equal((r.stdout + r.stderr).includes('demo12345'), false);
+    assert.equal(await usersCount(dir), 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,13 +1,26 @@
-// Разрешение на сид демо-данных из скрипта db:seed. Без обращений к БД: проверяется до её открытия.
-import { isDemo } from '../env';
+// Разрешение на сид демо-данных (getDb/prepareDb и скрипт db:seed). Без обращений к БД. Нормативно: D-040.
+import { isDemo, type Env } from '../env';
 
 /**
- * Текст отказа или null, если сид разрешён: демо-режим или явный SEED_DEMO=1.
- * Демо-учётки имеют публичный пароль, в настоящую базу их сеять нельзя.
- * Текст не содержит пароля и адреса БД.
+ * Можно ли сеять демо-данные. Демо-режим либо явный SEED_DEMO=1 вне production.
+ * Демо-учётки имеют публичный пароль: в production без DEMO_MODE=1 их в настоящую базу не пишем.
  */
-export function seedRefusal(env: Record<string, string | undefined> = process.env): string | null {
-  if (env.SEED_DEMO?.trim() === '1' || isDemo(env)) return null;
+export function seedPermitted(env: Env = process.env): boolean {
+  return isDemo(env) || (env.SEED_DEMO?.trim() === '1' && env.NODE_ENV !== 'production');
+}
+
+/**
+ * Текст отказа или null, если сид разрешён.
+ * Текст не содержит пароля, адреса БД и значений переменных.
+ */
+export function seedRefusal(env: Env = process.env): string | null {
+  if (seedPermitted(env)) return null;
+  if (env.SEED_DEMO?.trim() === '1') {
+    return (
+      'SEED_DEMO=1 в production не действует без DEMO_MODE=1: демо-учётки с публичным паролем в боевую базу не пишутся. ' +
+      'Администратора создаёт admin:create.'
+    );
+  }
   return (
     'db:seed отказался работать: это не демо-окружение. Сид создаёт учётки с публичным паролем. ' +
     'Для демо-базы задайте SEED_DEMO=1 или DEMO_MODE=1. Администратора настоящей базы создаёт admin:create.'
