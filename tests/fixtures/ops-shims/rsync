@@ -1,8 +1,40 @@
 #!/usr/bin/env bash
-# Заглушка rsync для tests/unit/ops-scripts.test.ts: rsync -a <откуда>/ <куда>/ копирует содержимое.
+# Заглушка rsync для tests/unit/ops-scripts.test.ts. Два вида вызова:
+#   rsync -a [--chmod=D..,F..] <откуда>/ <куда>/   копирует содержимое;
+#   rsync -aHR ... <подкаталог>... <куда>/          относительные пути (-R), как при отправке бэкапа.
+# SHIM_RSYNC_DENY=<имя>: подкаталог с таким именем «нечитаем», код 23 (как у rsync на чужом каталоге 0700).
 set -euo pipefail
 echo "rsync" >>"$SHIM_LOG"
-src="${*: -2:1}"
-dst="${*: -1}"
+relative=0
+chmod_opt=""
+pos=()
+skip=0
+for a in "$@"; do
+  if ((skip)); then skip=0; continue; fi
+  case "$a" in
+    -e) skip=1 ;;
+    --chmod=*) chmod_opt="${a#--chmod=}" ;;
+    --*) ;;
+    -*R*) relative=1 ;;
+    -*) ;;
+    *) pos+=("$a") ;;
+  esac
+done
+dst="${pos[-1]}"
+unset 'pos[-1]'
+if ((relative)); then
+  rc=0
+  for s in "${pos[@]}"; do
+    if [[ -n "${SHIM_RSYNC_DENY:-}" && "$s" == "$SHIM_RSYNC_DENY" ]]; then rc=23; continue; fi
+    mkdir -p "$dst/$s"
+    cp -a "$s/." "$dst/$s"
+  done
+  exit "$rc"
+fi
+src="${pos[0]}"
 mkdir -p "$dst"
 cp -a "${src%/}/." "$dst"
+if [[ -n "$chmod_opt" ]]; then
+  find "$dst" -type d -exec chmod 755 {} +
+  find "$dst" -type f -exec chmod 644 {} +
+fi

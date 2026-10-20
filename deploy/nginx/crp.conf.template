@@ -44,7 +44,10 @@ server {
   server_tokens off;
 
   access_log /var/log/nginx/crp.access.log crp_noquery;
-  error_log  /var/log/nginx/crp.error.log warn;
+  # Уровень crit: в записях уровня error nginx печатает строку запроса и Referer целиком, а там бывают
+  # ключи заказов и токены. Сбой приложения ловит healthcheck, подробности смотрите в журнале PM2.
+  error_log  /var/log/nginx/crp.error.log crit;
+  limit_req_log_level warn;           # отказы лимита не пишем в error_log с query
 
   client_max_body_size 2m;            # server actions до 1 МБ (Next), запас на multipart
   client_body_timeout 15s;

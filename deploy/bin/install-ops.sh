@@ -47,7 +47,8 @@ GRANTS="$DEPLOY_DIR/postgres/grants.sql"
 
 # --- Каталоги. Права по RUNBOOK, раздел 1.
 run install -d -m 0751 -o root -g crp "$ROOT"
-run install -d -m 0750 -o crpdeploy -g crp "$ROOT/releases"
+# setgid: новые релизы наследуют группу crp, иначе PM2 от crp не прочитает релиз, собранный crpdeploy.
+run install -d -m 2750 -o crpdeploy -g crp "$ROOT/releases"
 run install -d -m 0755 -o crpdeploy -g crp "$ROOT/shared"
 run install -d -m 0755 -o crpdeploy -g crp "$ROOT/shared/static" "$ROOT/shared/maintenance"
 run install -d -m 0750 -o crpdeploy -g crp "$ROOT/shared/state"
@@ -55,6 +56,8 @@ run install -d -m 0750 -o crpdeploy -g crp "$ROOT/shared/state"
 run install -d -m 0751 -o root -g crp /etc/crp
 run install -d -m 0755 -o root -g root /usr/local/lib/crp
 run install -d -m 0755 -o crp -g adm /var/log/crp
+# Журнал бэкапа БД в своём каталоге postgres: logrotate (su postgres) создаёт там .1 и .gz.
+run install -d -m 0755 -o postgres -g adm /var/log/crp/backup
 run install -d -m 0775 -o postgres -g crp /var/lib/crp-ops
 run install -d -m 0700 -o crp -g crp /var/lib/crp /var/lib/crp/files
 run install -d -m 0711 -o root -g root /var/backups/crp
@@ -62,7 +65,7 @@ run install -d -m 0700 -o postgres -g postgres /var/backups/crp/daily /var/backu
 run install -d -m 0700 -o crp -g crp /var/backups/crp/files
 run install -d -m 0755 /var/www/certbot
 # Журнал бэкапа БД пишет postgres, остальные журналы — crp.
-if [[ ! -e /var/log/crp/backup.log ]]; then run install -m 0640 -o postgres -g adm /dev/null /var/log/crp/backup.log; fi
+if [[ ! -e /var/log/crp/backup/backup.log ]]; then run install -m 0640 -o postgres -g adm /dev/null /var/log/crp/backup/backup.log; fi
 
 # --- instance.json: имя, порты, каталог настроек, ветка выкладки. Существующий не перезаписываем.
 if [[ ! -f "$ROOT/shared/instance.json" ]]; then

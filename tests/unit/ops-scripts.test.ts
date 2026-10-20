@@ -3,7 +3,7 @@
 // по нему проверяем порядок шагов (ops §7.1). Без bash, jq и flock тесты пропускаются; в CI они есть.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, statSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -215,6 +215,25 @@ test('rollback: проверки целевого релиза и причины
   assert.equal(rollback(ctx).status, 2, 'откатываться не на что');
 });
 
+test('общая статика читается любым пользователем: файлы o+r, каталоги o+x', opts, () => {
+  const ctx = makeCtx();
+  const r = deploy(ctx, 'v0.1.0');
+  assert.equal(r.status, 0, out(r));
+  const base = join(ctx.root, 'shared', 'static', '_next');
+  const walkModes = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      const st = statSync(p);
+      if (st.isDirectory()) {
+        assert.equal(st.mode & 0o005, 0o005, `каталог ${p} недоступен nginx`);
+        walkModes(p);
+      } else assert.equal(st.mode & 0o004, 0o004, `файл ${p} недоступен nginx`);
+    }
+  };
+  assert.equal(statSync(base).mode & 0o005, 0o005);
+  walkModes(base);
+});
+
 test('хранение: пять последних релизов, current и previous остаются, статика убирается точечно', opts, () => {
   const ctx = makeCtx();
   const ids: string[] = [];
@@ -378,6 +397,30 @@ test('backup.sh: BACKUP_REMOTE задан - вторая копия отправ
   assert.equal(r.status, 0, out(r));
   assert.equal(b.status().offsite, true);
   assert.ok(existsSync(join(remote, 'daily')));
+});
+
+test('backup.sh: вторая копия — только свои подкаталоги, нечитаемый сосед даёт offsite=false', opts, () => {
+  const b = makeBackupCtx();
+  const remote = join(b.ctx.dir, 'remote');
+  writeFileSync(b.envFile, `${readFileSync(b.envFile, 'utf8')}BACKUP_REMOTE=${remote}\n`);
+  // Каталог files принадлежит другому пользователю и закрыт; бэкап БД его не трогает.
+  const ok = b.run([], { SHIM_RSYNC_DENY: 'files' });
+  assert.equal(ok.status, 0, out(ok));
+  assert.equal(b.status().offsite, true);
+  assert.equal(existsSync(join(remote, 'files')), false, 'бэкап БД не отправляет files/');
+  const bad = b.run([], { SHIM_RSYNC_DENY: 'daily' });
+  assert.equal(bad.status, 0, 'сбой второй копии не отменяет локальную');
+  assert.equal(b.status().offsite, false);
+  assert.match(bad.stdout, /НЕ отправлена/);
+});
+
+test('backup.sh --label: статус ночного бэкапа не перезаписывается', opts, () => {
+  const b = makeBackupCtx();
+  assert.equal(b.run().status, 0);
+  const nightly = readFileSync(join(b.ops, 'backup-status.json'), 'utf8');
+  assert.equal(b.run(['--label', 'pre-deploy-x']).status, 0);
+  assert.equal(readFileSync(join(b.ops, 'backup-status.json'), 'utf8'), nightly);
+  assert.equal(b.status('manual-status.json').ok, true);
 });
 
 test('backup.sh --files: архив файлов, пустое хранилище - нечего делать', opts, () => {

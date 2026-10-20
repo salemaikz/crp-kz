@@ -16,7 +16,7 @@
 }
 
 # Пишет пользователь postgres: бэкап БД.
-/var/log/crp/backup.log {
+/var/log/crp/backup/backup.log {
   daily
   rotate 14
   compress

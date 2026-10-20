@@ -15,8 +15,8 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 
 | Вопрос | Где в комплекте | Что происходит до решения |
 |---|---|---|
-| Где вторая копия бэкапов в РК | `BACKUP_REMOTE`, `BACKUP_REMOTE_SSH_KEY` в `backup.env` | Копия только на этом сервере, `offsite=false` в статусе. Потеря сервера означает потерю данных вместе с бэкапом |
-| Кто хранит приватные ключи age | `BACKUP_AGE_RECIPIENTS_FILE` (только открытые ключи) | `backup.sh` не запускается: в файле заглушки `age1<...>` |
+| Где вторая копия бэкапов в РК | `BACKUP_REMOTE`, `BACKUP_REMOTE_SSH_KEY` в `backup.env` | Копия только на этом сервере, `offsite=false` в статусе. Потеря сервера означает потерю данных вместе с бэкапом. Если `BACKUP_REMOTE` задан, а отправка не прошла, `healthcheck.sh` показывает предупреждение |
+| Кто хранит приватные ключи age | `BACKUP_AGE_RECIPIENTS_FILE` (только открытые ключи) | `backup.sh` не запускается: в файле заглушки `age1<...>`. Из-за этого любая выкладка с ненакатанными миграциями, в том числе первая на пустую БД, останавливается с кодом 2 на шаге бэкапа, пока нет настоящих открытых ключей (D-029 предложено). Обходного пути без бэкапа нет; если владелец разрешит иной порядок для первой выкладки на пустую БД, это записывается в `DECISIONS.md`, а не делается молча |
 | Приемлем ли RPO 24 часа | расписание в `deploy/cron/crp.cron` | Бэкап раз в сутки. Оплаты за последние сутки восстанавливаются по банковской выписке |
 | Канал алертов, внешний монитор | `ALERT_TELEGRAM_*` в `monitor.env` | Алерты в journald и `/var/log/crp/healthcheck.log` |
 | Хостер, домен, список людей с SSH | раздел 2 | Решает владелец |
@@ -36,7 +36,7 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 ```
 /srv/crp/                      root:crp 0751
   repo.git/                    зеркало репозитория (crpdeploy)
-  releases/<UTC>-<тег>/        crpdeploy:crp 0750; .next/cache 2770
+  releases/<UTC>-<тег>/        crpdeploy:crp 2750 (setgid на releases: группа crp у новых релизов); .next/cache 2770
     RELEASE.json               {id, tag, sha, builtAt}
     .env.production            симлинк на /etc/crp/app.env
   current -> releases/<id>     атомарная замена симлинка
@@ -54,7 +54,7 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 /usr/local/lib/crp/            root 0755: копии скриптов (ставит install-ops.sh)
 /var/lib/crp/files             crp 0700: STORAGE_DIR
 /var/lib/crp-ops/              postgres:crp 0775: статусы бэкапа и монитора
-/var/log/crp/                  crp:adm 0755: журналы PM2 и крона
+/var/log/crp/                  crp:adm 0755: журналы PM2 и крона; backup/ postgres:adm 0755: журнал бэкапа БД
 /var/backups/crp/              root 0711: daily, weekly, monthly, manual (postgres 0700), files (crp 0700)
 ```
 
@@ -80,8 +80,11 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 5. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f deploy/postgres/roles.sql`,
    затем `\password crp_owner` и `\password crp_app`. Пароли сразу в менеджер паролей владельца.
 6. `apt install nginx certbot python3-certbot-nginx age rsync jq`.
-7. Пользователи `crp` и `crpdeploy` (второй входит в группу `crp`), без пароля и без оболочки
-   для входа по паролю. `git clone --mirror <адрес репозитория> /srv/crp/repo.git`, владелец
+7. Пользователи без пароля и без оболочки для входа:
+   `useradd --create-home --shell /usr/sbin/nologin crp`, затем
+   `useradd --create-home --shell /usr/sbin/nologin --groups crp crpdeploy` (crp для crpdeploy
+   дополнительная группа). Группу новых релизов задаёт setgid на `releases` (его ставит
+   `install-ops.sh`); `deploy.sh` останавливается с кодом 2, если группа релиза не `crp`. `git clone --mirror <адрес репозитория> /srv/crp/repo.git`, владелец
    `crpdeploy`.
 8. Выгрузить комплект нужного тега и поставить: `git -C /srv/crp/repo.git archive <тег> deploy | tar -x -C <временный каталог>`,
    затем `sudo <временный каталог>/deploy/bin/install-ops.sh --domain <домен>`. Без сертификата
@@ -204,9 +207,13 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 | Перед миграциями | при `db:status` с кодом 3 | `manual` | вручную, не ротируется |
 | Загруженные файлы | 22:00 (03:00) | `files` | 14 копий |
 
-Каждый файл лежит рядом с `.sha256`. Статус пишется в `/var/lib/crp-ops/backup-status.json` и
+Каждый файл лежит рядом с `.sha256`. Разовая копия перед выкладкой (`--label`) пишет свой статус `manual-status.json` и не подменяет
+статус ночного бэкапа. Статус ночного бэкапа пишется в `/var/lib/crp-ops/backup-status.json` и
 `files-status.json`: `ok`, время, имя файла, размер, `verified`, `offsite`. Приватного ключа на
-сервере нет. Вторая копия уходит `rsync` по SSH в `BACKUP_REMOTE`, если оно задано. Кто хранит
+сервере нет. Вторая копия уходит `rsync` по SSH в `BACKUP_REMOTE`, если оно задано: каждый пользователь
+отправляет только свои подкаталоги (postgres: daily, weekly, monthly, manual; crp: files).
+Ключ SSH на стороне хранилища ограничивается записью без удаления (`rrsync -wo`), иначе взлом
+приложения (пользователь crp читает ключ для files) уничтожит и вторую копию. Кто хранит
 ключи и где вторая копия, записывается вне репозитория у владельца.
 
 ### 6.2 Учебное восстановление раз в месяц (чек-лист)
@@ -221,12 +228,15 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 
 ### 6.3 Авария: восстановление боевой БД
 
+0. Остановить крон приложения: `mv /etc/cron.d/crp /etc/cron.d/crp.off` (mail-worker подключается
+   к БД каждую минуту и мешает переименованию БД). Вернуть в конце: `mv /etc/cron.d/crp.off /etc/cron.d/crp`.
 1. `sudo -u crp pm2 stop <имя из instance.json>`.
 2. `sudo -u postgres /usr/local/lib/crp/restore.sh --file <файл> --identity <ключ> --target crp --force-prod`.
    Боевая БД не удаляется: она переименовывается в `crp_broken_<время>`.
 3. Если код новее дампа: `deploy.sh` текущего тега не нужен, достаточно миграций:
-   `cd /srv/crp/current && node --env-file=/etc/crp/migrate.env --import tsx scripts/db-migrate.ts`.
-4. Права: тот же каталог, `scripts/db-grants.ts` (restore.sh уже выдал их по `grants.sql`).
+   `cd /srv/crp/current && sudo -u crpdeploy env NODE_ENV=production node --env-file=/etc/crp/migrate.env --import tsx scripts/db-migrate.ts`.
+4. Права: `sudo -u crpdeploy env NODE_ENV=production node --env-file=/etc/crp/migrate.env --import tsx scripts/db-grants.ts`
+   из того же каталога (restore.sh уже выдал их по `grants.sql`; повтор безвреден).
 5. `sudo -u crp pm2 start <имя>`, проверить `/api/health`.
 6. Оплаты, которые прошли после времени бэкапа, восстанавливаются по банковской выписке:
    статус «Оплачено» ставится заново.
@@ -239,9 +249,11 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 
 ## 7. Логи
 
-`/var/log/crp/*.log` (PM2, крон, бэкап) и `/var/log/nginx/crp.*`, хранение 14 дней
-(`deploy/logrotate/crp`). В журнале nginx нет query string и Referer: там бывают ключи заказов и
-токены. Крон-скрипты пишут только счётчики и id. **Логи с прода не вставлять в ИИ-сессии**
+`/var/log/crp/*.log` (PM2, крон), `/var/log/crp/backup/backup.log` (бэкап БД) и
+`/var/log/nginx/crp.*`, хранение 14 дней (`deploy/logrotate/crp`). В журнале доступа nginx нет
+query string и Referer: там бывают ключи заказов и токены. Журнал ошибок nginx ведётся с уровня
+crit, потому что записи уровня error содержат строку запроса. Журнал Postgres не пишет значения
+параметров запросов (`log_parameter_max_length = 0`). Крон-скрипты пишут только счётчики и id. **Логи с прода не вставлять в ИИ-сессии**
 (AGENTS.md): для разбора только обезличенная выдержка.
 
 ## 8. Мониторинг
@@ -253,7 +265,7 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 |---|---|---|
 | `app_health` | `/api/health` не `ok` или медленнее 5 с | раздел 11: 502, `migrations=pending` |
 | `pm2` | процесс не `online`; warn при +3 рестартах за час | `pm2 logs`, раздел 11: цикл рестартов |
-| `backup`, `backup_files` | статус не `ok` или старше 26 часов | `/var/log/crp/backup.log`; чаще всего заглушки вместо ключей age или нет места |
+| `backup`, `backup_files` | статус не `ok` или старше 26 часов | `/var/log/crp/backup/backup.log`; чаще всего заглушки вместо ключей age или нет места |
 | `disk` | меньше 20 % warn, меньше 10 % fail | раздел 11: диск |
 | `tls_cert` | меньше 21 дня warn, меньше 7 fail | раздел 11: сертификат |
 | `external` | `https://<домен>/api/health` недоступен | DNS, TLS, nginx |
@@ -293,8 +305,10 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 
 ## 10. Стейдж и приёмка (условие «готово» из #24)
 
-Стейдж: `instance.json` с `name=crp-staging`, своим портом и `configDir`, отдельная БД с
-отдельными ролями, поддомен под basic auth, только синтетические данные.
+Стейдж ставится на отдельном сервере (или виртуальной машине) по разделу 2 с собственным
+доменом под basic auth, только синтетические данные. На одном сервере с продом комплект его не
+поддерживает: `install-ops.sh` пишет сайт nginx, крон и скрипты в общие пути (`crp.conf`,
+`/etc/cron.d/crp`, `/usr/local/lib/crp`), и запуск для стейджа заменил бы настройки прода.
 
 - [ ] Установка с нуля по разделу 2, без шагов, которых нет в документе.
 - [ ] `deploy.sh vA`, `create-admin`, вход, создание курса.
@@ -311,6 +325,11 @@ sudo -u crpdeploy /usr/local/lib/crp/rollback.sh [--to <id релиза>] [--rea
 - [ ] Перезагрузка сервера: PM2 поднимает приложение, health ok.
 - [ ] `certbot renew --dry-run` проходит.
 - [ ] Остановить приложение: `healthcheck.sh` фиксирует fail, после старта ok; алерт пришёл ровно два раза.
+- [ ] Статика через nginx: `curl -I https://<стейдж>/_next/static/<файл из .next/static>` отвечает 200
+      (права общей статики o+r, каталоги o+x), страница открывается со стилями.
+- [ ] Картинка урока с внешнего https-адреса не показывается: CSP `img-src 'self'` это блокирует
+      намеренно (D-009, адрес читателя не уходит внешнему хосту). Авторам: картинки только из
+      загрузок платформы.
 - [ ] Нет заголовка `X-Powered-By`, есть CSP и HSTS; в консоли браузера нет нарушений CSP на
       страницах каталога, урока с YouTube, теста, сертификата, админки.
 - [ ] Подделка IP: `curl -H 'X-Forwarded-For: 203.0.113.7' ...`, лимит входа считается по

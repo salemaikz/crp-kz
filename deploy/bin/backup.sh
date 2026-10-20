@@ -57,6 +57,8 @@ done
 TS="${CRP_BACKUP_TS:-$(date -u +%Y%m%dT%H%M%SZ)}"
 STATUS_FILE="$OPS_DIR/backup-status.json"
 if ((FILES)); then STATUS_FILE="$OPS_DIR/files-status.json"; fi
+# Разовая копия перед выкладкой не должна подменять статус ночного бэкапа: healthcheck следит за ним.
+if [[ -n "$LABEL" ]]; then STATUS_FILE="$OPS_DIR/manual-status.json"; fi
 TMP=""
 OUT_FILE=""
 VERIFIED=false
@@ -116,7 +118,11 @@ push_offsite() {
   [[ -n "$REMOTE" ]] || { say "BACKUP_REMOTE не задан: второй копии нет (решение владельца, D-029)"; return 0; }
   local ssh="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes"
   [[ -z "$REMOTE_KEY" ]] || ssh="$ssh -i $REMOTE_KEY"
-  if rsync -a --ignore-existing -e "$ssh" "$DIR/" "$REMOTE/"; then OFFSITE=true; say "вторая копия отправлена"; else
+  # Отправляем только свои подкаталоги: каталоги соседнего пользователя закрыты (0700), и rsync на них
+  # давал бы код 23 при каждом запуске. -R сохраняет имена подкаталогов, -H жёсткие ссылки weekly/monthly.
+  local -a parts=(daily weekly monthly manual)
+  if ((FILES)); then parts=(files); fi
+  if (cd "$DIR" && rsync -aHR --ignore-existing --exclude='.tmp.*' -e "$ssh" "${parts[@]}" "$REMOTE/"); then OFFSITE=true; say "вторая копия отправлена"; else
     say "вторая копия НЕ отправлена"
     return 1
   fi

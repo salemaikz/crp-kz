@@ -231,3 +231,26 @@ test('install-ops.sh: все копируемые скрипты существ�
     assert.ok(existsSync(join(DEPLOY, rel)), rel);
   }
 });
+
+test('Postgres: значения параметров не попадают в журнал медленных запросов и ошибок', () => {
+  const conf = read('postgres', 'postgresql.conf.d', 'crp.conf');
+  assert.match(conf, /^log_parameter_max_length = 0$/m);
+  assert.match(conf, /^log_parameter_max_length_on_error = 0$/m);
+});
+
+test('install-ops.sh: releases с setgid, журнал бэкапа в каталоге postgres', () => {
+  const t = read('bin', 'install-ops.sh');
+  assert.match(t, /-m 2750 -o crpdeploy -g crp "\$ROOT\/releases"/);
+  assert.match(read('logrotate', 'crp'), /\/var\/log\/crp\/backup\/backup\.log \{/);
+  assert.match(read('cron', 'crp.cron'), /\/var\/log\/crp\/backup\/backup\.log/);
+});
+
+test('nginx: журнал ошибок не пишет строки запросов с query', () => {
+  assert.match(read('nginx', 'crp.conf.template'), /error_log\s+\S+\s+crit;/);
+});
+
+test('healthcheck.sh: токен бота не в argv curl', () => {
+  const t = read('bin', 'healthcheck.sh');
+  assert.match(t, /curl [^\n]*-K -/);
+  assert.doesNotMatch(t, /curl [^\n]*bot\$TG_TOKEN/);
+});

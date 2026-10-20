@@ -20,6 +20,8 @@ DOMAIN="${ENVF[DOMAIN]:-}"
 TG_TOKEN="${ENVF[ALERT_TELEGRAM_BOT_TOKEN]:-}"
 TG_CHAT="${ENVF[ALERT_TELEGRAM_CHAT_ID]:-}"
 STORAGE=""
+BACKUP_REMOTE=""
+if read_env_file "${CRP_BACKUP_ENV:-/etc/crp/backup.env}"; then BACKUP_REMOTE="${ENVF[BACKUP_REMOTE]:-}"; fi
 if read_env_file "${CRP_APP_ENV:-/etc/crp/app.env}"; then STORAGE="${ENVF[STORAGE_DIR]:-}"; fi
 if [[ -f "$CRP_ROOT/shared/instance.json" ]]; then
   PORT="$(inst_get port 3000)"
@@ -80,6 +82,10 @@ fresh_status() {
 }
 check_backup() {
   if fresh_status backup-status.json; then result[backup]=ok; else result[backup]=fail; fi
+  # Вторая копия задана, но последний бэкап её не отправил: предупреждение, а не отказ (локальная копия есть).
+  if [[ -n "$BACKUP_REMOTE" ]] && [[ "$(jq -r '.offsite' "$OPS_DIR/backup-status.json" 2>/dev/null)" == false ]]; then
+    if [[ "${result[backup]}" == ok ]]; then result[backup]=warn; fi
+  fi
   if [[ -n "$STORAGE" && -d "$STORAGE" && -n "$(find "$STORAGE" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
     if fresh_status files-status.json; then result[backup_files]=ok; else result[backup_files]=fail; fi
   fi
@@ -120,8 +126,10 @@ alert() {
   logger -t crp-alert "$text" 2>/dev/null || true
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ALERT $text"
   if [[ -n "$TG_TOKEN" && -n "$TG_CHAT" ]]; then
-    # Токен бота в адресе запроса: лог curl не ведём, ошибки не печатаем.
-    curl -fsS --max-time 10 -o /dev/null "https://api.telegram.org/bot$TG_TOKEN/sendMessage" \
+    # Токен бота в адресе запроса: адрес передаём конфигом через stdin, чтобы он не попал в argv
+    # (ps и /proc/*/cmdline видят все локальные пользователи). Лог curl не ведём, ошибки не печатаем.
+    printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$TG_TOKEN" |
+      curl -fsS --max-time 10 -o /dev/null -K - \
       --data-urlencode "chat_id=$TG_CHAT" --data-urlencode "text=$text" >/dev/null 2>&1 || true
   fi
 }

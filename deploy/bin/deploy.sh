@@ -111,6 +111,11 @@ valid_release_id "$ID" || die 2 "недопустимый id релиза"
 REL="$RELEASES_DIR/$ID"
 [[ ! -e "$REL" ]] || die 2 "релиз $ID уже существует"
 mkdir -p "$REL"
+# Группа релиза обязана быть группой приложения: каталог releases с setgid (install-ops.sh) передаёт её
+# новым релизам. Иначе PM2 от crp не прочитает релиз, и проверка на smoke-порту этого не заметит.
+if [[ -n "$APP_GROUP" && "$(stat -c %G "$REL")" != "$APP_GROUP" ]]; then
+  die 2 "группа каталога релиза не $APP_GROUP: выставьте setgid на releases (install-ops.sh, RUNBOOK раздел 2)"
+fi
 git -C "$CRP_ROOT/repo.git" archive "$SHA" | tar -x -C "$REL"
 jq -n --arg id "$ID" --arg tag "$TAG" --arg sha "$SHA" --argjson t "$(date -u +%s)000" \
   '{id: $id, tag: $tag, sha: $sha, builtAt: $t}' >"$REL/RELEASE.json"
@@ -154,8 +159,12 @@ fi
 log "step=build"
 
 # 7. Статика релиза в общий каталог, без --delete: чанки старых страниц остаются доступны.
-mkdir -p "$CRP_ROOT/shared/static/_next/static"
-rsync -a "$REL/.next/static/" "$CRP_ROOT/shared/static/_next/static/"
+# Файлы отдаёт nginx от www-data, вне групп crp и crpdeploy: права задаём явно, а не от umask 027 сборки.
+(
+  umask 022
+  mkdir -p "$CRP_ROOT/shared/static/_next/static"
+  rsync -a --chmod=D755,F644 "$REL/.next/static/" "$CRP_ROOT/shared/static/_next/static/"
+)
 log "step=static"
 
 # 8. Бэкап перед миграциями. Код db:status разбираем явно, а не через set -e:
