@@ -41,9 +41,21 @@ export interface DbHandle extends Db {
   close(): Promise<void>;
 }
 
+/**
+ * Бренд jsonb-параметра. Symbol.for общий для всех копий модуля: Next собирает core.ts отдельно в
+ * каждый бандл, а драйвер создаётся один раз на процесс — `instanceof` между бандлами не работает.
+ */
+const JSON_BRAND = Symbol.for('crp.jsonParam');
+
 /** Маркер jsonb-параметра; драйвер превращает его в типизированный параметр jsonb. */
 export class JsonParam {
+  readonly [JSON_BRAND] = true;
   constructor(readonly value: unknown) {}
+}
+
+/** Проверка по бренду, а не по классу: работает и для параметра из чужого бандла. */
+export function isJsonParam(v: unknown): v is JsonParam {
+  return typeof v === 'object' && v !== null && (v as Record<symbol, unknown>)[JSON_BRAND] === true;
 }
 
 export function jsonParam(value: unknown): JsonParam {

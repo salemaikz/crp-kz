@@ -1,6 +1,6 @@
 // Драйвер postgres.js (прод и разработка с DATABASE_URL).
 import type { Sql as PgSql, TransactionSql } from 'postgres';
-import { createTxScope, JsonParam, jsonParam, type DbHandle, type Row, type Sql, type TxConn } from './core';
+import { createTxScope, isJsonParam, jsonParam, type DbHandle, type Row, type Sql, type TxConn } from './core';
 
 type Target = PgSql | TransactionSql;
 
@@ -9,7 +9,7 @@ function makeConn(target: Target): TxConn {
     const res = await target(
       strings,
       // jsonb-маркер → типизированный параметр postgres.js; остальное как есть
-      ...(values.map((v) => (v instanceof JsonParam ? target.json(v.value as never) : v)) as never[]),
+      ...(values.map((v) => (isJsonParam(v) ? target.json(v.value as never) : v)) as never[]),
     );
     // Строки postgres.js — объекты без прототипа в подклассе Array; React Flight такие не
     // сериализует. Приводим к обычным объектам — как в PGlite.

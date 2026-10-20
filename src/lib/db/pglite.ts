@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import type { PGlite, Transaction } from '@electric-sql/pglite';
-import { createTxScope, JsonParam, jsonParam, toCamel, type DbHandle, type Row, type Sql, type TxConn } from './core';
+import { createTxScope, isJsonParam, jsonParam, toCamel, type DbHandle, type Row, type Sql, type TxConn } from './core';
 
 const INT8_OID = 20;
 const JSONB_OID = 3802;
@@ -16,7 +16,7 @@ function toQuery(strings: TemplateStringsArray, values: unknown[]) {
   let paramTypes: number[] | undefined;
   values.forEach((v, i) => {
     if (v === undefined) throw new Error('UNDEFINED_VALUE: Undefined values are not allowed');
-    if (v instanceof JsonParam) {
+    if (isJsonParam(v)) {
       paramTypes ??= values.map(() => 0);
       paramTypes[i] = JSONB_OID;
       params.push(JSON.stringify(v.value));
