@@ -215,7 +215,7 @@ test('maintenance.html: ru и kk совпадают по ключам, нет в
 });
 
 test('документы и шаблоны: без «→», эмодзи, лозунгов и восклицательных знаков (BRAND, «Без ИИ-шума»)', () => {
-  const files = [...walk(DEPLOY), ...walk(join(ROOT, 'docs', 'ops'))];
+  const files = [...walk(DEPLOY), ...walk(join(ROOT, 'docs', 'ops')), ...walk(join(ROOT, 'tools'))];
   const bad: string[] = [];
   for (const f of files) {
     const text = readFileSync(f, 'utf8');

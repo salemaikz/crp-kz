@@ -1,4 +1,4 @@
-// Репозиторий публичный: в deploy/ и docs/ops/ не должно быть IP, ключей и паролей (ops §5, угроза 1).
+// Репозиторий публичный: в deploy/, docs/ops/ и tools/ не должно быть IP, ключей и паролей (ops §5, угроза 1).
 // Шаблоны env задают значения только в угловых скобках, например <пароль-crp_app>.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -46,13 +46,13 @@ function scanText(text: string, kind: 'env' | 'other' = 'env'): string[] {
   return found;
 }
 
-const files = [...walk(join(ROOT, 'deploy')), ...walk(join(ROOT, 'docs', 'ops'))];
+const files = [...walk(join(ROOT, 'deploy')), ...walk(join(ROOT, 'docs', 'ops')), ...walk(join(ROOT, 'tools'))];
 
 test('есть что сканировать', () => {
   assert.ok(files.length >= 15, `найдено файлов: ${files.length}`);
 });
 
-test('в deploy/ и docs/ops/ нет IP, ключей и паролей', () => {
+test('в deploy/, docs/ops/ и tools/ нет IP, ключей и паролей', () => {
   const bad: string[] = [];
   for (const f of files) {
     const reasons = scanText(readFileSync(f, 'utf8'), /\.(example|md)$/.test(f) ? 'env' : 'other');
@@ -61,7 +61,7 @@ test('в deploy/ и docs/ops/ нет IP, ключей и паролей', () => 
   assert.deepEqual(bad, []);
 });
 
-test('в deploy/ и docs/ops/ нет абсолютных путей локальной машины', () => {
+test('в deploy/, docs/ops/ и tools/ нет абсолютных путей локальной машины', () => {
   const bad = files.filter((f) => /\/(?:home|Users)\/[a-z0-9_-]+\//i.test(readFileSync(f, 'utf8'))).map((f) => relative(ROOT, f));
   assert.deepEqual(bad, []);
 });
