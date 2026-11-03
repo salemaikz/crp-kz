@@ -30,7 +30,8 @@ main() {
   local CI_CHECK_NAME="${CRP_CI_CHECK_NAME:-Проверки и e2e}"
   # Ветка исходного репозитория сервера; deployBranch в instance.json должен совпадать.
   local SRV_BRANCH=main
-  # Только для тестов: локальный архив вместо GitHub, проверки ветки и CI не выполняются.
+  # Только для тестов: локальный архив вместо скачивания. Без CRP_GH_API проверки ветки и CI
+  # пропускаются; с CRP_GH_API выполняются против этого адреса.
   local TARBALL="${CRP_SRC_TARBALL:-}"
 
   # Что попадает на сервер. Всё остальное (документы, тесты, настройки редакторов) не выгружается.
@@ -75,7 +76,7 @@ main() {
   local TREE="$WORK/tree"
   mkdir -p "$TREE"
 
-  if [[ -n "$TARBALL" ]]; then
+  if [[ -n "$TARBALL" && -z "${CRP_GH_API:-}" ]]; then
     echo "ТЕСТ: локальный архив, проверки ветки и CI не выполняются" >&2
     cp "$TARBALL" "$WORK/src.tgz"
   else
@@ -126,8 +127,12 @@ main() {
     fi
 
     # 3. Архив коммита без .git.
-    curl -fsSL --max-time 300 -o "$WORK/src.tgz" "https://codeload.github.com/$GH_REPO/tar.gz/$SHA" ||
-      die "не удалось скачать архив $SHA"
+    if [[ -n "$TARBALL" ]]; then
+      cp "$TARBALL" "$WORK/src.tgz"
+    else
+      curl -fsSL --max-time 300 -o "$WORK/src.tgz" "https://codeload.github.com/$GH_REPO/tar.gz/$SHA" ||
+        die "не удалось скачать архив $SHA"
+    fi
   fi
 
   # 4. На диск распаковывается только список SHIP.

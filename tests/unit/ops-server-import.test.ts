@@ -1,9 +1,11 @@
 // tools/release/server-import.sh (D-042): импорт очищенного снимка коммита в bare-репозиторий сервера.
-// Без сети: CRP_SRC_TARBALL подменяет скачивание архива (проверки ветки и CI GitHub тогда не выполняются),
+// Без сети: CRP_SRC_TARBALL подменяет скачивание архива (проверки ветки и CI GitHub тогда не выполняются,
+// если не задан CRP_GH_API; с ним они идут против локальной заглушки API),
 // CRP_SRC_REPO указывает на временный репозиторий. Архивы собираются из git archive этого репозитория;
 // «плохие» варианты - распаковка, правка, упаковка заново. Без bash, git и tar тесты пропускаются.
 import assert from 'node:assert/strict';
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { createServer, type Server } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -259,4 +261,194 @@ test('путь репозитория существует, но это не bar
   const r = runImport(repo, baseTgz, [SHA, 'v0.1.0']);
   assert.equal(r.status, 2, out(r));
   assert.match(r.stderr, /не bare/);
+});
+
+// ---- Проверки ветки и CI против заглушки API GitHub (CRP_GH_API) ----
+
+const REPO_PATH = '/repos/salemaikz/crp-kz';
+const CI_NAME = 'Проверки и e2e';
+
+interface Reply { code: number; body: unknown }
+interface Stub {
+  defaultBranch: string;
+  branchPages: string[][];
+  /** Ответ сравнения по имени ветки; нет записи - 404. */
+  compare: Record<string, Reply>;
+  checks: Reply;
+}
+
+const cmp = (status: string): Reply => ({ code: 200, body: { status } });
+const greenCi = (): Reply => ({ code: 200, body: { check_runs: [{ name: CI_NAME, conclusion: 'success' }] } });
+
+function newStub(over: Partial<Stub> = {}): Stub {
+  return { defaultBranch: 'main', branchPages: [], compare: {}, checks: greenCi(), ...over };
+}
+
+/** Запускает заглушку в этом процессе; log - журнал путей запросов. */
+async function withStub<T>(stub: Stub, fn: (api: string, log: string[]) => Promise<T>): Promise<T> {
+  const log: string[] = [];
+  const server: Server = createServer((req, res) => {
+    const url = req.url ?? '';
+    log.push(url);
+    const send = (r: Reply) => {
+      res.writeHead(r.code, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(r.body));
+    };
+    const path = url.split('?')[0] ?? '';
+    if (path === REPO_PATH) return send({ code: 200, body: { default_branch: stub.defaultBranch } });
+    if (path === `${REPO_PATH}/branches`) {
+      const page = Number(new URL(url, 'http://x').searchParams.get('page') ?? '1');
+      return send({ code: 200, body: (stub.branchPages[page - 1] ?? []).map((name) => ({ name })) });
+    }
+    const m = new RegExp(`^${REPO_PATH}/compare/${SHA}\\.\\.\\.(.+)$`).exec(path);
+    if (m) return send(stub.compare[decodeURIComponent(m[1] ?? '')] ?? { code: 404, body: { message: 'Not Found' } });
+    if (path === `${REPO_PATH}/commits/${SHA}/check-runs`) return send(stub.checks);
+    send({ code: 404, body: { message: 'Not Found' } });
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const addr = server.address();
+    assert.ok(addr && typeof addr === 'object');
+    return await fn(`http://127.0.0.1:${addr.port}`, log);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((ok) => server.close(() => ok()));
+  }
+}
+
+interface AsyncRun { status: number | null; stdout: string; stderr: string }
+
+/** Асинхронный запуск: event loop свободен, заглушка отвечает. */
+function runImportAsync(repo: string, args: string[], api: string): Promise<AsyncRun> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('bash', [SCRIPT, ...args], {
+      env: cleanEnv({ CRP_SRC_TARBALL: baseTgz, CRP_SRC_REPO: repo, CRP_GH_API: api }),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    const timer = setTimeout(() => child.kill('SIGKILL'), 60_000);
+    child.on('error', reject);
+    child.on('close', (status) => {
+      clearTimeout(timer);
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+
+const cmpLog = (log: string[]) => log.filter((u) => u.includes('/compare/')).map((u) => u.split('...')[1]);
+
+async function scenario(stub: Stub, args: string[]) {
+  const repo = makeRepoPath();
+  return withStub(stub, async (api, log) => {
+    const r = await runImportAsync(repo, [SHA, 'v0.1.0', ...args], api);
+    return { r, log, repo, all: `${r.stdout}\n${r.stderr}` };
+  });
+}
+
+for (const status of ['identical', 'ahead']) {
+  test(`ветка: по умолчанию, статус ${status} - импорт, запрашивается только ветка по умолчанию`, opts, async () => {
+    const { r, log, repo, all } = await scenario(newStub({ compare: { main: cmp(status) }, branchPages: [['main', 'dev']] }), []);
+    assert.equal(r.status, 0, all);
+    assert.match(r.stdout, /входит в ветку main/);
+    assert.deepEqual(cmpLog(log), ['main']);
+    assert.equal(log.some((u) => u.includes('/branches')), false);
+    assert.ok(existsSync(repo));
+  });
+}
+
+for (const status of ['behind', 'diverged']) {
+  test(`ветка: по умолчанию, статус ${status} - код 2, другие ветки не запрашиваются, репозитория нет`, opts, async () => {
+    const { r, log, repo, all } = await scenario(newStub({ compare: { main: cmp(status), dev: cmp('identical') }, branchPages: [['main', 'dev']] }), []);
+    assert.equal(r.status, 2, all);
+    assert.match(r.stderr, /не входит/);
+    assert.deepEqual(cmpLog(log), ['main']);
+    assert.equal(existsSync(repo), false);
+  });
+}
+
+test('--branch x: сравнивается только x, ветка по умолчанию не запрашивается', opts, async () => {
+  const { r, log, all } = await scenario(newStub({ compare: { x: cmp('ahead'), main: cmp('identical') } }), ['--branch', 'x']);
+  assert.equal(r.status, 0, all);
+  assert.deepEqual(cmpLog(log), ['x']);
+  assert.equal(log.includes(REPO_PATH), false);
+});
+
+test('--any-branch: коммит найден на второй странице списка веток (пагинация)', opts, async () => {
+  const first = Array.from({ length: 100 }, (_, i) => `b${i}`);
+  const stub = newStub({ branchPages: [['main', ...first.slice(1)], ['target']], compare: { main: cmp('behind'), target: cmp('ahead') } });
+  for (const b of first.slice(1)) stub.compare[b] = cmp('diverged');
+  const { r, log, all } = await scenario(stub, ['--any-branch']);
+  assert.equal(r.status, 0, all);
+  assert.match(r.stdout, /входит в ветку target/);
+  assert.ok(log.some((u) => u.includes('page=2')), 'запрошена вторая страница');
+  assert.equal(cmpLog(log)[0], 'main', 'ветка по умолчанию первая');
+});
+
+test('--any-branch: 404 на сравнении с одной веткой пропускается, поиск идёт дальше', opts, async () => {
+  const { r, log, all } = await scenario(newStub({ branchPages: [['main', 'broken', 'good']], compare: { main: cmp('behind'), good: cmp('identical') } }), ['--any-branch']);
+  assert.equal(r.status, 0, all);
+  assert.match(r.stderr, /пропуск/);
+  assert.deepEqual(cmpLog(log), ['main', 'broken', 'good']);
+});
+
+test('--any-branch: 403 на сравнении - код 2 и сообщение про лимит, поиск обрывается', opts, async () => {
+  const { r, log, repo, all } = await scenario(
+    newStub({ branchPages: [['main', 'limited', 'good']], compare: { main: cmp('behind'), limited: { code: 403, body: {} }, good: cmp('identical') } }),
+    ['--any-branch'],
+  );
+  assert.equal(r.status, 2, all);
+  assert.match(r.stderr, /лимит/);
+  assert.deepEqual(cmpLog(log), ['main', 'limited']);
+  assert.equal(existsSync(repo), false);
+});
+
+test('--any-branch: коммит ни в одной ветке - код 2, репозитория нет', opts, async () => {
+  const { r, repo, all } = await scenario(newStub({ branchPages: [['main', 'dev']], compare: { main: cmp('behind'), dev: cmp('diverged') } }), ['--any-branch']);
+  assert.equal(r.status, 2, all);
+  assert.match(r.stderr, /не входит/);
+  assert.equal(existsSync(repo), false);
+});
+
+test('--branch вместе с --any-branch: код 2, к API не обращается', opts, async () => {
+  const { r, log, repo, all } = await scenario(newStub(), ['--branch', 'x', '--any-branch']);
+  assert.equal(r.status, 2, all);
+  assert.equal(log.length, 0);
+  assert.equal(existsSync(repo), false);
+});
+
+test('CI: зелёный check-run «Проверки и e2e» - импорт', opts, async () => {
+  const { r, log, all } = await scenario(newStub({ compare: { main: cmp('identical') } }), []);
+  assert.equal(r.status, 0, all);
+  assert.ok(log.some((u) => u.includes('/check-runs')));
+});
+
+test('CI: нужного check-run нет, не success или чужое имя - код 2, репозитория нет', opts, async () => {
+  const bad: Reply[] = [
+    { code: 200, body: { check_runs: [] } },
+    { code: 200, body: { check_runs: [{ name: CI_NAME, conclusion: 'failure' }] } },
+    { code: 200, body: { check_runs: [{ name: CI_NAME, conclusion: null }] } },
+    { code: 200, body: { check_runs: [{ name: 'Другая проверка', conclusion: 'success' }] } },
+    { code: 500, body: {} },
+  ];
+  for (const checks of bad) {
+    const { r, repo, all } = await scenario(newStub({ compare: { main: cmp('identical') }, checks }), []);
+    assert.equal(r.status, 2, `${JSON.stringify(checks)}: ${all}`);
+    assert.equal(existsSync(repo), false, JSON.stringify(checks));
+  }
+});
+
+test('CI: --skip-ci-check не запрашивает check-runs и импортирует при красном CI', opts, async () => {
+  const { r, log, all } = await scenario(newStub({ compare: { main: cmp('ahead') }, checks: { code: 200, body: { check_runs: [] } } }), ['--skip-ci-check']);
+  assert.equal(r.status, 0, all);
+  assert.match(r.stderr, /пропущена/);
+  assert.equal(log.some((u) => u.includes('/check-runs')), false);
+});
+
+test('CI не проверяется, если ветка не подошла', opts, async () => {
+  const { r, log } = await scenario(newStub({ compare: { main: cmp('diverged') } }), []);
+  assert.equal(r.status, 2);
+  assert.equal(log.some((u) => u.includes('/check-runs')), false);
 });
