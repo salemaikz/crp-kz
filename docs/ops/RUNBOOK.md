@@ -86,12 +86,16 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 3. Node 22 (NodeSource), `npm i -g pm2@<точная версия>`.
 4. Пакеты: `apt install git nginx certbot python3-certbot-nginx age rsync jq acl` (`acl` нужен для
    удаления старых релизов, см. раздел 4).
+   Затем первый импорт кода в исходный репозиторий сервера (D-042, раздел 4, шаг 0). Клона GitHub
+   на сервере нет: `<адрес репозитория>` ниже — это `file:///var/lib/crp-src/crp.git`.
 5. Пользователи без пароля и без оболочки для входа:
    `useradd --create-home --shell /usr/sbin/nologin crp`, затем
    `useradd --create-home --shell /usr/sbin/nologin --groups crp crpdeploy` (crp для crpdeploy
    дополнительная группа). Группу новых релизов задаёт setgid на `releases` (его ставит
    `install-ops.sh`); `deploy.sh` останавливается с кодом 2, если группа релиза не `crp`.
    Корень и зеркало репозитория: `install -d -m 0751 -o crpdeploy -g crp /srv/crp`, затем
+   `sudo -u crpdeploy git config --global --add safe.directory /var/lib/crp-src/crp.git` (репозиторий
+   принадлежит root, без этого git откажется его читать) и
    `sudo -u crpdeploy git clone --mirror <адрес репозитория> /srv/crp/repo.git`. Зеркало принадлежит
    `crpdeploy` и нужно только для `deploy.sh`. Комплект для root (скрипты, sudoers, крон, nginx) из зеркала
    не берётся: скомпрометированный `crpdeploy` (например, через `postinstall` пакета при `npm ci`) мог бы
@@ -101,8 +105,7 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    `d=$(mktemp -d /tmp/crp-deploy.XXXXXX) && chmod 0755 "$d" && git clone --depth 1 --branch <тег> <адрес репозитория> "$d/crp"`
    (`<каталог выгрузки>` ниже, в шагах 6-8, — это `$d/crp`; `crpdeploy` и postgres должны его читать,
    `install-ops.sh` откажет с кодом 2, если выгрузка или её родители принадлежат не root либо доступны на запись другим; обход - только явный `--allow-foreign-owner`. Эта проверка не защищает от подмены тега в зеркале `repo.git`: защита - только клонирование от root мимо зеркала, не `git archive` из зеркала через tar). Сверьте, что
-   `git -C "$d/crp" rev-parse HEAD` совпадает с sha выпущенного тега. Если адрес закрытый, ключи доступа
-   у root вносит оператор вне репозитория, сюда они не пишутся.
+   `git -C "$d/crp" rev-parse HEAD` совпадает с sha, который напечатал импорт.
 6. `apt install postgresql-16`; положить `<каталог выгрузки>/deploy/postgres/postgresql.conf.d/crp.conf` в
    `conf.d`, строки из `deploy/postgres/pg_hba.snippet` в `pg_hba.conf`, перезапустить.
 7. Роли и БД: `sudo -u postgres psql -v ON_ERROR_STOP=1 -v db=crp -v owner=crp_owner -v app=crp_app -f <каталог выгрузки>/deploy/postgres/roles.sql`,
@@ -126,7 +129,8 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
     `SESSION_SECRET` и ключ server actions создаются командой `openssl rand`, значения в
     репозиторий, чат и issue не попадают.
 11. Открытые ключи age хранителей в `/etc/crp/backup-recipients.txt` (см. раздел 6).
-12. Первая выкладка: `sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z`.
+12. Первая выкладка: `sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z --skip-ci-check` (CI
+    проверен при импорте, раздел 4).
 13. `sudo -u crp -H pm2 startup systemd -u crp --hp /home/crp`: pm2 выведет команду, её выполняет root. Затем `sudo -u crp -H pm2 save`.
 14. Первый администратор (раздел 3), первый бэкап и учебное восстановление (раздел 6.2).
 
@@ -186,17 +190,29 @@ sudo -u crp /usr/local/lib/crp/run-script.sh create-admin -- --email <почта
 
 ## 4. Выкладка
 
-Тег ставится на основную ветку после зелёного CI. Затем на сервере:
+Тег ставится на основную ветку после зелёного CI. Затем:
+
+0. Импорт очищенного снимка в исходный репозиторий сервера (D-042). Скрипт идёт с машины
+   оператора на вход `bash` и на сервере не хранится:
+   `ssh <админ>@<сервер> 'sudo bash -s -- <sha коммита> vX.Y.Z' < tools/release/server-import.sh`.
+   Скрипт проверяет CI исходного sha, распаковывает только файлы для работы, отменяет импорт при
+   найденных служебных пометках разработки (код 2, репозиторий не тронут) и печатает sha снимка.
+   Флаг `--skip-ci-check` у импорта — только если CI для коммита не запускался, с записью причины.
+
+Затем на сервере:
 
 ```
-sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z
+sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z --skip-ci-check
 ```
+
+`--skip-ci-check` здесь обязателен: у снимка свой sha, его CI нет, исходный sha проверен на шаге 0.
 
 Что делает скрипт (журнал: `/srv/crp/shared/state/deploy.log`):
 
 1. Проверяет тег по шаблону `vX.Y.Z` и берёт блокировку: параллельная выкладка получает код 4.
-2. `git fetch`; тег обязан входить в основную ветку, а CI для коммита быть зелёным
-   (`--skip-ci-check` пропускает проверку и пишет предупреждение в журнал).
+2. `git fetch` из исходного репозитория сервера; тег обязан входить в основную ветку, а CI для
+   коммита быть зелёным (`--skip-ci-check` пропускает проверку и пишет предупреждение в журнал;
+   при импорте по D-042 CI проверен на шаге 0).
 3. Выгружает тег в `releases/<id>` без `.git`, пишет `RELEASE.json`, подключает `.env.production`.
 4. `npm ci --include=dev` строго по lock-файлу.
 5. `ops-preflight --db`: любая ошибка останавливает выкладку, прод не тронут.
