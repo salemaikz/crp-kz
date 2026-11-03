@@ -34,10 +34,11 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 Каталоги и владельцы:
 
 ```
+/var/lib/crp-src/crp.git       root 0755: исходный репозиторий сервера, очищенные снимки (D-042)
 /srv/crp/                      crpdeploy:crp 0751 (current меняет crpdeploy; группа crp без записи; o+x для nginx)
-  repo.git/                    зеркало репозитория (crpdeploy)
+  repo.git/                    зеркало /var/lib/crp-src/crp.git (crpdeploy)
   releases/<UTC>-<тег>/        crpdeploy:crp 2750 (setgid на releases: группа crp у новых релизов); .next/cache 2770
-    RELEASE.json               {id, tag, sha, builtAt}
+    RELEASE.json               {id, tag, sha, builtAt}; sha снимка, исходный sha — в теле коммита (source <sha>)
     .env.production            симлинк на /etc/crp/app.env
   current -> releases/<id>     атомарная замена симлинка
   shared/
@@ -87,7 +88,8 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
 4. Пакеты: `apt install git nginx certbot python3-certbot-nginx age rsync jq acl` (`acl` нужен для
    удаления старых релизов, см. раздел 4).
    Затем первый импорт кода в исходный репозиторий сервера (D-042, раздел 4, шаг 0). Клона GitHub
-   на сервере нет: `<адрес репозитория>` ниже — это `file:///var/lib/crp-src/crp.git`.
+   на сервере нет: `<адрес репозитория>` ниже — это `file:///var/lib/crp-src/crp.git`. Импорт
+   идёт через `sudo` без tty, поэтому администратору нужен sudo без пароля (или вход root по ключу).
 5. Пользователи без пароля и без оболочки для входа:
    `useradd --create-home --shell /usr/sbin/nologin crp`, затем
    `useradd --create-home --shell /usr/sbin/nologin --groups crp crpdeploy` (crp для crpdeploy
@@ -120,11 +122,9 @@ D-027 (выкладка), D-028 (health и журналы), D-029 (бэкапы,
    `--deploy-hook "systemctl reload nginx"`. Если `install-ops.sh` отвечает «символическая ссылка»,
    кто-то заменил подкаталог корня ссылкой (раздел 1, граница crpdeploy и root): выясните причину,
    удалите ссылку и запустите скрипт снова.
-9. `shared/instance.json` создаётся install-ops.sh; для основной ветки, которой ещё нет в
-   репозитории, задайте `deployBranch` от имени `crpdeploy`, а не от root (файл принадлежит `crpdeploy`,
-   правка от root пошла бы по подложенной ссылке):
-   `sudo -u crpdeploy sh -c 'jq ".deployBranch = \"<ветка>\"" /srv/crp/shared/instance.json > /srv/crp/shared/instance.json.new && install -T -m 0644 -g crp /srv/crp/shared/instance.json.new /srv/crp/shared/instance.json && rm -f /srv/crp/shared/instance.json.new'`
-   (права 0644 и группа `crp`, как у install-ops.sh: `healthcheck.sh` работает от `crp` и читает этот файл).
+9. `shared/instance.json` создаётся install-ops.sh с `deployBranch` = `main`. При импорте по D-042
+   ветка исходного репозитория сервера всегда `main`, поэтому `deployBranch` не меняйте: другая
+   ветка остановит выкладку с кодом 2.
 10. Файлы `/etc/crp/*.env` по шаблонам `deploy/env/*.example`, права из раздела 1.
     `SESSION_SECRET` и ключ server actions создаются командой `openssl rand`, значения в
     репозиторий, чат и issue не попадают.
@@ -195,9 +195,11 @@ sudo -u crp /usr/local/lib/crp/run-script.sh create-admin -- --email <почта
 0. Импорт очищенного снимка в исходный репозиторий сервера (D-042). Скрипт идёт с машины
    оператора на вход `bash` и на сервере не хранится:
    `ssh <админ>@<сервер> 'sudo bash -s -- <sha коммита> vX.Y.Z' < tools/release/server-import.sh`.
-   Скрипт проверяет CI исходного sha, распаковывает только файлы для работы, отменяет импорт при
-   найденных служебных пометках разработки (код 2, репозиторий не тронут) и печатает sha снимка.
-   Флаг `--skip-ci-check` у импорта — только если CI для коммита не запускался, с записью причины.
+   Скрипт проверяет, что коммит входит в ветку по умолчанию на GitHub (другая ветка —
+   `--branch <ветка>`), и CI исходного sha. Затем распаковывает только файлы для работы и
+   отменяет импорт при найденных служебных пометках разработки (код 2, репозиторий не тронут).
+   В конце печатает sha снимка. Флаг `--skip-ci-check` у импорта ставится, только если CI для
+   коммита не запускался, с записью причины. Нужен sudo без пароля: без tty sudo пароль не спросит.
 
 Затем на сервере:
 

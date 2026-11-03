@@ -179,7 +179,7 @@ schema_migrations`. От имени `crp_app` это ошибка: в PG15+ пр
 
 ```
 /srv/crp/                          crpdeploy:crp 0751 — current меняет crpdeploy; группа crp без записи; o+x для nginx
-  repo.git/                        bare-зеркало github.com/salemaikz/crp-kz (crpdeploy)
+  repo.git/                        bare-зеркало /var/lib/crp-src/crp.git, очищенные снимки (crpdeploy, D-042)
   releases/                        crpdeploy:crp 2750 — setgid: новые релизы получают группу crp
     <UTC-ts>-<tag>/                .next/cache — 2770 (пишет crp)
      RELEASE.json                  {id, tag, sha, builtAt}
@@ -700,7 +700,7 @@ Next предупреждает, если `NODE_ENV` пришёл из `.env`.
    - Node 22 из NodeSource; `npm i -g pm2@<точная версия>`;
    - пакеты `git nginx certbot python3-certbot-nginx age rsync jq acl` (без `acl` старые релизы не удаляются);
    - пользователи `crp` и `crpdeploy`, корень `/srv/crp` (`crpdeploy:crp 0751`);
-   - от `crpdeploy`: `git clone --mirror` в `repo.git` (только для `deploy.sh`); комплект для root — `git clone --depth 1 --branch <тег>` от root в каталог 0755, мимо зеркала (риск 19);
+   - импорт очищенного снимка в `/var/lib/crp-src/crp.git` от root (D-042); от `crpdeploy`: `git clone --mirror` этого репозитория в `repo.git` (только для `deploy.sh`); комплект для root — `git clone --depth 1 --branch <тег>` от root из `/var/lib/crp-src/crp.git` в каталог 0755, мимо зеркала (риск 19);
    - `apt install postgresql-16` → `crp.conf`, `pg_hba` → `roles.sql` (всё из выгрузки) → `\password`;
    - `install-ops.sh --domain …` из выгрузки, файлы `/etc/crp/*.env` по шаблонам;
    - первая выкладка `deploy.sh vX.Y.Z`;
@@ -1061,7 +1061,7 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 | 3 | Прямой доступ к Node или Postgres | `-H 127.0.0.1`; `listen_addresses='localhost'`; `pg_hba` только `hostssl` 127.0.0.1, остальное reject |
 | 4 | Подмена Host, CSRF server actions через чужой Host | `default_server` с `ssl_reject_handshake`; точный `server_name`; `X-Forwarded-Host=$host`. Проверку Origin в server actions Next делает сам |
 | 5 | SQL-инъекция или RCE в приложении получает DDL и правит журнал | `crp_app` без DDL. `audit_log` только INSERT/SELECT. `schema_migrations` только SELECT. Не суперпользователь (preflight `db_superuser`, `db_can_create`). Пароль владельца лежит в `migrate.env`, процесс `crp` его не читает |
-| 6 | Выкладка непроверенного кода | Только тег-потомок `main` с зелёным CI (`--skip-ci-check` пишется в лог). Скрипты эксплуатации — копии root в `/usr/local/lib/crp`. Код релиза не выполняется от root или postgres |
+| 6 | Выкладка непроверенного кода | Импорт (D-042) берёт только коммит из ветки официального репозитория с зелёным CI; `deploy.sh` выкладывает только тег из `main` репозитория сервера (`--skip-ci-check` пишется в лог). Скрипты эксплуатации — копии root в `/usr/local/lib/crp`. Код релиза не выполняется от root или postgres |
 | 7 | Простой и расхождение версий при выкладке | Отдельный каталог релиза, атомарный симлинк, cluster reload, `NEXT_DEPLOYMENT_ID`, общий ключ server actions, общая статика. Проверка на `smokePort` до переключения |
 | 8 | Миграция легла наполовину или заблокировала таблицы | Одна транзакция + advisory-блокировка (уже есть) + `lock_timeout` 5 с. Бэкап перед миграциями. Миграции только добавляющие, откат кода без отката БД |
 | 9 | Прод запустился без миграций | `assertMigrated` при старте (fail closed), health → 503 `migrations=pending`, deploy не переключает |
@@ -1074,7 +1074,7 @@ Inline-CSS по BRAND: фон `#F3F4F1`, текст `#14161B`, Onest/system-ui. 
 | 16 | Health раскрывает внутренности | Только статусы и счётчик. Без текста ошибок, хоста, имён таблиц. Ограничение частоты в nginx |
 | 17 | Сбой, который никто не заметил (многократные рестарты без алерта) | `healthcheck.sh`: рестарты, свежесть бэкапа, диск, сертификат, внешний HTTPS; алерт при смене состояния |
 | 18 | Наложение крон-задач, зависшие задачи | `flock -n` + `timeout 15m` в `run-script.sh` |
-| 19 | Эскалация `crpdeploy` → root | sudoers: только `pm2` от `crp` и `backup.sh --label pre-deploy-*` от postgres. Скрипты в `/usr/local/lib/crp` принадлежат root. Комплект для `install-ops.sh` root берёт мимо зеркала `repo.git` (им владеет `crpdeploy`, тег в нём можно переставить на коммит с `NOPASSWD: ALL`, а `visudo -c` его пропустит): `git clone --depth 1 --branch <тег> <адрес>` от root в каталог 0755, запуск оттуда; `install-ops.sh` отказывает (код 2), если выгрузка или её родители принадлежат не root или доступны на запись другим (обход - `--allow-foreign-owner`; в dry-run предупреждение), и если `crpdeploy` её не читает. Эта проверка от подмены тега в зеркале не защищает: защита - только клонирование от root мимо зеркала (не `git archive` из зеркала через tar) |
+| 19 | Эскалация `crpdeploy` → root | sudoers: только `pm2` от `crp` и `backup.sh --label pre-deploy-*` от postgres. Скрипты в `/usr/local/lib/crp` принадлежат root. Комплект для `install-ops.sh` root берёт мимо зеркала `repo.git` (им владеет `crpdeploy`, тег в нём можно переставить на коммит с `NOPASSWD: ALL`, а `visudo -c` его пропустит): `git clone --depth 1 --branch <тег> <адрес>` от root в каталог 0755 (адрес — root-овый `/var/lib/crp-src/crp.git`, D-042), запуск оттуда; `install-ops.sh` отказывает (код 2), если выгрузка или её родители принадлежат не root или доступны на запись другим (обход - `--allow-foreign-owner`; в dry-run предупреждение), и если `crpdeploy` её не читает. Эта проверка от подмены тега в зеркале не защищает: защита - только клонирование от root мимо зеркала (не `git archive` из зеркала через tar) |
 | 20 | Подмена зависимостей при сборке | `npm ci` строго по lock-файлу, версии закреплены (BUILD §1). Проверить на стейдже `--ignore-scripts`; если сборка проходит — включить |
 | 21 | Пароль админа в истории shell или в `ps` | `create-admin` не принимает пароль аргументом: приглашение без эха или stdin |
 | 23 | Повышение чужого аккаунта: заранее зарегистрирован похожий адрес, или старая сессия повышаемого осталась на общем компьютере | `--promote` закрывает все сессии повышаемого; неподтверждённый адрес — `unverified`, пока сотрудник лично не подтвердит адрес и ящик (`--identity-confirmed`: новый пароль, сессии и ссылки погашены). Остаточный риск — ошибка в адресе; ограничение доменом ЦРП — вопрос владельцу (D-039) |
