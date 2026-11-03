@@ -4,9 +4,10 @@
 # не хранится, а передаётся на вход bash. Нужен вход root по ключу или sudo без пароля: без tty
 # sudo пароль не спросит.
 #   ssh <админ>@<сервер> 'sudo bash -s -- <sha> vX.Y.Z' < tools/release/server-import.sh
-# Флаги: --branch <ветка GitHub> (коммит обязан входить в неё; без флага подходит любая ветка
-# репозитория, сначала проверяется ветка по умолчанию), --skip-ci-check (только если CI для коммита
-# не запускался).
+# Флаги: коммит обязан входить в ветку по умолчанию на GitHub; --branch <ветка> — в эту ветку;
+# --any-branch — в любую ветку репозитория (только когда основная ветка ещё не готова, с записью
+# причины; имя ветки тогда не попадает в журнал sudo). --skip-ci-check — только если CI для
+# коммита не запускался.
 # После импорта: sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z --skip-ci-check
 # (CI проверяется здесь, по исходному sha; у очищенного коммита своего CI нет).
 #
@@ -24,6 +25,8 @@ main() {
 
   local SRC_REPO="${CRP_SRC_REPO:-/var/lib/crp-src/crp.git}"
   local GH_REPO="${CRP_GH_REPO:-salemaikz/crp-kz}"
+  # Только для тестов: адрес API GitHub.
+  GH_API="${CRP_GH_API:-https://api.github.com}"
   local CI_CHECK_NAME="${CRP_CI_CHECK_NAME:-Проверки и e2e}"
   # Ветка исходного репозитория сервера; deployBranch в instance.json должен совпадать.
   local SRV_BRANCH=main
@@ -36,11 +39,12 @@ main() {
     docs/brand/logo/crp-logo.png
     package.json package-lock.json next.config.ts tsconfig.json postcss.config.mjs)
 
-  local SHA="" TAG="" GH_BRANCH="" SKIP_CI=0
+  local SHA="" TAG="" GH_BRANCH="" ANY_BRANCH=0 SKIP_CI=0
   while (($#)); do
     case "$1" in
       --skip-ci-check) SKIP_CI=1; shift ;;
       --branch) GH_BRANCH="${2:-}"; shift 2 || die "после --branch нужно имя ветки" ;;
+      --any-branch) ANY_BRANCH=1; shift ;;
       -*) die "неизвестный флаг $1" ;;
       *)
         if [[ -z "$SHA" ]]; then SHA="$1"
@@ -54,6 +58,7 @@ main() {
   [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || die "Использование: server-import.sh <sha из 40 символов> vX.Y.Z [--branch <ветка>] [--skip-ci-check]"
   [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$ ]] || die "тег должен быть вида vX.Y.Z"
   [[ -z "$GH_BRANCH" || "$GH_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || die "недопустимое имя ветки"
+  [[ -z "$GH_BRANCH" || $ANY_BRANCH == 0 ]] || die "--branch и --any-branch вместе не задаются"
 
   if [[ -e "$SRC_REPO" ]]; then
     [[ "$(git --git-dir="$SRC_REPO" rev-parse --is-bare-repository 2>/dev/null)" == true ]] ||
@@ -75,34 +80,47 @@ main() {
     cp "$TARBALL" "$WORK/src.tgz"
   else
     # 1. Только код из ветки официального репозитория. Архив и API GitHub отдают и коммиты форков,
-    # поэтому sha обязан входить в ветку репозитория: заданную --branch, иначе в ветку по умолчанию
-    # или в любую другую (ветку создаёт только тот, у кого есть запись). Имя ветки в аргументах не
-    # нужно, и в журнал sudo на сервере оно не попадает.
-    local branches=() b status found=""
+    # поэтому sha обязан входить в ветку репозитория: по умолчанию в ветку по умолчанию. С
+    # --any-branch подходит любая ветка (её создаёт только тот, у кого есть запись); ошибка
+    # сравнения с одной веткой тогда не обрывает поиск, кроме лимита API.
+    local branches=() b err status found="" page
     if [[ -n "$GH_BRANCH" ]]; then
       branches=("$GH_BRANCH")
     else
-      b="$(gh_api "repos/$GH_REPO" | jq -er '.default_branch')" || die "не удалось узнать ветку по умолчанию"
+      err="$(gh_get "repos/$GH_REPO" "$WORK/repo.json")" || die "не удалось узнать ветку по умолчанию: $err"
+      b="$(jq -er '.default_branch' "$WORK/repo.json")" || die "в ответе GitHub нет ветки по умолчанию"
       branches=("$b")
-      gh_api "repos/$GH_REPO/branches?per_page=100" >"$WORK/branches.json" || die "не удалось получить список веток"
-      while IFS= read -r b; do
-        [[ "$b" =~ ^[A-Za-z0-9._/-]+$ && "$b" != "${branches[0]}" ]] && branches+=("$b")
-      done < <(jq -r '.[].name' "$WORK/branches.json")
+      if ((ANY_BRANCH)); then
+        for ((page = 1; page <= 20; page++)); do
+          err="$(gh_get "repos/$GH_REPO/branches?per_page=100&page=$page" "$WORK/branches.json")" ||
+            die "не удалось получить список веток: $err"
+          [[ "$(jq 'length' "$WORK/branches.json")" -gt 0 ]] || break
+          while IFS= read -r b; do
+            [[ "$b" =~ ^[A-Za-z0-9._/-]+$ && "$b" != "${branches[0]}" ]] && branches+=("$b")
+          done < <(jq -r '.[].name' "$WORK/branches.json")
+        done
+      fi
     fi
     for b in "${branches[@]}"; do
-      status="$(gh_api "repos/$GH_REPO/compare/$SHA...$b" | jq -er '.status')" ||
-        die "не удалось сравнить $SHA с веткой $b"
+      if ! err="$(gh_get "repos/$GH_REPO/compare/$SHA...$b" "$WORK/compare.json")"; then
+        if ((ANY_BRANCH)) && [[ "$err" != лимит* ]]; then
+          echo "ВНИМАНИЕ: сравнение с веткой $b не удалось ($err), пропуск" >&2
+          continue
+        fi
+        die "не удалось сравнить $SHA с веткой $b: $err"
+      fi
+      status="$(jq -er '.status' "$WORK/compare.json")" || die "в ответе GitHub нет статуса сравнения"
       if [[ "$status" == identical || "$status" == ahead ]]; then found="$b"; break; fi
     done
-    [[ -n "$found" ]] || die "коммит $SHA не входит ни в одну проверенную ветку репозитория $GH_REPO"
+    [[ -n "$found" ]] || die "коммит $SHA не входит в проверенные ветки репозитория $GH_REPO"
     echo "коммит входит в ветку $found"
 
     # 2. CI по исходному sha.
     if ((SKIP_CI)); then
       echo "ВНИМАНИЕ: проверка CI пропущена флагом --skip-ci-check sha=$SHA" >&2
     else
-      gh_api "repos/$GH_REPO/commits/$SHA/check-runs?per_page=100" >"$WORK/checks.json" ||
-        die "не удалось получить статус CI"
+      err="$(gh_get "repos/$GH_REPO/commits/$SHA/check-runs?per_page=100" "$WORK/checks.json")" ||
+        die "не удалось получить статус CI: $err"
       jq -e --arg n "$CI_CHECK_NAME" '[.check_runs[]? | select(.name == $n and .conclusion == "success")] | length > 0' \
         "$WORK/checks.json" >/dev/null || die "CI для $SHA не зелёный (проверка «$CI_CHECK_NAME»)"
     fi
@@ -171,8 +189,14 @@ main() {
 
 die() { echo "server-import: $1" >&2; exit 2; }
 
-gh_api() {
-  curl -fsS --max-time 20 -H 'Accept: application/vnd.github+json' "https://api.github.com/$1"
+# GET к API GitHub в файл. Код 0 только при HTTP 200; иначе в stdout причина (лимит, код HTTP, сеть).
+gh_get() {
+  local code
+  code="$(curl -sS --max-time 20 -H 'Accept: application/vnd.github+json' -o "$2" -w '%{http_code}' "$GH_API/$1")" ||
+    { echo "сеть недоступна"; return 1; }
+  [[ "$code" == 200 ]] && return 0
+  if [[ "$code" == 403 || "$code" == 429 ]]; then echo "лимит API GitHub (HTTP $code), повторите через час"; else echo "HTTP $code"; fi
+  return 1
 }
 
 main "$@"
