@@ -4,8 +4,9 @@
 # не хранится, а передаётся на вход bash. Нужен вход root по ключу или sudo без пароля: без tty
 # sudo пароль не спросит.
 #   ssh <админ>@<сервер> 'sudo bash -s -- <sha> vX.Y.Z' < tools/release/server-import.sh
-# Флаги: --branch <ветка GitHub> (по умолчанию ветка репозитория по умолчанию; коммит обязан
-# в неё входить), --skip-ci-check (только если CI для коммита не запускался).
+# Флаги: --branch <ветка GitHub> (коммит обязан входить в неё; без флага подходит любая ветка
+# репозитория, сначала проверяется ветка по умолчанию), --skip-ci-check (только если CI для коммита
+# не запускался).
 # После импорта: sudo -u crpdeploy /usr/local/lib/crp/deploy.sh vX.Y.Z --skip-ci-check
 # (CI проверяется здесь, по исходному sha; у очищенного коммита своего CI нет).
 #
@@ -74,15 +75,27 @@ main() {
     cp "$TARBALL" "$WORK/src.tgz"
   else
     # 1. Только код из ветки официального репозитория. Архив и API GitHub отдают и коммиты форков,
-    # поэтому sha обязан входить в ветку (по умолчанию ветка репозитория по умолчанию).
-    if [[ -z "$GH_BRANCH" ]]; then
-      GH_BRANCH="$(gh_api "repos/$GH_REPO" | jq -er '.default_branch')" || die "не удалось узнать ветку по умолчанию"
+    # поэтому sha обязан входить в ветку репозитория: заданную --branch, иначе в ветку по умолчанию
+    # или в любую другую (ветку создаёт только тот, у кого есть запись). Имя ветки в аргументах не
+    # нужно, и в журнал sudo на сервере оно не попадает.
+    local branches=() b status found=""
+    if [[ -n "$GH_BRANCH" ]]; then
+      branches=("$GH_BRANCH")
+    else
+      b="$(gh_api "repos/$GH_REPO" | jq -er '.default_branch')" || die "не удалось узнать ветку по умолчанию"
+      branches=("$b")
+      gh_api "repos/$GH_REPO/branches?per_page=100" >"$WORK/branches.json" || die "не удалось получить список веток"
+      while IFS= read -r b; do
+        [[ "$b" =~ ^[A-Za-z0-9._/-]+$ && "$b" != "${branches[0]}" ]] && branches+=("$b")
+      done < <(jq -r '.[].name' "$WORK/branches.json")
     fi
-    local status
-    status="$(gh_api "repos/$GH_REPO/compare/$SHA...$GH_BRANCH" | jq -er '.status')" ||
-      die "не удалось сравнить $SHA с веткой $GH_BRANCH"
-    [[ "$status" == identical || "$status" == ahead ]] ||
-      die "коммит $SHA не входит в ветку $GH_BRANCH репозитория $GH_REPO (status=$status)"
+    for b in "${branches[@]}"; do
+      status="$(gh_api "repos/$GH_REPO/compare/$SHA...$b" | jq -er '.status')" ||
+        die "не удалось сравнить $SHA с веткой $b"
+      if [[ "$status" == identical || "$status" == ahead ]]; then found="$b"; break; fi
+    done
+    [[ -n "$found" ]] || die "коммит $SHA не входит ни в одну проверенную ветку репозитория $GH_REPO"
+    echo "коммит входит в ветку $found"
 
     # 2. CI по исходному sha.
     if ((SKIP_CI)); then
