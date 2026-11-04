@@ -138,6 +138,14 @@ test('deploy.sh: код db:status разбирается явно, сборка 
   assert.match(t, /flock -n 9/);
 });
 
+test('deploy.sh: не зависит от рабочего каталога оператора', () => {
+  const t = read('bin', 'deploy.sh');
+  // sudo -u crpdeploy из каталога администратора: find -delete на уборке не смог бы в него вернуться
+  const cd = t.search(/^cd \/$/m);
+  const find = t.search(/^[^#\n]*\bfind /m);
+  assert.ok(cd > 0 && find > 0 && cd < find, 'cd / до первого вызова find');
+});
+
 test('крон: UTC без часового пояса, всё через /usr/local/lib/crp, run-script с именами из PLAN К-10', () => {
   const lines = read('cron', 'crp.cron').split('\n');
   const jobs = lines.filter((l) => l.trim() && !l.startsWith('#') && !/^[A-Z_]+=/.test(l));

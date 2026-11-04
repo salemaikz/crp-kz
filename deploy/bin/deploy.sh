@@ -11,6 +11,10 @@ umask 027
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 . "$SELF_DIR/lib.sh"
+# Оператор запускает скрипт через sudo из своего домашнего каталога, куда crpdeploy не пускают:
+# find -delete на шаге 15 не может вернуться в него и роняет выкладку кодом 1 уже после успешного
+# переключения. Все пути ниже абсолютные.
+cd /
 
 NODE="${CRP_NODE:-node}"
 BACKUP_SCRIPT="${CRP_BACKUP_SCRIPT:-/usr/local/lib/crp/backup.sh}"
