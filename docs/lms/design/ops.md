@@ -354,7 +354,7 @@ server { listen 80; listen [::]:80; server_name {{DOMAIN}};
 server { listen 443 ssl default_server; listen [::]:443 ssl default_server; ssl_reject_handshake on; }
 
 server {
-  listen 443 ssl; listen [::]:443 ssl; http2 on;
+  listen 443 ssl http2; listen [::]:443 ssl http2;   # не `http2 on`: в Ubuntu 24.04 nginx 1.24
   server_name {{DOMAIN}};
   ssl_certificate     /etc/letsencrypt/live/{{DOMAIN}}/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/{{DOMAIN}}/privkey.pem;

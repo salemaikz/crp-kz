@@ -23,16 +23,17 @@ server {
 
 # BEGIN-TLS
 # Чужой Host: обрыв рукопожатия (защита от подмены Host и сканеров).
+# HTTP/2 — параметром listen: директива `http2 on` есть только с nginx 1.25.1, а в Ubuntu 24.04 стоит
+# 1.24. Параметр действует на весь адрес:порт, поэтому он одинаковый у обоих серверов на 443.
 server {
-  listen 443 ssl default_server;
-  listen [::]:443 ssl default_server;
+  listen 443 ssl http2 default_server;
+  listen [::]:443 ssl http2 default_server;
   ssl_reject_handshake on;
 }
 
 server {
-  listen 443 ssl;
-  listen [::]:443 ssl;
-  http2 on;
+  listen 443 ssl http2;
+  listen [::]:443 ssl http2;
   server_name {{DOMAIN}};
   ssl_certificate     /etc/letsencrypt/live/{{DOMAIN}}/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/{{DOMAIN}}/privkey.pem;

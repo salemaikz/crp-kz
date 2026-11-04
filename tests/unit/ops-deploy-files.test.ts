@@ -138,6 +138,15 @@ test('deploy.sh: код db:status разбирается явно, сборка 
   assert.match(t, /flock -n 9/);
 });
 
+test('nginx: шаблон без директив новее nginx 1.24 из Ubuntu 24.04', () => {
+  const conf = read('nginx', 'crp.conf.template');
+  // `http2 on` появилась в 1.25.1: на 1.24 nginx -t не проходит, и install-ops не включает TLS
+  assert.doesNotMatch(conf, /^\s*http2\s+on;/m);
+  const listens = conf.match(/^\s*listen [^;]*443[^;]*;/gm) ?? [];
+  assert.ok(listens.length >= 4, 'оба сервера на 443, IPv4 и IPv6');
+  for (const l of listens) assert.match(l, /\bssl http2\b/, `HTTP/2 параметром listen: ${l.trim()}`);
+});
+
 test('deploy.sh: не зависит от рабочего каталога оператора', () => {
   const t = read('bin', 'deploy.sh');
   // sudo -u crpdeploy из каталога администратора: find -delete на уборке не смог бы в него вернуться
