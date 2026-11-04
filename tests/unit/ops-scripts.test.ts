@@ -93,6 +93,7 @@ test('успешная выкладка: каталог, RELEASE.json, current, 
   assert.match(id, /^20261020-\d{6}-v0\.1\.0$/);
   const rel = JSON.parse(readFileSync(join(ctx.root, 'releases', id, 'RELEASE.json'), 'utf8'));
   assert.equal(rel.id, id);
+  assert.equal(rel.deploymentId, id.replaceAll('.', '_'));
   assert.equal(rel.tag, 'v0.1.0');
   assert.match(rel.sha, /^[0-9a-f]{40}$/);
   assert.equal(typeof rel.builtAt, 'number');
@@ -110,7 +111,10 @@ test('сборка идёт с недоступным адресом БД и NEX
   const buildEnv = readFileSync(join(ctx.state, 'build-env.txt'), 'utf8');
   assert.match(buildEnv, /^DATABASE_URL=postgres:\/\/crp_build_nodb@127\.0\.0\.1:9\//m);
   assert.doesNotMatch(buildEnv, /operator/);
-  assert.match(buildEnv, new RegExp(`NEXT_DEPLOYMENT_ID=${currentId(ctx)}`));
+  // точки тега next build отвергает: сборка и проверочный запуск получают один и тот же id без них
+  const deploymentId = currentId(ctx).replaceAll('.', '_');
+  assert.match(buildEnv, new RegExp(`^NEXT_DEPLOYMENT_ID=${deploymentId}$`, 'm'));
+  assert.equal(readFileSync(join(ctx.state, 'smoke-deployment-id'), 'utf8').trim(), deploymentId);
 });
 
 test('шаг 8: код db:status 3 — бэкап до миграций, и set -e не обрывает скрипт', opts, () => {
@@ -245,8 +249,10 @@ test('хранение: пять последних релизов, current и p
   assert.deepEqual(releases(ctx), ids.slice(2), 'остались пять последних');
   const chunks = join(ctx.root, 'shared', 'static', '_next', 'static', 'chunks');
   const files = readdirSync(chunks);
-  for (const id of ids.slice(0, 2)) assert.equal(files.includes(`app-${id}.js`), false, `статика ${id} должна быть убрана`);
-  for (const id of ids.slice(2)) assert.equal(files.includes(`app-${id}.js`), true, `статика ${id} должна остаться`);
+  // заглушка сборки называет чанк по deploymentId: id релиза без точек
+  const chunk = (id: string) => `app-${id.replaceAll('.', '_')}.js`;
+  for (const id of ids.slice(0, 2)) assert.equal(files.includes(chunk(id)), false, `статика ${id} должна быть убрана`);
+  for (const id of ids.slice(2)) assert.equal(files.includes(chunk(id)), true, `статика ${id} должна остаться`);
   assert.equal(files.includes('common-aaaa.js'), true, 'общий файл живых релизов остался');
 });
 

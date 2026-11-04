@@ -108,6 +108,9 @@ log "step=code sha=$SHA"
 TS="${CRP_TS:-$(date -u +%Y%m%d-%H%M%S)}"
 ID="$TS-$TAG"
 valid_release_id "$ID" || die 2 "недопустимый id релиза"
+# deploymentId для Next: next build принимает только буквы, цифры, «-» и «_», а в теге есть точки.
+# В теге нет «_», поэтому замена однозначна. Каталоги, журнал и /api/health по-прежнему видят $ID.
+DEPLOYMENT_ID="${ID//./_}"
 REL="$RELEASES_DIR/$ID"
 [[ ! -e "$REL" ]] || die 2 "релиз $ID уже существует"
 mkdir -p "$REL"
@@ -117,8 +120,8 @@ if [[ -n "$APP_GROUP" && "$(stat -c %G "$REL")" != "$APP_GROUP" ]]; then
   die 2 "группа каталога релиза не $APP_GROUP: выставьте setgid на releases (install-ops.sh, RUNBOOK раздел 2)"
 fi
 git -C "$CRP_ROOT/repo.git" archive "$SHA" | tar -x -C "$REL"
-jq -n --arg id "$ID" --arg tag "$TAG" --arg sha "$SHA" --argjson t "$(date -u +%s)000" \
-  '{id: $id, tag: $tag, sha: $sha, builtAt: $t}' >"$REL/RELEASE.json"
+jq -n --arg id "$ID" --arg did "$DEPLOYMENT_ID" --arg tag "$TAG" --arg sha "$SHA" --argjson t "$(date -u +%s)000" \
+  '{id: $id, deploymentId: $did, tag: $tag, sha: $sha, builtAt: $t}' >"$REL/RELEASE.json"
 ln -s "$CONFIG_DIR/app.env" "$REL/.env.production"
 log "step=checkout id=$ID"
 
@@ -146,7 +149,7 @@ log "step=preflight"
 
 # 6. Сборка. В окружении сборки уже есть .env.production, но БД на этом шаге не нужна:
 # подставляем недоступный адрес. Если сборка полезет в БД, она упадёт здесь, а не на проде.
-(cd "$REL" && DATABASE_URL="$BUILD_DATABASE_URL" NEXT_DEPLOYMENT_ID="$ID" NEXT_TELEMETRY_DISABLED=1 npm run build) \
+(cd "$REL" && DATABASE_URL="$BUILD_DATABASE_URL" NEXT_DEPLOYMENT_ID="$DEPLOYMENT_ID" NEXT_TELEMETRY_DISABLED=1 npm run build) \
   >>"$BUILD_LOG" 2>&1 ||
   { tail -n 30 "$BUILD_LOG"; die 2 "сборка не удалась (сборка не должна обращаться к БД; журнал: $BUILD_LOG)"; }
 [[ -s "$REL/.next/BUILD_ID" ]] || die 2 "после сборки нет .next/BUILD_ID"
@@ -201,7 +204,7 @@ run_node "$CONFIG_DIR/migrate.env" scripts/db-grants.ts || die 2 "db-grants не
 log "step=grants"
 
 # 11. Проверка нового релиза на отдельном порту до переключения.
-(cd "$REL" && exec env NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NEXT_DEPLOYMENT_ID="$ID" \
+(cd "$REL" && exec env NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NEXT_DEPLOYMENT_ID="$DEPLOYMENT_ID" \
   "$REL/node_modules/.bin/next" start -H 127.0.0.1 -p "$SMOKE_PORT") >"$STATE_DIR/smoke-$ID.log" 2>&1 9>&- &
 SMOKE_PID=$!
 if ! wait_health "$SMOKE_PORT" "$ID" "$SMOKE_TIMEOUT"; then

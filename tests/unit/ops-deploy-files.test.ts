@@ -51,6 +51,20 @@ test('ecosystem: cluster, один процесс, Node слушает толь�
   assert.ok(app.kill_timeout >= 10000, 'есть время дождаться текущих запросов');
 });
 
+test('ecosystem: NEXT_DEPLOYMENT_ID из deploymentId в RELEASE.json, как при сборке', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'crp-eco-'));
+  temps.push(dir);
+  const id = '20261103-220005-v0.1.0';
+  mkdirSync(join(dir, 'releases', id, 'deploy'), { recursive: true });
+  mkdirSync(join(dir, 'shared'), { recursive: true });
+  writeFileSync(join(dir, 'shared', 'instance.json'), JSON.stringify({ name: 'crp-test', port: 3456 }));
+  writeFileSync(join(dir, 'releases', id, 'RELEASE.json'), JSON.stringify({ id, deploymentId: '20261103-220005-v0_1_0' }));
+  const file = join(dir, 'releases', id, 'deploy', 'ecosystem.config.cjs');
+  copyFileSync(join(DEPLOY, 'ecosystem.config.cjs'), file);
+  const cfg = createRequire(import.meta.url)(file);
+  assert.equal(cfg.apps[0].env.NEXT_DEPLOYMENT_ID, '20261103-220005-v0_1_0');
+});
+
 test('nginx: IP клиента перезаписывается, журнал без query и Referer, лимиты и обрыв чужого Host', () => {
   const conf = read('nginx', 'crp.conf.template');
   assert.match(conf, /proxy_set_header X-Forwarded-For\s+\$remote_addr;/);
@@ -115,7 +129,8 @@ test('deploy.sh: код db:status разбирается явно, сборка 
   assert.ok(build);
   const line = t.split('\n').find((l) => l.includes('npm run build')) ?? '';
   assert.match(line, /DATABASE_URL="\$BUILD_DATABASE_URL"/);
-  assert.match(line, /NEXT_DEPLOYMENT_ID="\$ID"/);
+  assert.match(line, /NEXT_DEPLOYMENT_ID="\$DEPLOYMENT_ID"/);
+  assert.match(t, /^DEPLOYMENT_ID="\$\{ID\/\/\.\/_\}"$/m, 'точки тега Next в deploymentId не принимает');
   assert.match(t, /BUILD_DATABASE_URL="postgres:\/\/[^:@"]+@127\.0\.0\.1:9\//, 'в адресе заглушки нет пароля');
   // порядок: миграции строго после сборки
   assert.ok(t.indexOf('npm run build') < t.indexOf('scripts/db-migrate.ts'));
