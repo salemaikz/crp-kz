@@ -10,10 +10,12 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..', '..', '..');
 const inst = JSON.parse(fs.readFileSync(path.join(root, 'shared', 'instance.json'), 'utf8'));
 
-// Идентификатор релиза нужен рантайму Next для сверки версии клиента (NEXT_DEPLOYMENT_ID при сборке).
+// deploymentId нужен рантайму Next для сверки версии клиента и обязан совпасть с тем, что был при
+// сборке. deploy.sh пишет его в RELEASE.json; у релизов до этого поля он равен id.
 let releaseId;
 try {
-  releaseId = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'RELEASE.json'), 'utf8')).id;
+  const rel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'RELEASE.json'), 'utf8'));
+  releaseId = rel.deploymentId ?? rel.id;
 } catch {
   releaseId = undefined;
 }

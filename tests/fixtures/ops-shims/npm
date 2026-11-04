@@ -12,6 +12,7 @@ case "${1:-} ${2:-}" in
 echo "smoke:start" >>"$SHIM_LOG"
 echo "$$" >"$SHIM_STATE/smoke-pid"
 basename "$PWD" >"$SHIM_STATE/smoke-release"
+echo "${NEXT_DEPLOYMENT_ID-<unset>}" >"$SHIM_STATE/smoke-deployment-id"
 exec sleep 120
 STUB
     chmod +x node_modules/.bin/next
@@ -23,6 +24,9 @@ STUB
       echo "NEXT_DEPLOYMENT_ID=${NEXT_DEPLOYMENT_ID-<unset>}"
     } >>"$SHIM_STATE/build-env.txt"
     [[ "${SHIM_BUILD_FAIL:-}" != 1 ]] || { echo "сборка упала (заглушка)" >&2; exit 1; }
+    # Как next build 16: deploymentId только из букв, цифр, «-» и «_».
+    [[ "${NEXT_DEPLOYMENT_ID:-}" =~ ^[A-Za-z0-9_-]*$ ]] ||
+      { echo "Invalid \`deploymentId\` configuration: contains invalid characters (заглушка)" >&2; exit 1; }
     mkdir -p .next/static/chunks
     echo "${NEXT_DEPLOYMENT_ID:-dev}" >.next/BUILD_ID
     echo "общий чанк" >.next/static/chunks/common-aaaa.js
